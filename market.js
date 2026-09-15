@@ -5,7 +5,8 @@ export const instruments = [
  {id:'NIFTY-FUT',name:'NIFTY FUT',kind:'FUTURE',description:'Demo front-month future',base:24904.5,change:0.73},
  {id:'NIFTY-CE',name:'NIFTY 25,000 CE',kind:'CALL',description:'Demo call option · 25,000',base:184.75,change:3.24},
  {id:'NIFTY-PE',name:'NIFTY 24,500 PE',kind:'PUT',description:'Demo put option · 24,500',base:126.4,change:-2.16},
- {id:'MCX-GOLD',name:'MCX GOLD',kind:'COMMODITY',description:'MCX Gold Futures · demo',base:152784,change:0.29}
+ {id:'MCX-GOLD',name:'MCX GOLD',kind:'COMMODITY',description:'MCX Gold Futures · demo',base:152784,change:0.29},
+ {id:'MCX-CRUDE',name:'MCX CRUDE OIL',kind:'COMMODITY',description:'MCX Crude Oil Futures · demo',base:6500,change:0.12}
 ];
 export const intervals={'1m':60,'5m':300,'15m':900,'1h':3600,'1D':86400};
 export function sma(values,n){let sum=0;return values.map((v,i)=>{sum+=v;if(i>=n)sum-=values[i-n];return i>=n-1?sum/n:null})}
