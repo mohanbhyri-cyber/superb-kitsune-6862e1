@@ -8,10 +8,7 @@
     content="width=device-width,initial-scale=1,viewport-fit=cover"
   >
 
-  <meta
-    name="theme-color"
-    content="#101719"
-  >
+  <meta name="theme-color" content="#101719">
 
   <meta
     name="description"
@@ -44,10 +41,7 @@
   <div class="header-right">
     <span class="demo">● UPSTOX LIVE MARKET</span>
 
-    <button
-      id="theme"
-      aria-label="Toggle light and dark mode"
-    >
+    <button id="theme" aria-label="Toggle light and dark mode">
       ☼
     </button>
 
@@ -60,15 +54,13 @@
 </header>
 
 
-<div
-  class="ticker"
-  id="ticker"
-></div>
+<div class="ticker" id="ticker"></div>
 
 
 <main id="terminal">
 
   <div class="page-title">
+
     <div>
       <div class="eyebrow">
         LIVE MARKET WORKSPACE
@@ -81,10 +73,12 @@
 
     <div class="session">
       NSE · UPSTOX
+
       <span>
         Live market data · IST · INR
       </span>
     </div>
+
   </div>
 
 
@@ -95,6 +89,7 @@
       <div class="instrument">
 
         <div>
+
           <div class="instrument-label">
 
             <span class="instrument-icon">
@@ -116,7 +111,15 @@
               NSE
             </span>
 
+            <span
+              id="trading-date"
+              class="muted"
+            >
+              —
+            </span>
+
           </div>
+
 
           <div class="quote">
 
@@ -130,7 +133,9 @@
             ></span>
 
           </div>
+
         </div>
+
 
         <button
           class="outline"
@@ -303,19 +308,14 @@
           </summary>
 
           <p>
-            BUY when RSI 14 crosses above 55
-            and price closes above EMA 50.
-            SELL when RSI crosses below 45
-            and price closes below EMA 50.
-            Signals use closed candles after
-            50 bars of warm-up.
+            BUY when RSI 14 crosses above 55 and price closes above EMA 50.
+            SELL when RSI crosses below 45 and price closes below EMA 50.
+            Signals use closed candles after 50 bars of warm-up.
           </p>
 
           <p>
-            Rules are calculated from the
-            Upstox market candle series.
-            Signals are analytical outputs,
-            not executed orders.
+            Rules are calculated from the Upstox market candle series.
+            Signals are analytical outputs and are not executed orders.
           </p>
 
         </details>
@@ -433,21 +433,21 @@
           </summary>
 
           <p>
-            BUY: EMA 9 above EMA 21,
-            close above session VWAP,
-            RSI 14 between 52 and 70.
-            SELL: EMA 9 below EMA 21,
-            close below VWAP,
-            RSI between 30 and 48.
+            BUY: EMA 9 above EMA 21 and RSI 14 between 52 and 70.
+            When genuine volume and VWAP are available, price must also
+            be above VWAP.
           </p>
 
           <p>
-            A setup is generated when the
-            configured conditions align on
-            closed candles. Entry, stop and
-            target are calculated analytical
-            levels and are not automatically
-            executed orders.
+            SELL: EMA 9 below EMA 21 and RSI between 30 and 48.
+            When genuine volume and VWAP are available, price must also
+            be below VWAP.
+          </p>
+
+          <p>
+            NIFTY index volume may be unavailable. The system does not
+            fabricate volume or VWAP. Entry, stop and target are
+            analytical levels and are not automatically executed orders.
           </p>
 
         </details>
@@ -498,30 +498,24 @@
           </summary>
 
           <p>
-            <b>BOS</b>: a candle closes
-            beyond the latest confirmed swing.
-            <b>CHoCH</b>: the break opposes
-            the previous structure direction.
+            <b>BOS</b>: a candle closes beyond the latest confirmed swing.
+            <b>CHoCH</b>: the break opposes the previous structure direction.
           </p>
 
           <p>
-            <b>HH / HL / LH / LL</b>:
-            higher high, higher low,
+            <b>HH / HL / LH / LL</b>: higher high, higher low,
             lower high and lower low.
           </p>
 
           <p>
-            <b>OB</b>: the last opposing
-            candle within the configured
+            <b>OB</b>: the last opposing candle within the configured
             lookback before a structure break.
-            <b>FVG</b>: a gap identified
-            between candle wick ranges.
+            <b>FVG</b>: a gap identified between candle wick ranges.
           </p>
 
           <p>
-            These are rule-based price-action
-            interpretations calculated from
-            the loaded Upstox candles.
+            These are rule-based price-action interpretations calculated
+            from the loaded Upstox candles.
           </p>
 
         </details>
@@ -779,10 +773,8 @@
 
 
         <p class="disclaimer">
-          Rule-based technical analysis
-          calculated from live-session
-          market candles. No order is
-          automatically executed.
+          Rule-based technical analysis calculated from live-session
+          market candles. No order is automatically executed.
         </p>
 
       </section>
@@ -849,10 +841,8 @@
 
 
         <p class="disclaimer">
-          New confirmed signals are
-          monitored on the selected
-          instrument and timeframe while
-          this app is open.
+          New confirmed signals are monitored on the selected
+          instrument and timeframe while this app is open.
         </p>
 
 
@@ -922,6 +912,7 @@
       <span class="logo-mini">
         ↗
       </span>
+
       Pro Scalper · Live market analysis
     </span>
 
@@ -933,8 +924,6 @@
 
 </main>
 
-
-<!-- ALERT DIALOG -->
 
 <dialog id="alert-dialog">
 
