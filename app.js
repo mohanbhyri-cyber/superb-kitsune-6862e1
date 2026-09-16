@@ -1,12 +1,8 @@
-// app.js
-// PRO SCALPER - LIVE UPSTOX VERSION
-// Real Upstox history + live quote.
-// NO random/demo market fallback.
-
 import { momentumSignals } from './momentum.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
+
 import {
   instruments,
   intervals,
@@ -15,12 +11,17 @@ import {
   strideSignals
 } from './market.js';
 
+
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
+
 const fmt = n => {
   const value = Number(n);
-  if (!Number.isFinite(value)) return '—';
+
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
 
   return value.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
@@ -28,19 +29,27 @@ const fmt = n => {
   });
 };
 
+
 const read = (key, fallback) => {
   try {
-    return JSON.parse(localStorage.getItem(key)) ?? fallback;
+    return JSON.parse(
+      localStorage.getItem(key)
+    ) ?? fallback;
   } catch {
     return fallback;
   }
 };
 
+
 const save = (key, value) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(
+      key,
+      JSON.stringify(value)
+    );
   } catch {}
 };
+
 
 const paNames = [
   'Structure',
@@ -49,48 +58,83 @@ const paNames = [
   'Fair-value gaps'
 ];
 
+
 const savedPA = read(
   'stride-pa',
-  ['Structure', 'Order blocks', 'Fair-value gaps']
+  [
+    'Structure',
+    'Order blocks',
+    'Fair-value gaps'
+  ]
 );
 
+
 const state = {
+
   paOverlays: new Set(
     Array.isArray(savedPA)
-      ? savedPA.filter(x => paNames.includes(x))
+      ? savedPA.filter(
+          x => paNames.includes(x)
+        )
       : paNames
   ),
 
   quotes: Object.fromEntries(
-    instruments.map(i => [i.id, null])
+    instruments.map(
+      i => [i.id, null]
+    )
   ),
 
   sessionOpen: Object.fromEntries(
-    instruments.map(i => [i.id, null])
+    instruments.map(
+      i => [i.id, null]
+    )
   ),
 
   symbol: 'NIFTY',
+
   tf: '5m',
 
   data: [],
+
   calc: null,
 
   feedStatus: 'LOADING',
+
   lastUpdate: null,
 
-  signalSensitivity: ['fast', 'balanced', 'slow'].includes(
-    read('stride-sensitivity', 'balanced')
-  )
-    ? read('stride-sensitivity', 'balanced')
-    : 'balanced',
+  signalSensitivity:
+    ['fast', 'balanced', 'slow'].includes(
+      read(
+        'stride-sensitivity',
+        'balanced'
+      )
+    )
+      ? read(
+          'stride-sensitivity',
+          'balanced'
+        )
+      : 'balanced',
 
   filter: 'all',
+
   count: 90,
+
   offset: 0,
+
   tool: 'cursor',
 
-  drawings: read('stride-drawings', {}),
-  alerts: read('stride-alerts', []),
+  drawings:
+    read(
+      'stride-drawings',
+      {}
+    ),
+
+  alerts:
+    read(
+      'stride-alerts',
+      []
+    ),
 
   overlays: new Set([
     'Momentum',
@@ -104,6 +148,7 @@ const state = {
 
   hover: null
 };
+
 
 const colors = {
   'Momentum': '#58c8dc',
@@ -120,75 +165,146 @@ const colors = {
   'S/R': '#9aa8ad'
 };
 
-const momentumTracker = new SignalAlertTracker();
-const signalTracker = new SignalAlertTracker();
-const scalpTracker = new SignalAlertTracker();
+
+const momentumTracker =
+  new SignalAlertTracker();
+
+const signalTracker =
+  new SignalAlertTracker();
+
+const scalpTracker =
+  new SignalAlertTracker();
+
 
 let momentumAlerts =
-  read('stride-momentum-alerts', false) === true;
+  read(
+    'stride-momentum-alerts',
+    false
+  ) === true;
+
 
 let scalpEnabled =
-  read('stride-scalper', true) === true;
+  read(
+    'stride-scalper',
+    true
+  ) === true;
+
 
 let scalpAlerts =
-  read('stride-scalper-alerts', false) === true;
+  read(
+    'stride-scalper-alerts',
+    false
+  ) === true;
+
 
 let signalAlertsEnabled =
-  read('stride-signal-alerts-enabled', false) === true;
+  read(
+    'stride-signal-alerts-enabled',
+    false
+  ) === true;
+
 
 const signalHistory =
-  read('stride-signal-history', []);
+  read(
+    'stride-signal-history',
+    []
+  );
+
 
 let unsubscribe;
+
 let request = 0;
+
 let geometry;
+
 let drag;
+
 let startPoint;
+
 let installPrompt;
 
-if (read('stride-theme', 'dark') === 'light') {
-  document.body.classList.add('light');
+
+if (
+  read(
+    'stride-theme',
+    'dark'
+  ) === 'light'
+) {
+  document.body.classList.add(
+    'light'
+  );
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    BASIC HELPERS
-------------------------------------------------------- */
+====================================================== */
+
 
 function toast(message) {
+
   const el = $('#toast');
+
   if (!el) return;
 
   el.textContent = message;
+
   el.style.display = 'block';
 
-  clearTimeout(toast.timer);
+  clearTimeout(
+    toast.timer
+  );
 
-  toast.timer = setTimeout(() => {
-    el.style.display = 'none';
-  }, 4000);
+  toast.timer =
+    setTimeout(
+      () => {
+        el.style.display =
+          'none';
+      },
+      4000
+    );
 }
+
 
 function current() {
-  return instruments.find(i => i.id === state.symbol);
+
+  return instruments.find(
+    i => i.id === state.symbol
+  );
 }
+
 
 function quote() {
-  const live = state.quotes[state.symbol];
 
-  if (Number.isFinite(live)) return live;
+  const live =
+    state.quotes[
+      state.symbol
+    ];
 
-  const last = state.data.at(-1)?.close;
+  if (
+    Number.isFinite(live)
+  ) {
+    return live;
+  }
 
-  return Number.isFinite(last) ? last : null;
+  const last =
+    state.data.at(-1)?.close;
+
+  return Number.isFinite(last)
+    ? last
+    : null;
 }
 
+
 function change(i) {
+
   const price =
     i.id === state.symbol
       ? quote()
       : state.quotes[i.id];
 
-  const open = state.sessionOpen[i.id];
+  const open =
+    state.sessionOpen[i.id];
 
   if (
     !Number.isFinite(price) ||
@@ -198,151 +314,376 @@ function change(i) {
     return null;
   }
 
-  return ((price / open) - 1) * 100;
+  return (
+    (
+      price / open
+    ) - 1
+  ) * 100;
 }
+
 
 function formatChange(value) {
-  if (!Number.isFinite(value)) return '—';
 
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+  if (
+    !Number.isFinite(value)
+  ) {
+    return '—';
+  }
+
+  return (
+    value >= 0
+      ? '+'
+      : ''
+  ) +
+  value.toFixed(2) +
+  '%';
 }
 
-function formatISTTime(timestamp = Date.now()) {
-  return new Date(timestamp).toLocaleTimeString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
+
+function formatISTTime(
+  timestamp = Date.now()
+) {
+
+  return new Date(
+    timestamp
+  ).toLocaleTimeString(
+    'en-IN',
+    {
+      timeZone:
+        'Asia/Kolkata',
+
+      hour:
+        '2-digit',
+
+      minute:
+        '2-digit',
+
+      second:
+        '2-digit',
+
+      hour12:
+        false
+    }
+  );
 }
 
-function setFeedStatus(status, message = '') {
-  state.feedStatus = status;
 
-  const el = $('#updated');
+function formatTradingDate(
+  unixSeconds
+) {
+
+  if (
+    !Number.isFinite(
+      Number(unixSeconds)
+    )
+  ) {
+    return '—';
+  }
+
+  return new Date(
+    Number(unixSeconds) *
+    1000
+  ).toLocaleDateString(
+    'en-IN',
+    {
+      timeZone:
+        'Asia/Kolkata',
+
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      year:
+        'numeric'
+    }
+  );
+}
+
+
+function updateTradingDate() {
+
+  const el =
+    $('#trading-date');
+
   if (!el) return;
 
-  if (status === 'LIVE') {
-    el.textContent =
-      `● LIVE · UPSTOX · ${formatISTTime()} IST`;
-    return;
-  }
+  /*
+    Use the first actual Upstox
+    candle loaded for the session.
 
-  if (status === 'STALE') {
-    el.textContent =
-      `● STALE · ${message || 'Waiting for update'}`;
-    return;
-  }
+    This means the displayed date
+    follows the actual candle data,
+    not merely the computer clock.
+  */
 
-  if (status === 'RECONNECTING') {
-    el.textContent =
-      `● RECONNECTING · UPSTOX`;
-    return;
-  }
+  const firstCandle =
+    state.data[0];
 
-  if (status === 'DATA UNAVAILABLE') {
-    el.textContent =
-      `● DATA UNAVAILABLE${message ? ' · ' + message : ''}`;
-    return;
-  }
-
-  el.textContent = message || status;
+  el.textContent =
+    firstCandle?.time
+      ? formatTradingDate(
+          firstCandle.time
+        )
+      : '—';
 }
 
-/* -------------------------------------------------------
+
+function setFeedStatus(
+  status,
+  message = ''
+) {
+
+  state.feedStatus =
+    status;
+
+  const el =
+    $('#updated');
+
+  if (!el) return;
+
+
+  if (
+    status === 'LIVE'
+  ) {
+
+    el.textContent =
+      '● LIVE · UPSTOX · ' +
+      formatISTTime() +
+      ' IST';
+
+    return;
+  }
+
+
+  if (
+    status === 'STALE'
+  ) {
+
+    el.textContent =
+      '● STALE · ' +
+      (
+        message ||
+        'Waiting for update'
+      );
+
+    return;
+  }
+
+
+  if (
+    status === 'RECONNECTING'
+  ) {
+
+    el.textContent =
+      '● RECONNECTING · UPSTOX';
+
+    return;
+  }
+
+
+  if (
+    status ===
+    'DATA UNAVAILABLE'
+  ) {
+
+    el.textContent =
+      '● DATA UNAVAILABLE' +
+      (
+        message
+          ? ' · ' + message
+          : ''
+      );
+
+    return;
+  }
+
+
+  el.textContent =
+    message || status;
+}
+
+
+/* ======================================================
    WATCHLIST
-------------------------------------------------------- */
+====================================================== */
+
 
 function renderWatch() {
-  const list = instruments.filter(i => {
-    if (state.filter === 'all') return true;
 
-    return ['FUTURE', 'CALL', 'PUT'].includes(i.kind);
-  });
+  const list =
+    instruments.filter(
+      i => {
 
-  const watchRows = $('#watch-rows');
+        if (
+          state.filter === 'all'
+        ) {
+          return true;
+        }
+
+        return [
+          'FUTURE',
+          'CALL',
+          'PUT'
+        ].includes(
+          i.kind
+        );
+      }
+    );
+
+
+  const watchRows =
+    $('#watch-rows');
+
 
   if (watchRows) {
-    watchRows.innerHTML = list.map(i => {
-      const price =
-        i.id === state.symbol
-          ? quote()
-          : state.quotes[i.id];
 
-      const ch = change(i);
+    watchRows.innerHTML =
+      list.map(
+        i => {
 
-      return `
-        <button
-          class="watch-row ${i.id === state.symbol ? 'selected' : ''}"
-          data-symbol="${i.id}"
-        >
-          <span>
-            <strong>${i.name}</strong>
-            <small>${i.description || 'Upstox live market data'}</small>
-          </span>
+          const price =
+            i.id === state.symbol
+              ? quote()
+              : state.quotes[i.id];
 
-          <span class="watch-price">
-            <strong>${fmt(price)}</strong>
 
-            <span class="${
-              Number.isFinite(ch)
-                ? ch >= 0 ? 'up' : 'down'
-                : 'muted'
-            }">
-              ${formatChange(ch)}
-            </span>
-          </span>
-        </button>
-      `;
-    }).join('');
+          const ch =
+            change(i);
+
+
+          return `
+            <button
+              class="watch-row ${
+                i.id === state.symbol
+                  ? 'selected'
+                  : ''
+              }"
+              data-symbol="${i.id}"
+            >
+
+              <span>
+
+                <strong>
+                  ${i.name}
+                </strong>
+
+                <small>
+                  ${
+                    i.description ||
+                    'Upstox live market data'
+                  }
+                </small>
+
+              </span>
+
+
+              <span class="watch-price">
+
+                <strong>
+                  ${fmt(price)}
+                </strong>
+
+                <span class="${
+                  Number.isFinite(ch)
+                    ? ch >= 0
+                      ? 'up'
+                      : 'down'
+                    : 'muted'
+                }">
+                  ${formatChange(ch)}
+                </span>
+
+              </span>
+
+            </button>
+          `;
+        }
+      ).join('');
   }
 
-  const ticker = $('#ticker');
+
+  const ticker =
+    $('#ticker');
+
 
   if (ticker) {
-    ticker.innerHTML = instruments.map(i => {
-      const price =
-        i.id === state.symbol
-          ? quote()
-          : state.quotes[i.id];
 
-      const ch = change(i);
+    ticker.innerHTML =
+      instruments.map(
+        i => {
 
-      return `
-        <div class="ticker-item">
-          <span>${i.name}</span>
-          <b>${fmt(price)}</b>
+          const price =
+            i.id === state.symbol
+              ? quote()
+              : state.quotes[i.id];
 
-          <span class="${
-            Number.isFinite(ch)
-              ? ch >= 0 ? 'up' : 'down'
-              : 'muted'
-          }">
-            ${formatChange(ch)}
-          </span>
-        </div>
-      `;
-    }).join('');
+
+          const ch =
+            change(i);
+
+
+          return `
+            <div class="ticker-item">
+
+              <span>
+                ${i.name}
+              </span>
+
+              <b>
+                ${fmt(price)}
+              </b>
+
+              <span class="${
+                Number.isFinite(ch)
+                  ? ch >= 0
+                    ? 'up'
+                    : 'down'
+                  : 'muted'
+              }">
+                ${formatChange(ch)}
+              </span>
+
+            </div>
+          `;
+        }
+      ).join('');
   }
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    CANVAS
-------------------------------------------------------- */
+====================================================== */
+
 
 function canvas(id) {
-  const el = $(id);
 
-  const rect = el.getBoundingClientRect();
-  const dpr = devicePixelRatio || 1;
+  const el =
+    $(id);
 
-  el.width = rect.width * dpr;
-  el.height = rect.height * dpr;
+  const rect =
+    el.getBoundingClientRect();
 
-  const ctx = el.getContext('2d');
+  const dpr =
+    devicePixelRatio || 1;
 
-  ctx.scale(dpr, dpr);
+  el.width =
+    rect.width * dpr;
+
+  el.height =
+    rect.height * dpr;
+
+
+  const ctx =
+    el.getContext('2d');
+
+  ctx.scale(
+    dpr,
+    dpr
+  );
+
 
   return {
     ctx,
@@ -351,69 +692,187 @@ function canvas(id) {
   };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    MAIN CHART
-------------------------------------------------------- */
+====================================================== */
+
 
 function draw() {
-  if (!state.data.length) return;
 
-  state.pa = priceAction(state.data);
-  state.momentum = momentumSignals(state.data);
-  state.calc = indicators(state.data);
-  state.scalps = proScalper(state.data);
+  if (
+    !state.data.length
+  ) {
+    return;
+  }
 
-  state.signals = strideSignals(
-    state.data,
-    {
-      multiplier: {
-        fast: 1.5,
-        balanced: 2.5,
-        slow: 3.5
-      }[state.signalSensitivity]
-    }
-  );
 
-  const { ctx, w, h } = canvas('#chart');
+  state.pa =
+    priceAction(
+      state.data
+    );
 
-  const style = getComputedStyle(document.body);
 
-  const muted = style.getPropertyValue('--muted');
-  const grid = style.getPropertyValue('--line');
-  const up = style.getPropertyValue('--green');
-  const down = style.getPropertyValue('--red');
+  state.momentum =
+    momentumSignals(
+      state.data
+    );
 
-  const end = state.data.length - state.offset;
 
-  const start = Math.max(
-    0,
-    end - state.count
-  );
+  state.calc =
+    indicators(
+      state.data
+    );
 
-  const rows = state.data.slice(start, end);
 
-  if (!rows.length) return;
+  state.scalps =
+    proScalper(
+      state.data
+    );
 
-  const plot = w - 68;
-  const top = 30;
-  const bottom = h - 72;
 
-  const lo = Math.min(...rows.map(c => c.low));
-  const hi = Math.max(...rows.map(c => c.high));
+  state.signals =
+    strideSignals(
+      state.data,
+      {
+        multiplier: {
+          fast: 1.5,
+          balanced: 2.5,
+          slow: 3.5
+        }[
+          state.signalSensitivity
+        ]
+      }
+    );
 
-  const pad = (hi - lo) * 0.15 || 1;
 
-  const min = lo - pad;
-  const max = hi + pad;
+  const {
+    ctx,
+    w,
+    h
+  } = canvas('#chart');
 
-  const x = i =>
-    (i + 0.5) * plot / rows.length;
 
-  const y = value =>
-    top +
-    (max - value) /
-    (max - min) *
-    (bottom - top);
+  const style =
+    getComputedStyle(
+      document.body
+    );
+
+
+  const muted =
+    style.getPropertyValue(
+      '--muted'
+    );
+
+
+  const grid =
+    style.getPropertyValue(
+      '--line'
+    );
+
+
+  const up =
+    style.getPropertyValue(
+      '--green'
+    );
+
+
+  const down =
+    style.getPropertyValue(
+      '--red'
+    );
+
+
+  const end =
+    state.data.length -
+    state.offset;
+
+
+  const start =
+    Math.max(
+      0,
+      end - state.count
+    );
+
+
+  const rows =
+    state.data.slice(
+      start,
+      end
+    );
+
+
+  if (
+    !rows.length
+  ) {
+    return;
+  }
+
+
+  const plot =
+    w - 68;
+
+
+  const top =
+    30;
+
+
+  const bottom =
+    h - 72;
+
+
+  const lo =
+    Math.min(
+      ...rows.map(
+        c => c.low
+      )
+    );
+
+
+  const hi =
+    Math.max(
+      ...rows.map(
+        c => c.high
+      )
+    );
+
+
+  const pad =
+    (
+      hi - lo
+    ) * 0.15 || 1;
+
+
+  const min =
+    lo - pad;
+
+
+  const max =
+    hi + pad;
+
+
+  const x =
+    i =>
+      (
+        i + 0.5
+      ) *
+      plot /
+      rows.length;
+
+
+  const y =
+    value =>
+      top +
+      (
+        max - value
+      ) /
+      (
+        max - min
+      ) *
+      (
+        bottom - top
+      );
+
 
   geometry = {
     start,
@@ -430,25 +889,61 @@ function draw() {
     h
   };
 
-  ctx.font = '10px ui-monospace, monospace';
-  ctx.lineWidth = 0.7;
 
-  /* PRICE GRID */
+  ctx.font =
+    '10px ui-monospace, monospace';
 
-  for (let i = 0; i < 5; i++) {
+
+  ctx.lineWidth =
+    0.7;
+
+
+  /*
+    PRICE GRID
+  */
+
+  for (
+    let i = 0;
+    i < 5;
+    i++
+  ) {
+
     const value =
-      min + (max - min) * i / 4;
+      min +
+      (
+        max - min
+      ) *
+      i /
+      4;
 
-    const py = y(value);
 
-    ctx.strokeStyle = grid;
+    const py =
+      y(value);
+
+
+    ctx.strokeStyle =
+      grid;
+
 
     ctx.beginPath();
-    ctx.moveTo(0, py);
-    ctx.lineTo(plot, py);
+
+    ctx.moveTo(
+      0,
+      py
+    );
+
+    ctx.lineTo(
+      plot,
+      py
+    );
+
     ctx.stroke();
 
-    ctx.fillStyle = muted;
+
+    ctx.fillStyle =
+      muted;
+
+
     ctx.fillText(
       fmt(value),
       plot + 7,
@@ -456,138 +951,270 @@ function draw() {
     );
   }
 
-  /* TIME GRID */
+
+  /*
+    TIME GRID
+  */
 
   for (
     let i = 0;
     i < rows.length;
-    i += Math.max(1, Math.floor(rows.length / 5))
+    i += Math.max(
+      1,
+      Math.floor(
+        rows.length / 5
+      )
+    )
   ) {
-    ctx.strokeStyle = grid;
+
+    ctx.strokeStyle =
+      grid;
+
 
     ctx.beginPath();
-    ctx.moveTo(x(i), top);
-    ctx.lineTo(x(i), h - 20);
+
+    ctx.moveTo(
+      x(i),
+      top
+    );
+
+    ctx.lineTo(
+      x(i),
+      h - 20
+    );
+
     ctx.stroke();
 
-    ctx.fillStyle = muted;
+
+    ctx.fillStyle =
+      muted;
+
 
     const date =
-      new Date(rows[i].time * 1000);
+      new Date(
+        rows[i].time *
+        1000
+      );
+
 
     const label =
-      state.tf === '1D'
-        ? date.toLocaleDateString(
-            'en-IN',
-            {
-              day: '2-digit',
-              month: 'short'
-            }
-          )
-        : date.toLocaleTimeString(
-            'en-IN',
-            {
-              timeZone: 'Asia/Kolkata',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
-            }
-          );
+      date.toLocaleTimeString(
+        'en-IN',
+        {
+          timeZone:
+            'Asia/Kolkata',
+
+          hour:
+            '2-digit',
+
+          minute:
+            '2-digit',
+
+          hour12:
+            false
+        }
+      );
+
 
     ctx.fillText(
       label,
-      Math.max(0, x(i) - 17),
+      Math.max(
+        0,
+        x(i) - 17
+      ),
       h - 7
     );
   }
 
-  /* INDICATOR LINE */
 
-  const line = (
-    arr,
-    color,
-    dash = []
-  ) => {
-    if (!Array.isArray(arr)) return;
+  /*
+    INDICATOR LINE
+  */
 
-    ctx.save();
+  const line =
+    (
+      arr,
+      color,
+      dash = []
+    ) => {
 
-    ctx.beginPath();
-    ctx.rect(
-      0,
-      top,
-      plot,
-      h - top - 20
-    );
-
-    ctx.clip();
-
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash(dash);
-
-    ctx.beginPath();
-
-    let begun = false;
-
-    arr.slice(start, end).forEach(
-      (value, i) => {
-        if (!Number.isFinite(value)) {
-          begun = false;
-          return;
-        }
-
-        if (begun) {
-          ctx.lineTo(x(i), y(value));
-        } else {
-          ctx.moveTo(x(i), y(value));
-          begun = true;
-        }
+      if (
+        !Array.isArray(arr)
+      ) {
+        return;
       }
-    );
 
-    ctx.stroke();
-    ctx.restore();
-  };
 
-  /* BOLLINGER */
+      ctx.save();
+
+
+      ctx.beginPath();
+
+      ctx.rect(
+        0,
+        top,
+        plot,
+        h - top - 20
+      );
+
+      ctx.clip();
+
+
+      ctx.strokeStyle =
+        color;
+
+
+      ctx.lineWidth =
+        1.2;
+
+
+      ctx.setLineDash(
+        dash
+      );
+
+
+      ctx.beginPath();
+
+
+      let begun =
+        false;
+
+
+      arr
+        .slice(
+          start,
+          end
+        )
+        .forEach(
+          (
+            value,
+            i
+          ) => {
+
+            if (
+              !Number.isFinite(
+                value
+              )
+            ) {
+
+              begun =
+                false;
+
+              return;
+            }
+
+
+            if (begun) {
+
+              ctx.lineTo(
+                x(i),
+                y(value)
+              );
+
+            } else {
+
+              ctx.moveTo(
+                x(i),
+                y(value)
+              );
+
+              begun =
+                true;
+            }
+          }
+        );
+
+
+      ctx.stroke();
+
+      ctx.restore();
+    };
+
+
+  /*
+    BOLLINGER
+  */
 
   if (
-    state.overlays.has('Bollinger') &&
+    state.overlays.has(
+      'Bollinger'
+    ) &&
     state.calc?.bb
   ) {
+
     line(
-      state.calc.bb.map(b => b?.upper),
+      state.calc.bb.map(
+        b => b?.upper
+      ),
       colors.Bollinger
     );
 
+
     line(
-      state.calc.bb.map(b => b?.lower),
+      state.calc.bb.map(
+        b => b?.lower
+      ),
       colors.Bollinger
     );
 
+
     line(
-      state.calc.bb.map(b => b?.mid),
+      state.calc.bb.map(
+        b => b?.mid
+      ),
       colors.Bollinger,
       [3, 4]
     );
   }
 
-  /* SUPPORT / RESISTANCE */
 
-  if (state.overlays.has('S/R')) {
-    for (const value of [lo, hi]) {
-      ctx.strokeStyle = muted;
-      ctx.setLineDash([4, 5]);
+  /*
+    SUPPORT / RESISTANCE
+  */
+
+  if (
+    state.overlays.has(
+      'S/R'
+    )
+  ) {
+
+    for (
+      const value of [
+        lo,
+        hi
+      ]
+    ) {
+
+      ctx.strokeStyle =
+        muted;
+
+
+      ctx.setLineDash(
+        [4, 5]
+      );
+
 
       ctx.beginPath();
-      ctx.moveTo(0, y(value));
-      ctx.lineTo(plot, y(value));
+
+      ctx.moveTo(
+        0,
+        y(value)
+      );
+
+      ctx.lineTo(
+        plot,
+        y(value)
+      );
+
       ctx.stroke();
 
-      ctx.setLineDash([]);
+
+      ctx.setLineDash(
+        []
+      );
     }
   }
+
 
   drawPriceAction(
     ctx,
@@ -605,81 +1232,133 @@ function draw() {
     }
   );
 
-  /* CANDLES */
+
+  /*
+    CANDLES
+  */
 
   const maxVol =
     Math.max(
       0,
-      ...rows.map(c =>
-        Number(c.volume) || 0
+      ...rows.map(
+        c =>
+          Number(
+            c.volume
+          ) || 0
       )
     );
 
-  rows.forEach((c, i) => {
-    ctx.strokeStyle =
-      ctx.fillStyle =
-        c.close >= c.open
-          ? up
-          : down;
 
-    const bw = Math.max(
-      2,
-      plot / rows.length * 0.6
-    );
+  rows.forEach(
+    (
+      c,
+      i
+    ) => {
 
-    ctx.beginPath();
+      ctx.strokeStyle =
+        ctx.fillStyle =
+          c.close >= c.open
+            ? up
+            : down;
 
-    ctx.moveTo(
-      x(i),
-      y(c.high)
-    );
 
-    ctx.lineTo(
-      x(i),
-      y(c.low)
-    );
+      const bw =
+        Math.max(
+          2,
+          plot /
+          rows.length *
+          0.6
+        );
 
-    ctx.stroke();
 
-    ctx.fillRect(
-      x(i) - bw / 2,
-      y(Math.max(c.open, c.close)),
-      bw,
-      Math.max(
-        1,
-        Math.abs(
-          y(c.open) - y(c.close)
-        )
-      )
-    );
+      ctx.beginPath();
 
-    /*
-      NIFTY index history may return volume = 0.
-      Do not fabricate volume.
-    */
 
-    if (
-      state.overlays.has('Volume') &&
-      maxVol > 0 &&
-      c.volume > 0
-    ) {
-      const vh =
-        c.volume / maxVol * 35;
-
-      ctx.globalAlpha = 0.25;
-
-      ctx.fillRect(
-        x(i) - bw / 2,
-        h - 23 - vh,
-        bw,
-        vh
+      ctx.moveTo(
+        x(i),
+        y(c.high)
       );
 
-      ctx.globalAlpha = 1;
-    }
-  });
 
-  /* MOVING AVERAGES */
+      ctx.lineTo(
+        x(i),
+        y(c.low)
+      );
+
+
+      ctx.stroke();
+
+
+      ctx.fillRect(
+        x(i) -
+        bw / 2,
+
+        y(
+          Math.max(
+            c.open,
+            c.close
+          )
+        ),
+
+        bw,
+
+        Math.max(
+          1,
+          Math.abs(
+            y(c.open) -
+            y(c.close)
+          )
+        )
+      );
+
+
+      /*
+        Never fabricate NIFTY
+        index volume.
+      */
+
+      if (
+        state.overlays.has(
+          'Volume'
+        ) &&
+        maxVol > 0 &&
+        c.volume > 0
+      ) {
+
+        const vh =
+          c.volume /
+          maxVol *
+          35;
+
+
+        ctx.globalAlpha =
+          0.25;
+
+
+        ctx.fillRect(
+          x(i) -
+          bw / 2,
+
+          h -
+          23 -
+          vh,
+
+          bw,
+
+          vh
+        );
+
+
+        ctx.globalAlpha =
+          1;
+      }
+    }
+  );
+
+
+  /*
+    MOVING AVERAGES
+  */
 
   const indicatorLines = [
     ['EMA 9', 'e9'],
@@ -691,11 +1370,23 @@ function draw() {
     ['VWAP', 'vwap']
   ];
 
-  for (const [name, key] of indicatorLines) {
+
+  for (
+    const [
+      name,
+      key
+    ] of indicatorLines
+  ) {
+
     if (
-      state.overlays.has(name) &&
-      Array.isArray(state.calc?.[key])
+      state.overlays.has(
+        name
+      ) &&
+      Array.isArray(
+        state.calc?.[key]
+      )
     ) {
+
       line(
         state.calc[key],
         colors[name]
@@ -703,26 +1394,47 @@ function draw() {
     }
   }
 
-  /* STRIDE SIGNALS */
 
-  if (state.overlays.has('Stride Signals')) {
-    for (const direction of [1, -1]) {
+  /*
+    STRIDE SIGNALS
+  */
+
+  if (
+    state.overlays.has(
+      'Stride Signals'
+    )
+  ) {
+
+    for (
+      const direction of [
+        1,
+        -1
+      ]
+    ) {
+
       line(
-        state.signals.map(s =>
-          s?.direction === direction
-            ? s.stop
-            : null
+        state.signals.map(
+          s =>
+            s?.direction ===
+            direction
+              ? s.stop
+              : null
         ),
+
         direction === 1
           ? up
           : down,
+
         [5, 3]
       );
     }
 
+
     ctx.save();
 
+
     ctx.beginPath();
+
     ctx.rect(
       0,
       top,
@@ -732,65 +1444,106 @@ function draw() {
 
     ctx.clip();
 
+
     ctx.font =
       'bold 10px system-ui';
 
+
     state.signals
-      .slice(start, end)
-      .forEach((s, i) => {
-        if (!s?.signal) return;
+      .slice(
+        start,
+        end
+      )
+      .forEach(
+        (
+          s,
+          i
+        ) => {
 
-        const buy =
-          s.signal === 'Buy';
+          if (
+            !s?.signal
+          ) {
+            return;
+          }
 
-        const label =
-          buy ? 'BUY' : 'SELL';
 
-        const bw = 36;
+          const buy =
+            s.signal === 'Buy';
 
-        const px = Math.max(
-          0,
-          Math.min(
-            plot - bw,
-            x(i) - bw / 2
-          )
-        );
 
-        const py = Math.max(
-          top + 3,
-          Math.min(
-            bottom - 21,
-            y(
-              buy
-                ? rows[i].low
-                : rows[i].high
-            ) +
-              (buy ? 10 : -27)
-          )
-        );
+          const label =
+            buy
+              ? 'BUY'
+              : 'SELL';
 
-        ctx.fillStyle =
-          buy ? up : down;
 
-        ctx.fillRect(
-          px,
-          py,
-          bw,
-          18
-        );
+          const bw =
+            36;
 
-        ctx.fillStyle =
-          style.getPropertyValue('--bg');
 
-        ctx.fillText(
-          label,
-          px + 6,
-          py + 13
-        );
-      });
+          const px =
+            Math.max(
+              0,
+              Math.min(
+                plot - bw,
+                x(i) -
+                bw / 2
+              )
+            );
+
+
+          const py =
+            Math.max(
+              top + 3,
+              Math.min(
+                bottom - 21,
+
+                y(
+                  buy
+                    ? rows[i].low
+                    : rows[i].high
+                ) +
+                (
+                  buy
+                    ? 10
+                    : -27
+                )
+              )
+            );
+
+
+          ctx.fillStyle =
+            buy
+              ? up
+              : down;
+
+
+          ctx.fillRect(
+            px,
+            py,
+            bw,
+            18
+          );
+
+
+          ctx.fillStyle =
+            style.getPropertyValue(
+              '--bg'
+            );
+
+
+          ctx.fillText(
+            label,
+            px + 6,
+            py + 13
+          );
+        }
+      );
+
 
     ctx.restore();
   }
+
 
   renderMomentum(
     ctx,
@@ -807,6 +1560,7 @@ function draw() {
     }
   );
 
+
   renderScalper(
     ctx,
     {
@@ -822,16 +1576,23 @@ function draw() {
     }
   );
 
+
   renderSignalStatus();
 
-  /* LAST PRICE */
 
-  const last = rows.at(-1);
+  /*
+    LAST PRICE
+  */
+
+  const last =
+    rows.at(-1);
+
 
   ctx.fillStyle =
     last.close >= last.open
       ? up
       : down;
+
 
   ctx.fillRect(
     plot,
@@ -840,8 +1601,12 @@ function draw() {
     20
   );
 
+
   ctx.fillStyle =
-    style.getPropertyValue('--bg');
+    style.getPropertyValue(
+      '--bg'
+    );
+
 
   ctx.fillText(
     fmt(last.close),
@@ -849,16 +1614,23 @@ function draw() {
     y(last.close) + 4
   );
 
-  /* DRAWINGS */
+
+  /*
+    DRAWINGS
+  */
 
   const list =
     state.drawings[
-      state.symbol + state.tf
+      state.symbol +
+      state.tf
     ] || [];
+
 
   ctx.save();
 
+
   ctx.beginPath();
+
   ctx.rect(
     0,
     top,
@@ -868,14 +1640,29 @@ function draw() {
 
   ctx.clip();
 
-  for (const d of list) {
+
+  for (
+    const d of list
+  ) {
+
     const idx =
       state.data.findIndex(
-        c => c.time === d.a.time
-      ) - start;
+        c =>
+          c.time ===
+          d.a.time
+      ) -
+      start;
 
-    const px = x(idx);
-    const py = y(d.a.price);
+
+    const px =
+      x(idx);
+
+
+    const py =
+      y(
+        d.a.price
+      );
+
 
     ctx.strokeStyle =
       ctx.fillStyle =
@@ -883,45 +1670,82 @@ function draw() {
           ? down
           : up;
 
-    ctx.lineWidth = 1.5;
 
-    if (d.type === 'trend') {
+    ctx.lineWidth =
+      1.5;
+
+
+    if (
+      d.type === 'trend'
+    ) {
+
       const ix =
         state.data.findIndex(
-          c => c.time === d.b.time
-        ) - start;
+          c =>
+            c.time ===
+            d.b.time
+        ) -
+        start;
+
 
       ctx.beginPath();
-      ctx.moveTo(px, py);
+
+      ctx.moveTo(
+        px,
+        py
+      );
+
       ctx.lineTo(
         x(ix),
-        y(d.b.price)
+        y(
+          d.b.price
+        )
       );
+
       ctx.stroke();
 
-    } else if (d.type === 'level') {
+    } else if (
+      d.type === 'level'
+    ) {
+
       ctx.beginPath();
-      ctx.moveTo(0, py);
-      ctx.lineTo(plot, py);
+
+      ctx.moveTo(
+        0,
+        py
+      );
+
+      ctx.lineTo(
+        plot,
+        py
+      );
+
       ctx.stroke();
 
     } else {
+
       ctx.font =
         'bold 12px system-ui';
+
 
       ctx.fillText(
         d.type === 'entry'
           ? '▲ ENTRY'
           : '▼ EXIT',
+
         px,
         py
       );
     }
   }
 
+
   ctx.restore();
 
-  /* OHLC */
+
+  /*
+    OHLC
+  */
 
   const hover =
     state.hover == null
@@ -934,139 +1758,273 @@ function draw() {
           )
         );
 
-  const c = rows[hover];
 
-  if ($('#ohlc')) {
+  const c =
+    rows[hover];
+
+
+  if (
+    $('#ohlc')
+  ) {
+
     $('#ohlc').textContent =
-      `O ${fmt(c.open)}  ` +
-      `H ${fmt(c.high)}  ` +
-      `L ${fmt(c.low)}  ` +
-      `C ${fmt(c.close)}  ` +
-      `V ${
+      'O ' +
+      fmt(c.open) +
+      '  H ' +
+      fmt(c.high) +
+      '  L ' +
+      fmt(c.low) +
+      '  C ' +
+      fmt(c.close) +
+      '  V ' +
+      (
         c.volume > 0
-          ? (c.volume / 1000).toFixed(1) + 'K'
+          ? (
+              c.volume /
+              1000
+            ).toFixed(1) +
+            'K'
           : 'N/A'
-      }`;
+      );
   }
 
-  if (state.hover != null) {
-    ctx.strokeStyle = muted;
-    ctx.setLineDash([3, 3]);
+
+  if (
+    state.hover != null
+  ) {
+
+    ctx.strokeStyle =
+      muted;
+
+
+    ctx.setLineDash(
+      [3, 3]
+    );
+
 
     ctx.beginPath();
-    ctx.moveTo(x(hover), top);
+
+    ctx.moveTo(
+      x(hover),
+      top
+    );
+
     ctx.lineTo(
       x(hover),
       h - 20
     );
 
     ctx.stroke();
-    ctx.setLineDash([]);
+
+
+    ctx.setLineDash(
+      []
+    );
   }
 
-  /* RSI */
+
+  /*
+    RSI
+  */
 
   drawPane(
     '#rsi',
-    [state.calc.rsi],
-    ['#a996ec'],
+    [
+      state.calc.rsi
+    ],
+    [
+      '#a996ec'
+    ],
     start,
     end,
     0,
     100,
-    [30, 70]
+    [
+      30,
+      70
+    ]
   );
 
-  /* MACD */
+
+  /*
+    MACD
+  */
 
   const macdValues = [
-    ...state.calc.macd.slice(start, end),
-    ...state.calc.signal.slice(start, end),
-    ...state.calc.hist.slice(start, end)
-  ].filter(Number.isFinite);
+    ...state.calc.macd.slice(
+      start,
+      end
+    ),
+
+    ...state.calc.signal.slice(
+      start,
+      end
+    ),
+
+    ...state.calc.hist.slice(
+      start,
+      end
+    )
+  ].filter(
+    Number.isFinite
+  );
+
 
   const ml =
-    Math.min(0, ...macdValues);
+    Math.min(
+      0,
+      ...macdValues
+    );
+
 
   const mh =
-    Math.max(0, ...macdValues);
+    Math.max(
+      0,
+      ...macdValues
+    );
+
 
   drawPane(
     '#macd',
+
     [
       state.calc.macd,
       state.calc.signal
     ],
+
     [
       '#7fa8f5',
       '#e6ba6f'
     ],
+
     start,
     end,
-    ml - (mh - ml) * 0.1,
-    mh + (mh - ml) * 0.1,
+
+    ml -
+    (
+      mh - ml
+    ) *
+    0.1,
+
+    mh +
+    (
+      mh - ml
+    ) *
+    0.1,
+
     [0],
+
     state.calc.hist
   );
+
 
   const lastRSI =
     state.calc.rsi.at(-1);
 
+
   const lastMACD =
     state.calc.macd.at(-1);
 
-  if ($('#rsi-value')) {
+
+  if (
+    $('#rsi-value')
+  ) {
+
     $('#rsi-value').textContent =
-      Number.isFinite(lastRSI)
+      Number.isFinite(
+        lastRSI
+      )
         ? lastRSI.toFixed(2)
         : '—';
   }
 
-  if ($('#macd-value')) {
+
+  if (
+    $('#macd-value')
+  ) {
+
     $('#macd-value').textContent =
-      Number.isFinite(lastMACD)
+      Number.isFinite(
+        lastMACD
+      )
         ? lastMACD.toFixed(2)
         : '—';
   }
 
-  /* LEVELS */
 
-  if ($('#levels')) {
+  /*
+    LEVELS
+  */
+
+  if (
+    $('#levels')
+  ) {
+
     const vwap =
       state.calc.vwap?.at(-1);
 
+
+    const hasVolume =
+      state.data.some(
+        c =>
+          Number(
+            c.volume
+          ) > 0
+      );
+
+
     $('#levels').innerHTML = `
       <div>
-        <small>Resistance</small>
+
+        <small>
+          Resistance
+        </small>
+
         <strong class="down">
           ${fmt(hi)}
         </strong>
+
       </div>
 
+
       <div>
-        <small>VWAP · session</small>
+
+        <small>
+          VWAP · session
+        </small>
+
         <strong>
           ${
+            hasVolume &&
             Number.isFinite(vwap)
               ? fmt(vwap)
               : 'N/A'
           }
         </strong>
+
       </div>
 
+
       <div>
-        <small>Support</small>
+
+        <small>
+          Support
+        </small>
+
         <strong class="up">
           ${fmt(lo)}
         </strong>
+
       </div>
     `;
   }
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    RSI / MACD PANES
-------------------------------------------------------- */
+====================================================== */
+
 
 function drawPane(
   id,
@@ -1079,37 +2037,93 @@ function drawPane(
   thresholds,
   hist
 ) {
-  const { ctx, w, h } = canvas(id);
 
-  const plot = w - 62;
-  const n = Math.max(1, end - start);
+  const {
+    ctx,
+    w,
+    h
+  } = canvas(id);
 
-  const x = i =>
-    (i + 0.5) * plot / n;
 
-  const y = value =>
-    5 +
-    (max - value) /
-    (max - min || 1) *
-    (h - 15);
+  const plot =
+    w - 62;
+
+
+  const n =
+    Math.max(
+      1,
+      end - start
+    );
+
+
+  const x =
+    i =>
+      (
+        i + 0.5
+      ) *
+      plot /
+      n;
+
+
+  const y =
+    value =>
+      5 +
+      (
+        max - value
+      ) /
+      (
+        max - min || 1
+      ) *
+      (
+        h - 15
+      );
+
 
   const style =
-    getComputedStyle(document.body);
+    getComputedStyle(
+      document.body
+    );
 
-  ctx.font = '9px monospace';
+
+  ctx.font =
+    '9px monospace';
+
+
   ctx.fillStyle =
-    style.getPropertyValue('--muted');
+    style.getPropertyValue(
+      '--muted'
+    );
 
-  for (const t of thresholds) {
+
+  for (
+    const t of thresholds
+  ) {
+
     ctx.strokeStyle =
-      style.getPropertyValue('--line');
+      style.getPropertyValue(
+        '--line'
+      );
 
-    ctx.setLineDash([3, 4]);
+
+    ctx.setLineDash(
+      [3, 4]
+    );
+
 
     ctx.beginPath();
-    ctx.moveTo(0, y(t));
-    ctx.lineTo(plot, y(t));
+
+    ctx.moveTo(
+      0,
+      y(t)
+    );
+
+    ctx.lineTo(
+      plot,
+      y(t)
+    );
+
     ctx.stroke();
+
 
     ctx.fillText(
       t.toFixed(0),
@@ -1118,99 +2132,209 @@ function drawPane(
     );
   }
 
-  ctx.setLineDash([]);
+
+  ctx.setLineDash(
+    []
+  );
+
 
   if (hist) {
+
     hist
-      .slice(start, end)
-      .forEach((value, i) => {
-        if (!Number.isFinite(value)) return;
+      .slice(
+        start,
+        end
+      )
+      .forEach(
+        (
+          value,
+          i
+        ) => {
 
-        ctx.fillStyle =
-          value >= 0
-            ? '#72e4bd66'
-            : '#f17c8666';
-
-        ctx.fillRect(
-          x(i) - plot / n * 0.3,
-          Math.min(
-            y(0),
-            y(value)
-          ),
-          plot / n * 0.6,
-          Math.max(
-            1,
-            Math.abs(
-              y(value) - y(0)
+          if (
+            !Number.isFinite(
+              value
             )
-          )
-        );
-      });
+          ) {
+            return;
+          }
+
+
+          ctx.fillStyle =
+            value >= 0
+              ? '#72e4bd66'
+              : '#f17c8666';
+
+
+          ctx.fillRect(
+            x(i) -
+            plot /
+            n *
+            0.3,
+
+            Math.min(
+              y(0),
+              y(value)
+            ),
+
+            plot /
+            n *
+            0.6,
+
+            Math.max(
+              1,
+              Math.abs(
+                y(value) -
+                y(0)
+              )
+            )
+          );
+        }
+      );
   }
 
-  series.forEach((arr, k) => {
-    ctx.strokeStyle =
-      paneColors[k];
 
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
+  series.forEach(
+    (
+      arr,
+      k
+    ) => {
 
-    let began = false;
+      ctx.strokeStyle =
+        paneColors[k];
 
-    arr
-      .slice(start, end)
-      .forEach((value, i) => {
-        if (!Number.isFinite(value)) {
-          began = false;
-          return;
-        }
 
-        if (began) {
-          ctx.lineTo(
-            x(i),
-            y(value)
-          );
-        } else {
-          ctx.moveTo(
-            x(i),
-            y(value)
-          );
+      ctx.lineWidth =
+        1.2;
 
-          began = true;
-        }
-      });
 
-    ctx.stroke();
-  });
+      ctx.beginPath();
+
+
+      let began =
+        false;
+
+
+      arr
+        .slice(
+          start,
+          end
+        )
+        .forEach(
+          (
+            value,
+            i
+          ) => {
+
+            if (
+              !Number.isFinite(
+                value
+              )
+            ) {
+
+              began =
+                false;
+
+              return;
+            }
+
+
+            if (began) {
+
+              ctx.lineTo(
+                x(i),
+                y(value)
+              );
+
+            } else {
+
+              ctx.moveTo(
+                x(i),
+                y(value)
+              );
+
+              began =
+                true;
+            }
+          }
+        );
+
+
+      ctx.stroke();
+    }
+  );
 }
 
-/* -------------------------------------------------------
-   SUMMARY
-------------------------------------------------------- */
+
+/* ======================================================
+   SUMMARY + DATE
+====================================================== */
+
 
 function summary() {
-  if (!state.data.length) return;
 
-  const instrument = current();
-  const ch = change(instrument);
-  const currentPrice = quote();
+  /*
+    DISPLAY ACTUAL UPSTOX
+    SESSION DATE
+  */
 
-  if ($('#symbol-name')) {
+  updateTradingDate();
+
+
+  if (
+    !state.data.length
+  ) {
+    return;
+  }
+
+
+  const instrument =
+    current();
+
+
+  const ch =
+    change(
+      instrument
+    );
+
+
+  const currentPrice =
+    quote();
+
+
+  if (
+    $('#symbol-name')
+  ) {
+
     $('#symbol-name').textContent =
       instrument.name;
   }
 
-  if ($('#instrument-kind')) {
+
+  if (
+    $('#instrument-kind')
+  ) {
+
     $('#instrument-kind').textContent =
       instrument.kind;
   }
 
-  if ($('#price')) {
+
+  if (
+    $('#price')
+  ) {
+
     $('#price').textContent =
-      fmt(currentPrice);
+      fmt(
+        currentPrice
+      );
   }
 
-  if ($('#change')) {
+
+  if (
+    $('#change')
+  ) {
+
     $('#change').className =
       Number.isFinite(ch)
         ? ch >= 0
@@ -1218,32 +2342,47 @@ function summary() {
           : 'down'
         : 'muted';
 
+
     $('#change').textContent =
       Number.isFinite(ch)
         ? formatChange(ch)
         : '—';
   }
 
-  if ($('#signal-tf')) {
+
+  if (
+    $('#signal-tf')
+  ) {
+
     $('#signal-tf').textContent =
       state.tf;
   }
 
-  const calc = state.calc;
 
-  if (!calc) return;
+  const calc =
+    state.calc;
+
+
+  if (!calc) {
+    return;
+  }
+
 
   const r =
     calc.rsi?.at(-1);
 
+
   const e9 =
     calc.e9?.at(-1);
+
 
   const e21 =
     calc.e21?.at(-1);
 
+
   const hist =
     calc.hist?.at(-1);
+
 
   if (
     !Number.isFinite(r) ||
@@ -1254,11 +2393,18 @@ function summary() {
     return;
   }
 
+
   const e =
-    e9 > e21 ? 1 : -1;
+    e9 > e21
+      ? 1
+      : -1;
+
 
   const m =
-    hist > 0 ? 1 : -1;
+    hist > 0
+      ? 1
+      : -1;
+
 
   const rs =
     r > 55
@@ -1267,8 +2413,10 @@ function summary() {
         ? -1
         : 0;
 
+
   const score =
     e + m + rs;
+
 
   const label =
     score >= 2
@@ -1277,9 +2425,14 @@ function summary() {
         ? 'Sell'
         : 'Neutral';
 
-  if ($('#signal-label')) {
+
+  if (
+    $('#signal-label')
+  ) {
+
     $('#signal-label').textContent =
       label;
+
 
     $('#signal-label').style.color =
       label === 'Sell'
@@ -1289,7 +2442,11 @@ function summary() {
           : 'var(--green)';
   }
 
-  if ($('#signal-icon')) {
+
+  if (
+    $('#signal-icon')
+  ) {
+
     $('#signal-icon').textContent =
       label === 'Buy'
         ? '↗'
@@ -1298,20 +2455,46 @@ function summary() {
           : '→';
   }
 
-  if ($('#signal-summary')) {
+
+  if (
+    $('#signal-summary')
+  ) {
+
     $('#signal-summary').textContent =
-      `${Math.abs(score)} of 3 net directional signals`;
+      Math.abs(score) +
+      ' of 3 net directional signals';
   }
 
-  if ($('#signal-reasons')) {
+
+  if (
+    $('#signal-reasons')
+  ) {
+
     $('#signal-reasons').innerHTML = `
-      <div class="reason">
-        <span>EMA 9 / 21 crossover</span>
-        <b>${e > 0 ? 'Bullish' : 'Bearish'}</b>
-      </div>
 
       <div class="reason">
-        <span>RSI (14)</span>
+
+        <span>
+          EMA 9 / 21 crossover
+        </span>
+
+        <b>
+          ${
+            e > 0
+              ? 'Bullish'
+              : 'Bearish'
+          }
+        </b>
+
+      </div>
+
+
+      <div class="reason">
+
+        <span>
+          RSI (14)
+        </span>
+
         <b>
           ${r.toFixed(1)} ·
           ${
@@ -1322,68 +2505,107 @@ function summary() {
                 : 'Neutral'
           }
         </b>
+
       </div>
 
+
       <div class="reason">
-        <span>MACD momentum</span>
-        <b>${m > 0 ? 'Bullish' : 'Bearish'}</b>
+
+        <span>
+          MACD momentum
+        </span>
+
+        <b>
+          ${
+            m > 0
+              ? 'Bullish'
+              : 'Bearish'
+          }
+        </b>
+
       </div>
     `;
   }
 
-  $$('.signal-meter i').forEach(
-    (el, j) => {
-      const active =
-        j < Math.abs(score) + 1;
 
-      el.classList.toggle(
-        'lit',
-        active
-      );
+  $$('.signal-meter i')
+    .forEach(
+      (
+        el,
+        j
+      ) => {
 
-      el.style.background =
-        active
-          ? score < 0
-            ? 'var(--red)'
-            : score === 0
-              ? 'var(--gold)'
-              : 'var(--green)'
-          : '';
-    }
-  );
+        const active =
+          j <
+          Math.abs(score) +
+          1;
+
+
+        el.classList.toggle(
+          'lit',
+          active
+        );
+
+
+        el.style.background =
+          active
+            ? score < 0
+              ? 'var(--red)'
+              : score === 0
+                ? 'var(--gold)'
+                : 'var(--green)'
+            : '';
+      }
+    );
+
 
   renderWatch();
 }
 
-/* -------------------------------------------------------
-   LIVE DATA
-------------------------------------------------------- */
+
+/* ======================================================
+   LIVE UPSTOX DATA
+====================================================== */
+
 
 async function loadData() {
-  const id = ++request;
+
+  const id =
+    ++request;
+
 
   unsubscribe?.();
-  unsubscribe = null;
 
-  state.data = [];
-  state.calc = null;
-  state.hover = null;
-  state.offset = 0;
+  unsubscribe =
+    null;
+
+
+  state.data =
+    [];
+
+
+  state.calc =
+    null;
+
+
+  state.hover =
+    null;
+
+
+  state.offset =
+    0;
+
+
+  updateTradingDate();
+
 
   setFeedStatus(
     'LOADING',
     'Loading Upstox candles from 09:15 IST…'
   );
 
-  try {
-    /*
-      market.history() must return ONLY real
-      Upstox candles.
 
-      IMPORTANT:
-      We DO NOT shift or modify historical
-      OHLC prices.
-    */
+  try {
 
     const data =
       await market.history(
@@ -1391,73 +2613,124 @@ async function loadData() {
         state.tf
       );
 
-    if (id !== request) return;
+
+    if (
+      id !== request
+    ) {
+      return;
+    }
+
 
     if (
       !Array.isArray(data) ||
       !data.length
     ) {
+
       throw new Error(
         'No Upstox candles available.'
       );
     }
 
-    state.data = data
-      .filter(c =>
-        c &&
-        Number.isFinite(c.time) &&
-        Number.isFinite(c.open) &&
-        Number.isFinite(c.high) &&
-        Number.isFinite(c.low) &&
-        Number.isFinite(c.close)
-      )
-      .sort((a, b) =>
-        a.time - b.time
-      );
 
-    if (!state.data.length) {
+    state.data =
+      data
+        .filter(
+          c =>
+            c &&
+            Number.isFinite(
+              c.time
+            ) &&
+            Number.isFinite(
+              c.open
+            ) &&
+            Number.isFinite(
+              c.high
+            ) &&
+            Number.isFinite(
+              c.low
+            ) &&
+            Number.isFinite(
+              c.close
+            )
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            a.time -
+            b.time
+        );
+
+
+    if (
+      !state.data.length
+    ) {
+
       throw new Error(
         'No valid Upstox candles available.'
       );
     }
 
+
     /*
-      Today's first candle is the
-      session reference/open.
+      FIRST REAL CANDLE
+      = SESSION OPEN REFERENCE
     */
 
-    state.sessionOpen[state.symbol] =
+    state.sessionOpen[
+      state.symbol
+    ] =
       state.data[0].open;
 
-    state.quotes[state.symbol] =
+
+    state.quotes[
+      state.symbol
+    ] =
       state.data.at(-1).close;
 
-    state.offset = 0;
-    state.hover = null;
+
+    state.offset =
+      0;
+
+
+    state.hover =
+      null;
+
+
+    /*
+      DATE NOW COMES FROM
+      THE ACTUAL FIRST
+      UPSTOX CANDLE
+    */
+
+    updateTradingDate();
+
 
     draw();
+
     summary();
+
 
     signalTracker.baseline(
       state.signals || []
     );
 
+
     scalpTracker.baseline(
       state.scalps || []
     );
+
 
     momentumTracker.baseline(
       state.momentum || []
     );
 
+
     setFeedStatus(
       'LIVE'
     );
 
-    /*
-      Subscribe to REAL Upstox live quote.
-      No fake/random fallback.
-    */
 
     unsubscribe =
       market.subscribe(
@@ -1465,85 +2738,118 @@ async function loadData() {
         state.tf,
 
         tick => {
+
           if (
             !tick ||
             !Number.isFinite(
-              Number(tick.price)
+              Number(
+                tick.price
+              )
             )
           ) {
             return;
           }
 
+
           const price =
-            Number(tick.price);
+            Number(
+              tick.price
+            );
+
 
           const tickTime =
             Number.isFinite(
-              Number(tick.time)
+              Number(
+                tick.time
+              )
             )
-              ? Number(tick.time)
+              ? Number(
+                  tick.time
+                )
               : Math.floor(
-                  Date.now() / 1000
+                  Date.now() /
+                  1000
                 );
 
+
           const seconds =
-            intervals[state.tf];
+            intervals[
+              state.tf
+            ];
+
 
           if (
-            !Number.isFinite(seconds) ||
+            !Number.isFinite(
+              seconds
+            ) ||
             seconds <= 0
           ) {
             return;
           }
 
+
           const bucket =
             Math.floor(
-              tickTime / seconds
-            ) * seconds;
+              tickTime /
+              seconds
+            ) *
+            seconds;
+
 
           let last =
             state.data.at(-1);
 
-          if (!last) return;
 
-          /*
-            New timeframe candle.
-          */
+          if (!last) {
+            return;
+          }
 
-          if (bucket > last.time) {
+
+          if (
+            bucket >
+            last.time
+          ) {
+
             const previousClose =
               last.close;
 
-            state.data.push({
-              time: bucket,
-              open: previousClose,
-              high: Math.max(
-                previousClose,
-                price
-              ),
-              low: Math.min(
-                previousClose,
-                price
-              ),
-              close: price,
 
-              /*
-                Do not fabricate NIFTY
-                index volume.
-              */
+            state.data.push({
+              time:
+                bucket,
+
+              open:
+                previousClose,
+
+              high:
+                Math.max(
+                  previousClose,
+                  price
+                ),
+
+              low:
+                Math.min(
+                  previousClose,
+                  price
+                ),
+
+              close:
+                price,
+
               volume:
-                Number(tick.volume) || 0
+                Number(
+                  tick.volume
+                ) || 0
             });
 
           } else if (
-            bucket === last.time
+            bucket ===
+            last.time
           ) {
-            /*
-              Update current candle using
-              the REAL live Upstox price.
-            */
 
-            last.close = price;
+            last.close =
+              price;
+
 
             last.high =
               Math.max(
@@ -1551,47 +2857,69 @@ async function loadData() {
                 price
               );
 
+
             last.low =
               Math.min(
                 last.low,
                 price
               );
 
+
             if (
               Number.isFinite(
-                Number(tick.volume)
+                Number(
+                  tick.volume
+                )
               ) &&
-              Number(tick.volume) > 0
+              Number(
+                tick.volume
+              ) > 0
             ) {
+
               last.volume =
-                Number(tick.volume);
+                Number(
+                  tick.volume
+                );
             }
           }
 
-          state.quotes[state.symbol] =
+
+          state.quotes[
+            state.symbol
+          ] =
             price;
+
 
           state.lastUpdate =
             Date.now();
 
-          /*
-            Keep current session only.
-          */
 
           if (
-            state.data.length > 500
+            state.data.length >
+            500
           ) {
+
             state.data =
-              state.data.slice(-500);
+              state.data.slice(
+                -500
+              );
           }
 
+
+          updateTradingDate();
+
           draw();
+
           summary();
 
           processSignalAlerts();
+
           processScalpAlerts();
+
           processMomentumAlerts();
+
           checkAlerts();
+
 
           setFeedStatus(
             'LIVE'
@@ -1599,10 +2927,12 @@ async function loadData() {
         },
 
         error => {
+
           console.error(
             'Upstox live feed:',
             error
           );
+
 
           setFeedStatus(
             'RECONNECTING'
@@ -1610,19 +2940,29 @@ async function loadData() {
         }
       );
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
+
     console.error(
       'Upstox history error:',
       error
     );
 
-    state.data = [];
+
+    state.data =
+      [];
+
+
+    updateTradingDate();
+
 
     setFeedStatus(
       'DATA UNAVAILABLE',
       error?.message ||
-        'Upstox connection failed'
+      'Upstox connection failed'
     );
+
 
     toast(
       error?.message ||
@@ -1631,37 +2971,62 @@ async function loadData() {
   }
 }
 
-/* -------------------------------------------------------
-   INDICATORS UI
-------------------------------------------------------- */
 
-if ($('#indicators')) {
+/* ======================================================
+   INDICATOR BUTTONS
+====================================================== */
+
+
+if (
+  $('#indicators')
+) {
+
   $('#indicators').innerHTML =
-    Object.entries(colors)
-      .map(([name, color]) => `
-        <button
-          class="${
-            state.overlays.has(name)
-              ? 'on'
-              : ''
-          }"
-          data-indicator="${name}"
-          style="--color:${color}"
-          aria-pressed="${
-            state.overlays.has(name)
-          }"
-        >
-          ${name}
-        </button>
-      `)
+    Object.entries(
+      colors
+    )
+      .map(
+        (
+          [
+            name,
+            color
+          ]
+        ) => `
+          <button
+            class="${
+              state.overlays.has(
+                name
+              )
+                ? 'on'
+                : ''
+            }"
+            data-indicator="${name}"
+            style="--color:${color}"
+            aria-pressed="${
+              state.overlays.has(
+                name
+              )
+            }"
+          >
+            ${name}
+          </button>
+        `
+      )
       .join('');
 }
 
-let checkAlerts = () => {};
+
+let checkAlerts =
+  () => {};
+
 
 loadData();
 
-if ($('.canvas-area')) {
+
+if (
+  $('.canvas-area')
+) {
+
   new ResizeObserver(
     () => draw()
   ).observe(
@@ -1669,241 +3034,399 @@ if ($('.canvas-area')) {
   );
 }
 
-/* -------------------------------------------------------
-   INSTRUMENT SELECTION
-------------------------------------------------------- */
 
-function selectInstrument(symbol) {
+/* ======================================================
+   INSTRUMENT SELECTION
+====================================================== */
+
+
+function selectInstrument(
+  symbol
+) {
+
   if (
     !instruments.some(
-      i => i.id === symbol
+      i =>
+        i.id ===
+        symbol
     )
   ) {
+
     throw Error(
       'Unknown instrument'
     );
   }
 
-  state.symbol = symbol;
-  startPoint = null;
+
+  state.symbol =
+    symbol;
+
+
+  startPoint =
+    null;
+
 
   return loadData();
 }
 
-if ($('#watch-rows')) {
-  $('#watch-rows').addEventListener(
-    'click',
-    event => {
-      const button =
-        event.target.closest(
-          '[data-symbol]'
-        );
 
-      if (button) {
-        selectInstrument(
-          button.dataset.symbol
-        );
+if (
+  $('#watch-rows')
+) {
+
+  $('#watch-rows')
+    .addEventListener(
+      'click',
+      event => {
+
+        const button =
+          event.target.closest(
+            '[data-symbol]'
+          );
+
+
+        if (button) {
+
+          selectInstrument(
+            button.dataset.symbol
+          );
+        }
       }
-    }
-  );
+    );
 }
 
-$$('[data-filter]').forEach(
-  button => {
-    button.onclick = () => {
-      state.filter =
-        button.dataset.filter;
 
-      $$('[data-filter]').forEach(
-        x => x.classList.toggle(
-          'active',
-          x === button
-        )
-      );
+$$('[data-filter]')
+  .forEach(
+    button => {
 
-      renderWatch();
-    };
-  }
-);
+      button.onclick =
+        () => {
 
-/* -------------------------------------------------------
-   TIMEFRAME
-------------------------------------------------------- */
+          state.filter =
+            button.dataset.filter;
 
-$$('[data-tf]').forEach(
-  button => {
-    button.onclick = () => {
-      const tf =
-        button.dataset.tf;
 
-      if (
-        !['1m', '3m', '5m', '15m'].includes(tf)
-      ) {
-        toast(
-          'This timeframe is not enabled for the live intraday feed.'
-        );
+          $$('[data-filter]')
+            .forEach(
+              x =>
+                x.classList.toggle(
+                  'active',
+                  x === button
+                )
+            );
 
-        return;
-      }
 
-      state.tf = tf;
-      startPoint = null;
+          renderWatch();
+        };
+    }
+  );
 
-      $$('[data-tf]').forEach(
-        x => x.classList.toggle(
-          'active',
-          x === button
-        )
-      );
 
-      loadData();
-    };
-  }
-);
+/* ======================================================
+   TIMEFRAMES
+====================================================== */
 
-/* -------------------------------------------------------
+
+$$('[data-tf]')
+  .forEach(
+    button => {
+
+      button.onclick =
+        () => {
+
+          const tf =
+            button.dataset.tf;
+
+
+          if (
+            ![
+              '1m',
+              '3m',
+              '5m',
+              '15m'
+            ].includes(tf)
+          ) {
+
+            toast(
+              'This timeframe is not enabled for the live intraday feed.'
+            );
+
+            return;
+          }
+
+
+          state.tf =
+            tf;
+
+
+          startPoint =
+            null;
+
+
+          $$('[data-tf]')
+            .forEach(
+              x =>
+                x.classList.toggle(
+                  'active',
+                  x === button
+                )
+            );
+
+
+          loadData();
+        };
+    }
+  );
+
+
+/* ======================================================
    INDICATOR CONTROLS
-------------------------------------------------------- */
+====================================================== */
 
-if ($('#indicators')) {
+
+if (
+  $('#indicators')
+) {
+
   $('#indicators').onclick =
     event => {
+
       const button =
         event.target.closest(
           '[data-indicator]'
         );
 
-      if (!button) return;
+
+      if (!button) {
+        return;
+      }
+
 
       const name =
         button.dataset.indicator;
 
+
       if (
-        state.overlays.has(name)
+        state.overlays.has(
+          name
+        )
       ) {
-        state.overlays.delete(name);
+
+        state.overlays.delete(
+          name
+        );
+
       } else {
-        state.overlays.add(name);
+
+        state.overlays.add(
+          name
+        );
       }
+
 
       button.classList.toggle(
         'on',
-        state.overlays.has(name)
+        state.overlays.has(
+          name
+        )
       );
+
 
       button.setAttribute(
         'aria-pressed',
-        state.overlays.has(name)
+        state.overlays.has(
+          name
+        )
       );
+
 
       draw();
     };
 }
 
-if ($('#indicators-toggle')) {
+
+if (
+  $('#indicators-toggle')
+) {
+
   $('#indicators-toggle').onclick =
     () => {
+
       $('#indicators')
-        ?.classList.toggle('hidden');
+        ?.classList.toggle(
+          'hidden'
+        );
     };
 }
 
-if ($('#theme')) {
-  $('#theme').onclick = () => {
-    document.body.classList.toggle(
-      'light'
-    );
 
-    save(
-      'stride-theme',
-      document.body.classList.contains(
-        'light'
-      )
-        ? 'light'
-        : 'dark'
-    );
+if (
+  $('#theme')
+) {
 
-    draw();
-  };
-}
+  $('#theme').onclick =
+    () => {
 
-if ($('#reset-view')) {
-  $('#reset-view').onclick = () => {
-    state.count = 90;
-    state.offset = 0;
-    state.hover = null;
-    draw();
-  };
-}
+      document.body
+        .classList.toggle(
+          'light'
+        );
 
-/* -------------------------------------------------------
-   DRAWING TOOLS
-------------------------------------------------------- */
 
-$$('[data-tool]').forEach(
-  button => {
-    button.onclick = () => {
-      state.tool =
-        button.dataset.tool;
+      save(
+        'stride-theme',
 
-      startPoint = null;
-
-      $$('[data-tool]').forEach(
-        x => x.classList.toggle(
-          'active',
-          x === button
-        )
+        document.body
+          .classList.contains(
+            'light'
+          )
+          ? 'light'
+          : 'dark'
       );
 
-      if ($('#chart-tip')) {
-        $('#chart-tip').textContent =
-          state.tool === 'cursor'
-            ? 'Scroll to zoom · drag to pan'
-            : state.tool === 'trend'
-              ? 'Select the first point, then the second point'
-              : 'Tap the chart to place ' + state.tool;
-      }
+
+      draw();
     };
-  }
-);
+}
+
+
+if (
+  $('#reset-view')
+) {
+
+  $('#reset-view').onclick =
+    () => {
+
+      state.count =
+        90;
+
+
+      state.offset =
+        0;
+
+
+      state.hover =
+        null;
+
+
+      draw();
+    };
+}
+
+
+/* ======================================================
+   DRAWING TOOLS
+====================================================== */
+
+
+$$('[data-tool]')
+  .forEach(
+    button => {
+
+      button.onclick =
+        () => {
+
+          state.tool =
+            button.dataset.tool;
+
+
+          startPoint =
+            null;
+
+
+          $$('[data-tool]')
+            .forEach(
+              x =>
+                x.classList.toggle(
+                  'active',
+                  x === button
+                )
+            );
+
+
+          if (
+            $('#chart-tip')
+          ) {
+
+            $('#chart-tip').textContent =
+              state.tool === 'cursor'
+                ? 'Scroll to zoom · drag to pan'
+                : state.tool === 'trend'
+                  ? 'Select the first point, then the second point'
+                  : 'Tap the chart to place ' +
+                    state.tool;
+          }
+        };
+    }
+  );
+
 
 function persistDrawings() {
+
   save(
     'stride-drawings',
     state.drawings
   );
 }
 
-if ($('#undo')) {
-  $('#undo').onclick = () => {
-    (
-      state.drawings[
-        state.symbol + state.tf
-      ] || []
-    ).pop();
 
-    startPoint = null;
+if (
+  $('#undo')
+) {
 
-    persistDrawings();
-    draw();
-  };
+  $('#undo').onclick =
+    () => {
+
+      (
+        state.drawings[
+          state.symbol +
+          state.tf
+        ] || []
+      ).pop();
+
+
+      startPoint =
+        null;
+
+
+      persistDrawings();
+
+      draw();
+    };
 }
 
-const chart = $('#chart');
 
-function point(event) {
-  if (!geometry) return null;
+const chart =
+  $('#chart');
+
+
+function point(
+  event
+) {
+
+  if (!geometry) {
+    return null;
+  }
+
 
   const rect =
     chart.getBoundingClientRect();
 
+
   const px =
-    event.clientX - rect.left;
+    event.clientX -
+    rect.left;
+
 
   const py =
-    event.clientY - rect.top;
+    event.clientY -
+    rect.top;
 
-  const g = geometry;
+
+  const g =
+    geometry;
+
 
   if (
     px < 0 ||
@@ -1911,65 +3434,111 @@ function point(event) {
     py < g.top ||
     py > g.bottom
   ) {
+
     return null;
   }
 
-  const idx = Math.max(
-    0,
-    Math.min(
-      g.rows.length - 1,
-      Math.floor(
-        px /
-        g.plot *
-        g.rows.length
+
+  const idx =
+    Math.max(
+      0,
+      Math.min(
+        g.rows.length - 1,
+
+        Math.floor(
+          px /
+          g.plot *
+          g.rows.length
+        )
       )
-    )
-  );
+    );
+
 
   return {
-    time: g.rows[idx].time,
+
+    time:
+      g.rows[idx].time,
 
     price:
       g.max -
-      (py - g.top) /
-      (g.bottom - g.top) *
-      (g.max - g.min),
+      (
+        py -
+        g.top
+      ) /
+      (
+        g.bottom -
+        g.top
+      ) *
+      (
+        g.max -
+        g.min
+      ),
 
-    index: idx
+    index:
+      idx
   };
 }
 
+
 if (chart) {
+
   chart.addEventListener(
     'pointerdown',
     event => {
+
       chart.setPointerCapture(
         event.pointerId
       );
 
-      const p = point(event);
 
-      if (!p) return;
+      const p =
+        point(event);
 
-      if (state.tool === 'cursor') {
+
+      if (!p) {
+        return;
+      }
+
+
+      if (
+        state.tool === 'cursor'
+      ) {
+
         drag = {
-          x: event.clientX,
-          offset: state.offset
+          x:
+            event.clientX,
+
+          offset:
+            state.offset
         };
 
         return;
       }
 
+
       const key =
-        state.symbol + state.tf;
+        state.symbol +
+        state.tf;
 
-      state.drawings[key] ??= [];
 
-      if (state.tool === 'trend') {
+      state.drawings[key] ??=
+        [];
+
+
+      if (
+        state.tool === 'trend'
+      ) {
+
         if (!startPoint) {
-          startPoint = p;
 
-          if ($('#chart-tip')) {
+          startPoint =
+            p;
+
+
+          if (
+            $('#chart-tip')
+          ) {
+
             $('#chart-tip').textContent =
               'Select the second point';
           }
@@ -1977,43 +3546,68 @@ if (chart) {
           return;
         }
 
+
         state.drawings[key].push({
-          type: 'trend',
-          a: startPoint,
-          b: p
+          type:
+            'trend',
+
+          a:
+            startPoint,
+
+          b:
+            p
         });
 
-        startPoint = null;
 
-        if ($('#chart-tip')) {
+        startPoint =
+          null;
+
+
+        if (
+          $('#chart-tip')
+        ) {
+
           $('#chart-tip').textContent =
             'Trend line saved · select two more points';
         }
 
       } else {
+
         state.drawings[key].push({
-          type: state.tool,
-          a: p
+          type:
+            state.tool,
+
+          a:
+            p
         });
       }
 
+
       persistDrawings();
+
       draw();
     }
   );
 
+
   chart.addEventListener(
     'pointermove',
     event => {
-      const p = point(event);
+
+      const p =
+        point(event);
+
 
       state.hover =
-        p?.index ?? null;
+        p?.index ??
+        null;
+
 
       if (
         drag &&
         geometry
       ) {
+
         state.offset =
           Math.max(
             0,
@@ -2023,6 +3617,7 @@ if (chart) {
                 state.data.length -
                 state.count
               ),
+
               drag.offset +
               Math.round(
                 (
@@ -2036,50 +3631,67 @@ if (chart) {
           );
       }
 
+
       draw();
     }
   );
 
+
   chart.addEventListener(
     'pointerup',
-    () => drag = null
+    () =>
+      drag = null
   );
+
 
   chart.addEventListener(
     'pointercancel',
-    () => drag = null
+    () =>
+      drag = null
   );
+
 
   chart.addEventListener(
     'pointerleave',
     () => {
+
       if (!drag) {
-        state.hover = null;
+
+        state.hover =
+          null;
+
         draw();
       }
     }
   );
 
+
   chart.addEventListener(
     'wheel',
     event => {
+
       event.preventDefault();
+
 
       state.count =
         Math.max(
           25,
           Math.min(
             state.data.length,
+
             state.count +
             Math.sign(
               event.deltaY
-            ) * 10
+            ) *
+            10
           )
         );
+
 
       state.offset =
         Math.min(
           state.offset,
+
           Math.max(
             0,
             state.data.length -
@@ -2087,163 +3699,255 @@ if (chart) {
           )
         );
 
+
       draw();
     },
+
     {
       passive: false
     }
   );
 }
 
-/* -------------------------------------------------------
-   ZOOM BUTTONS
-------------------------------------------------------- */
 
-if ($('.canvas-area')) {
+/* ======================================================
+   ZOOM
+====================================================== */
+
+
+if (
+  $('.canvas-area')
+) {
+
   const zoom =
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
 
   zoom.className =
     'zoom-controls';
+
 
   zoom.innerHTML =
     '<button aria-label="Zoom in">+</button>' +
     '<button aria-label="Zoom out">−</button>';
 
-  $('.canvas-area').append(zoom);
 
-  zoom.children[0].onclick = () => {
-    state.count =
-      Math.max(
-        25,
-        state.count - 15
-      );
+  $('.canvas-area')
+    .append(
+      zoom
+    );
 
-    draw();
-  };
 
-  zoom.children[1].onclick = () => {
-    state.count =
-      Math.min(
-        state.data.length,
-        state.count + 15
-      );
+  zoom.children[0].onclick =
+    () => {
 
-    state.offset =
-      Math.min(
-        state.offset,
+      state.count =
         Math.max(
-          0,
-          state.data.length -
-          state.count
-        )
-      );
+          25,
+          state.count - 15
+        );
 
-    draw();
-  };
+
+      draw();
+    };
+
+
+  zoom.children[1].onclick =
+    () => {
+
+      state.count =
+        Math.min(
+          state.data.length,
+          state.count + 15
+        );
+
+
+      state.offset =
+        Math.min(
+          state.offset,
+
+          Math.max(
+            0,
+            state.data.length -
+            state.count
+          )
+        );
+
+
+      draw();
+    };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    PRICE ALERTS
-------------------------------------------------------- */
+====================================================== */
+
 
 function openAlert() {
-  if (!state.data.length) return;
 
-  if ($('#alert-symbol')) {
+  if (
+    !state.data.length
+  ) {
+    return;
+  }
+
+
+  if (
+    $('#alert-symbol')
+  ) {
+
     $('#alert-symbol').textContent =
       current().name +
       ' · LIVE price ' +
-      fmt(quote());
+      fmt(
+        quote()
+      );
   }
 
-  if ($('#alert-price')) {
+
+  if (
+    $('#alert-price')
+  ) {
+
     $('#alert-price').value =
-      (quote() * 1.001).toFixed(2);
+      (
+        quote() *
+        1.001
+      ).toFixed(2);
   }
 
-  $('#alert-dialog')?.showModal();
+
+  $('#alert-dialog')
+    ?.showModal();
 }
 
-if ($('#add-alert')) {
+
+if (
+  $('#add-alert')
+) {
+
   $('#add-alert').onclick =
     openAlert;
 }
 
-if ($('#new-alert')) {
+
+if (
+  $('#new-alert')
+) {
+
   $('#new-alert').onclick =
     openAlert;
 }
 
-if ($('#close-dialog')) {
+
+if (
+  $('#close-dialog')
+) {
+
   $('#close-dialog').onclick =
-    () => $('#alert-dialog')?.close();
+    () =>
+      $('#alert-dialog')
+        ?.close();
 }
 
+
 function renderAlerts() {
+
   const active =
     state.alerts.filter(
-      a => !a.triggered
+      a =>
+        !a.triggered
     ).length;
 
-  if ($('#alert-count')) {
+
+  if (
+    $('#alert-count')
+  ) {
+
     $('#alert-count').textContent =
       active;
   }
 
-  if ($('#alert-total')) {
+
+  if (
+    $('#alert-total')
+  ) {
+
     $('#alert-total').textContent =
       state.alerts.length;
   }
 
-  if ($('#alert-list')) {
+
+  if (
+    $('#alert-list')
+  ) {
+
     $('#alert-list').innerHTML =
       state.alerts.length
-        ? state.alerts.map(a => `
-            <div class="alert-row">
-              <span>
-                ${
-                  instruments.find(
-                    i => i.id === a.symbol
-                  )?.name ??
-                  'Instrument'
-                }
-                ${
-                  a.direction === 'above'
-                    ? '≥'
-                    : '≤'
-                }
-                ₹${fmt(a.price)}
-                <br>
+        ? state.alerts.map(
+            a => `
+              <div class="alert-row">
 
-                <small class="${
-                  a.triggered
-                    ? 'up'
-                    : 'muted'
-                }">
+                <span>
+
                   ${
-                    a.triggered
-                      ? 'Triggered · ' +
-                        new Date(
-                          a.triggered
-                        ).toLocaleTimeString(
-                          'en-IN'
-                        )
-                      : 'Active · monitoring LIVE Upstox price'
+                    instruments.find(
+                      i =>
+                        i.id ===
+                        a.symbol
+                    )?.name ??
+                    'Instrument'
                   }
-                </small>
-              </span>
 
-              <button
-                data-delete-alert="${a.id}"
-                aria-label="Delete alert"
-              >
-                ✕
-              </button>
-            </div>
-          `).join('')
+                  ${
+                    a.direction ===
+                    'above'
+                      ? '≥'
+                      : '≤'
+                  }
+
+                  ₹${fmt(a.price)}
+
+                  <br>
+
+                  <small class="${
+                    a.triggered
+                      ? 'up'
+                      : 'muted'
+                  }">
+
+                    ${
+                      a.triggered
+                        ? 'Triggered · ' +
+                          new Date(
+                            a.triggered
+                          ).toLocaleTimeString(
+                            'en-IN'
+                          )
+                        : 'Active · monitoring LIVE Upstox price'
+                    }
+
+                  </small>
+
+                </span>
+
+
+                <button
+                  data-delete-alert="${a.id}"
+                  aria-label="Delete alert"
+                >
+                  ✕
+                </button>
+
+              </div>
+            `
+          ).join('')
         : 'No alerts yet. Set a price to keep an eye on.';
   }
+
 
   save(
     'stride-alerts',
@@ -2251,78 +3955,128 @@ function renderAlerts() {
   );
 }
 
+
 function createAlert(
   symbol,
   direction,
   price
 ) {
+
   if (
     !instruments.some(
-      i => i.id === symbol
+      i =>
+        i.id ===
+        symbol
     ) ||
-    !['above', 'below'].includes(
+    ![
+      'above',
+      'below'
+    ].includes(
       direction
     ) ||
-    !Number.isFinite(price) ||
+    !Number.isFinite(
+      price
+    ) ||
     price <= 0
   ) {
+
     throw Error(
       'Enter a valid instrument, direction and positive price'
     );
   }
 
+
   const alert = {
-    id: crypto.randomUUID(),
+
+    id:
+      crypto.randomUUID(),
+
     symbol,
+
     direction,
+
     price,
-    triggered: null
+
+    triggered:
+      null
   };
 
-  state.alerts.push(alert);
+
+  state.alerts.push(
+    alert
+  );
+
 
   renderAlerts();
+
 
   return alert;
 }
 
-if ($('#alert-form')) {
+
+if (
+  $('#alert-form')
+) {
+
   $('#alert-form').onsubmit =
     event => {
+
       event.preventDefault();
 
+
       try {
+
         createAlert(
           state.symbol,
+
           $('#alert-direction').value,
+
           Number(
             $('#alert-price').value
           )
         );
 
-        $('#alert-dialog')?.close();
+
+        $('#alert-dialog')
+          ?.close();
+
 
         toast(
           'LIVE price alert created on this device'
         );
 
+
         checkAlerts();
 
-      } catch (error) {
-        toast(error.message);
+      } catch (
+        error
+      ) {
+
+        toast(
+          error.message
+        );
       }
     };
 }
 
-if ($('#alert-list')) {
+
+if (
+  $('#alert-list')
+) {
+
   $('#alert-list').onclick =
     event => {
+
       const button =
         event.target.closest(
           '[data-delete-alert]'
         );
 
-      if (!button) return;
+
+      if (!button) {
+        return;
+      }
+
 
       state.alerts =
         state.alerts.filter(
@@ -2331,73 +4085,128 @@ if ($('#alert-list')) {
             button.dataset.deleteAlert
         );
 
+
       renderAlerts();
     };
 }
 
-checkAlerts = () => {
-  let changed = false;
 
-  for (const alert of state.alerts) {
-    if (alert.triggered) continue;
+checkAlerts =
+  () => {
 
-    const price =
-      state.quotes[alert.symbol];
+    let changed =
+      false;
 
-    if (!Number.isFinite(price)) {
-      continue;
-    }
 
-    const triggered =
-      alert.direction === 'above'
-        ? price >= alert.price
-        : price <= alert.price;
+    for (
+      const alert of
+      state.alerts
+    ) {
 
-    if (triggered) {
-      alert.triggered =
-        Date.now();
+      if (
+        alert.triggered
+      ) {
+        continue;
+      }
 
-      changed = true;
 
-      toast(
-        (
-          instruments.find(
-            i => i.id === alert.symbol
-          )?.name ||
+      const price =
+        state.quotes[
           alert.symbol
-        ) +
-        ' crossed ' +
-        fmt(alert.price)
-      );
-    }
-  }
+        ];
 
-  if (changed) {
-    renderAlerts();
-  }
-};
+
+      if (
+        !Number.isFinite(
+          price
+        )
+      ) {
+        continue;
+      }
+
+
+      const triggered =
+        alert.direction ===
+        'above'
+          ? price >=
+            alert.price
+          : price <=
+            alert.price;
+
+
+      if (triggered) {
+
+        alert.triggered =
+          Date.now();
+
+
+        changed =
+          true;
+
+
+        toast(
+          (
+            instruments.find(
+              i =>
+                i.id ===
+                alert.symbol
+            )?.name ||
+            alert.symbol
+          ) +
+          ' crossed ' +
+          fmt(
+            alert.price
+          )
+        );
+      }
+    }
+
+
+    if (changed) {
+
+      renderAlerts();
+    }
+  };
+
 
 renderAlerts();
 
-/* -------------------------------------------------------
+
+/* ======================================================
    INSTALL APP
-------------------------------------------------------- */
+====================================================== */
+
 
 window.addEventListener(
   'beforeinstallprompt',
   event => {
+
     event.preventDefault();
-    installPrompt = event;
+
+    installPrompt =
+      event;
   }
 );
 
-if ($('#install')) {
+
+if (
+  $('#install')
+) {
+
   $('#install').onclick =
     async () => {
-      if (installPrompt) {
+
+      if (
+        installPrompt
+      ) {
+
         await installPrompt.prompt();
-        installPrompt = null;
+
+        installPrompt =
+          null;
+
       } else {
+
         toast(
           matchMedia(
             '(display-mode: standalone)'
@@ -2409,16 +4218,22 @@ if ($('#install')) {
     };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    SERVICE WORKER
-------------------------------------------------------- */
+====================================================== */
+
 
 if (
   'serviceWorker' in navigator &&
-  !window.Capacitor?.isNativePlatform()
+  !window.Capacitor
+    ?.isNativePlatform()
 ) {
+
   navigator.serviceWorker
-    .register('./sw.js')
+    .register(
+      './sw.js'
+    )
     .catch(
       () =>
         toast(
@@ -2427,146 +4242,121 @@ if (
     );
 }
 
-/* -------------------------------------------------------
-   OPTIONAL MODEL CONTEXT TOOL
-------------------------------------------------------- */
 
-const context =
-  document.modelContext;
-
-if (context?.registerTool) {
-  try {
-    Promise.resolve(
-      context.registerTool({
-        name:
-          'select_instrument',
-
-        description:
-          'Select a live Upstox instrument in the Pro Scalper workspace.',
-
-        inputSchema: {
-          type: 'object',
-
-          properties: {
-            symbol: {
-              type: 'string',
-              enum:
-                instruments.map(
-                  i => i.id
-                )
-            }
-          },
-
-          required: ['symbol'],
-          additionalProperties: false
-        },
-
-        annotations: {
-          readOnlyHint: false,
-          untrustedContentHint: false
-        },
-
-        execute:
-          async ({ symbol }) => {
-            await selectInstrument(
-              symbol
-            );
-
-            return {
-              symbol:
-                state.symbol,
-              price:
-                quote(),
-              mode:
-                'live',
-              source:
-                'UPSTOX'
-            };
-          }
-      })
-    ).catch(() => {});
-
-  } catch {}
-}
-
-/* -------------------------------------------------------
+/* ======================================================
    WATCHLIST LIVE SUBSCRIPTIONS
-------------------------------------------------------- */
+====================================================== */
+
 
 const watchSubscriptions =
-  instruments.map(i =>
-    market.subscribe(
-      i.id,
-      '1m',
+  instruments.map(
+    i =>
+      market.subscribe(
+        i.id,
+        '1m',
 
-      tick => {
-        if (
-          !tick ||
-          !Number.isFinite(
-            Number(tick.price)
-          )
-        ) {
-          return;
-        }
+        tick => {
 
-        if (
-          i.id === state.symbol
-        ) {
-          return;
-        }
+          if (
+            !tick ||
+            !Number.isFinite(
+              Number(
+                tick.price
+              )
+            )
+          ) {
+            return;
+          }
 
-        state.quotes[i.id] =
-          Number(tick.price);
 
-        renderWatch();
-        checkAlerts();
-      },
+          if (
+            i.id ===
+            state.symbol
+          ) {
+            return;
+          }
 
-      () => {}
-    )
+
+          state.quotes[
+            i.id
+          ] =
+            Number(
+              tick.price
+            );
+
+
+          renderWatch();
+
+          checkAlerts();
+        },
+
+        () => {}
+      )
   );
+
 
 window.addEventListener(
   'pagehide',
   () => {
+
     unsubscribe?.();
 
-    watchSubscriptions.forEach(
-      stop => stop?.()
-    );
+
+    watchSubscriptions
+      .forEach(
+        stop =>
+          stop?.()
+      );
   }
 );
+
 
 window.addEventListener(
   'pageshow',
   event => {
-    if (event.persisted) {
+
+    if (
+      event.persisted
+    ) {
+
       location.reload();
     }
   }
 );
 
-/* -------------------------------------------------------
+
+/* ======================================================
    STRIDE SIGNAL STATUS
-------------------------------------------------------- */
+====================================================== */
+
 
 function renderSignalStatus() {
+
   const enabled =
     state.overlays.has(
       'Stride Signals'
     );
+
 
   const last =
     state.signals
       ?.filter(Boolean)
       .at(-1);
 
+
   const event =
     state.signals
-      ?.filter(s => s?.signal)
+      ?.filter(
+        s =>
+          s?.signal
+      )
       .at(-1);
 
-  if ($('#stride-status')) {
+
+  if (
+    $('#stride-status')
+  ) {
+
     $('#stride-status').textContent =
       !enabled
         ? 'Indicator hidden'
@@ -2576,6 +4366,7 @@ function renderSignalStatus() {
             ? 'Bullish trend'
             : 'Bearish trend';
 
+
     $('#stride-status').className =
       !enabled
         ? 'muted'
@@ -2584,77 +4375,125 @@ function renderSignalStatus() {
           : 'down';
   }
 
-  if ($('#stride-stop')) {
+
+  if (
+    $('#stride-stop')
+  ) {
+
     $('#stride-stop').textContent =
-      enabled && last
+      enabled &&
+      last
         ? 'ATR trail ₹' +
-          fmt(last.stop)
+          fmt(
+            last.stop
+          )
         : '—';
   }
 
-  if ($('#stride-last')) {
+
+  if (
+    $('#stride-last')
+  ) {
+
     $('#stride-last').textContent =
       event
         ? 'Last ' +
           event.signal.toLowerCase() +
           ' · ' +
           new Date(
-            event.time * 1000
+            event.time *
+            1000
           ).toLocaleString(
             'en-IN',
             {
               timeZone:
                 'Asia/Kolkata',
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
+
+              day:
+                '2-digit',
+
+              month:
+                'short',
+
+              hour:
+                '2-digit',
+
+              minute:
+                '2-digit',
+
+              hour12:
+                false
             }
           ) +
           ' IST'
         : 'No reversal in today’s loaded history';
   }
 
-  if ($('#stride-settings')) {
-    $('#stride-settings').dataset.enabled =
-      String(enabled);
+
+  if (
+    $('#stride-settings')
+  ) {
+
+    $('#stride-settings')
+      .dataset.enabled =
+        String(
+          enabled
+        );
   }
+
 
   renderSignalAlerts();
 }
 
-if ($('#signal-sensitivity')) {
+
+if (
+  $('#signal-sensitivity')
+) {
+
   $('#signal-sensitivity').value =
     state.signalSensitivity;
 
+
   $('#signal-sensitivity').onchange =
     event => {
+
       state.signalSensitivity =
         event.target.value;
+
 
       save(
         'stride-sensitivity',
         state.signalSensitivity
       );
 
+
       draw();
 
+
       signalTracker.baseline(
-        state.signals || []
+        state.signals ||
+        []
       );
     };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    PRICE ACTION
-------------------------------------------------------- */
+====================================================== */
+
 
 function drawPriceAction(
   ctx,
   g
 ) {
-  if (!state.pa) return;
+
+  if (
+    !state.pa
+  ) {
+    return;
+  }
+
 
   const {
     start,
@@ -2669,11 +4508,16 @@ function drawPriceAction(
     muted
   } = g;
 
-  const pa = state.pa;
+
+  const pa =
+    state.pa;
+
 
   ctx.save();
 
+
   ctx.beginPath();
+
   ctx.rect(
     0,
     top,
@@ -2683,12 +4527,18 @@ function drawPriceAction(
 
   ctx.clip();
 
+
   ctx.font =
     '10px system-ui';
 
+
   for (
-    const kind of ['OB', 'FVG']
+    const kind of [
+      'OB',
+      'FVG'
+    ]
   ) {
+
     const enabled =
       state.paOverlays.has(
         kind === 'OB'
@@ -2696,42 +4546,67 @@ function drawPriceAction(
           : 'Fair-value gaps'
       );
 
-    if (!enabled) continue;
+
+    if (!enabled) {
+      continue;
+    }
+
 
     const visible =
       pa.zones
         .filter(
           z =>
-            z.kind === kind &&
-            z.endedAt == null &&
-            z.index < end
+            z.kind ===
+            kind &&
+            z.endedAt ==
+            null &&
+            z.index <
+            end
         )
         .slice(-4);
 
-    for (const z of visible) {
+
+    for (
+      const z of visible
+    ) {
+
       const left =
         Math.max(
           0,
-          x(z.index - start)
+          x(
+            z.index -
+            start
+          )
         );
 
-      const width =
-        plot - left;
 
-      if (width <= 0) continue;
+      const width =
+        plot -
+        left;
+
+
+      if (
+        width <= 0
+      ) {
+        continue;
+      }
+
 
       const color =
         z.direction === 1
           ? up
           : down;
 
+
       ctx.fillStyle =
         color;
+
 
       ctx.globalAlpha =
         kind === 'OB'
           ? 0.10
           : 0.05;
+
 
       ctx.fillRect(
         left,
@@ -2739,14 +4614,19 @@ function drawPriceAction(
         width,
         Math.max(
           1,
-          y(z.low) - y(z.high)
+          y(z.low) -
+          y(z.high)
         )
       );
 
-      ctx.globalAlpha = 0.7;
+
+      ctx.globalAlpha =
+        0.7;
+
 
       ctx.strokeStyle =
         color;
+
 
       ctx.setLineDash(
         kind === 'FVG'
@@ -2754,18 +4634,27 @@ function drawPriceAction(
           : []
       );
 
+
       ctx.strokeRect(
         left,
         y(z.high),
         width,
         Math.max(
           1,
-          y(z.low) - y(z.high)
+          y(z.low) -
+          y(z.high)
         )
       );
 
-      ctx.globalAlpha = 1;
-      ctx.setLineDash([]);
+
+      ctx.globalAlpha =
+        1;
+
+
+      ctx.setLineDash(
+        []
+      );
+
 
       ctx.fillText(
         kind +
@@ -2774,103 +4663,161 @@ function drawPriceAction(
             ? ' +'
             : ' −'
         ),
+
         Math.max(
           left + 4,
           plot - 47
         ),
+
         Math.max(
           top + 12,
+
           Math.min(
             bottom - 3,
-            y(z.high) + 12
+            y(z.high) +
+            12
           )
         )
       );
     }
   }
 
+
   if (
     state.paOverlays.has(
       'Structure'
     )
   ) {
+
     for (
-      const b of pa.breaks.filter(
+      const b of
+      pa.breaks.filter(
         b =>
-          b.index >= start &&
-          b.index < end
+          b.index >=
+          start &&
+          b.index <
+          end
       )
     ) {
+
       ctx.strokeStyle =
         ctx.fillStyle =
           b.direction === 1
             ? up
             : down;
 
-      ctx.setLineDash([3, 3]);
+
+      ctx.setLineDash(
+        [3, 3]
+      );
+
 
       ctx.beginPath();
+
 
       ctx.moveTo(
         Math.max(
           0,
-          x(b.from - start)
+          x(
+            b.from -
+            start
+          )
         ),
-        y(b.price)
+
+        y(
+          b.price
+        )
       );
 
+
       ctx.lineTo(
-        x(b.index - start),
-        y(b.price)
+        x(
+          b.index -
+          start
+        ),
+
+        y(
+          b.price
+        )
       );
+
 
       ctx.stroke();
 
-      ctx.setLineDash([]);
+
+      ctx.setLineDash(
+        []
+      );
+
 
       ctx.fillText(
         b.type,
+
         Math.max(
           0,
           Math.min(
             plot - 43,
-            x(b.index - start) - 20
+            x(
+              b.index -
+              start
+            ) -
+            20
           )
         ),
-        y(b.price) - 5
+
+        y(
+          b.price
+        ) -
+        5
       );
     }
   }
+
 
   if (
     state.paOverlays.has(
       'Swings'
     )
   ) {
+
     for (
-      const p of pa.pivots.filter(
+      const p of
+      pa.pivots.filter(
         p =>
-          p.confirmedAt >= start &&
-          p.confirmedAt < end
+          p.confirmedAt >=
+          start &&
+          p.confirmedAt <
+          end
       )
     ) {
-      ctx.fillStyle = muted;
+
+      ctx.fillStyle =
+        muted;
+
 
       ctx.fillText(
         p.type,
+
         Math.max(
           0,
           Math.min(
             plot - 25,
+
             x(
               p.confirmedAt -
               start
-            ) - 8
+            ) -
+            8
           )
         ),
-        y(p.price) +
+
+        y(
+          p.price
+        ) +
         (
-          p.type.endsWith('H')
+          p.type.endsWith(
+            'H'
+          )
             ? -10
             : 14
         )
@@ -2878,17 +4825,26 @@ function drawPriceAction(
     }
   }
 
+
   ctx.restore();
+
 
   const active =
     pa.zones.filter(
-      z => z.endedAt == null
+      z =>
+        z.endedAt ==
+        null
     );
+
 
   const last =
     pa.breaks.at(-1);
 
-  if ($('#pa-summary')) {
+
+  if (
+    $('#pa-summary')
+  ) {
+
     $('#pa-summary').textContent =
       (
         pa.trend === 1
@@ -2899,16 +4855,24 @@ function drawPriceAction(
       ) +
       ' · ' +
       active.filter(
-        z => z.kind === 'OB'
+        z =>
+          z.kind ===
+          'OB'
       ).length +
       ' active OB · ' +
       active.filter(
-        z => z.kind === 'FVG'
+        z =>
+          z.kind ===
+          'FVG'
       ).length +
       ' open FVG';
   }
 
-  if ($('#pa-last')) {
+
+  if (
+    $('#pa-last')
+  ) {
+
     $('#pa-last').textContent =
       last
         ? 'Last confirmed ' +
@@ -2917,17 +4881,28 @@ function drawPriceAction(
           new Date(
             state.data[
               last.index
-            ].time * 1000
+            ].time *
+            1000
           ).toLocaleString(
             'en-IN',
             {
               timeZone:
                 'Asia/Kolkata',
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
+
+              day:
+                '2-digit',
+
+              month:
+                'short',
+
+              hour:
+                '2-digit',
+
+              minute:
+                '2-digit',
+
+              hour12:
+                false
             }
           ) +
           ' IST'
@@ -2935,74 +4910,120 @@ function drawPriceAction(
   }
 }
 
-if ($('#pa-toggles')) {
+
+if (
+  $('#pa-toggles')
+) {
+
   $('#pa-toggles').innerHTML =
-    paNames.map(name => `
-      <button
-        data-pa="${name}"
-        aria-pressed="${
-          state.paOverlays.has(name)
-        }"
-        class="${
-          state.paOverlays.has(name)
-            ? 'active'
-            : ''
-        }"
-      >
-        ${name}
-      </button>
-    `).join('');
+    paNames.map(
+      name => `
+        <button
+          data-pa="${name}"
+          aria-pressed="${
+            state.paOverlays.has(
+              name
+            )
+          }"
+          class="${
+            state.paOverlays.has(
+              name
+            )
+              ? 'active'
+              : ''
+          }"
+        >
+          ${name}
+        </button>
+      `
+    ).join('');
+
 
   $('#pa-toggles').onclick =
     event => {
+
       const button =
         event.target.closest(
           '[data-pa]'
         );
 
-      if (!button) return;
+
+      if (!button) {
+        return;
+      }
+
 
       const name =
         button.dataset.pa;
 
+
       if (
-        state.paOverlays.has(name)
+        state.paOverlays.has(
+          name
+        )
       ) {
-        state.paOverlays.delete(name);
+
+        state.paOverlays.delete(
+          name
+        );
+
       } else {
-        state.paOverlays.add(name);
+
+        state.paOverlays.add(
+          name
+        );
       }
+
 
       button.classList.toggle(
         'active',
-        state.paOverlays.has(name)
+        state.paOverlays.has(
+          name
+        )
       );
+
 
       button.setAttribute(
         'aria-pressed',
-        state.paOverlays.has(name)
+        state.paOverlays.has(
+          name
+        )
       );
+
 
       save(
         'stride-pa',
-        [...state.paOverlays]
+        [
+          ...state.paOverlays
+        ]
       );
+
 
       draw();
     };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    SIGNAL ALERTS
-------------------------------------------------------- */
+====================================================== */
+
 
 function renderSignalAlerts() {
-  if ($('#signal-alert-switch')) {
+
+  if (
+    $('#signal-alert-switch')
+  ) {
+
     $('#signal-alert-switch').checked =
       signalAlertsEnabled;
   }
 
-  if ($('#signal-alert-status')) {
+
+  if (
+    $('#signal-alert-status')
+  ) {
+
     $('#signal-alert-status').textContent =
       signalAlertsEnabled
         ? 'On · ' +
@@ -3014,39 +5035,62 @@ function renderSignalAlerts() {
         : 'Off';
   }
 
+
   const list =
     $('#signal-alert-history');
 
-  if (!list) return;
+
+  if (!list) {
+    return;
+  }
+
 
   list.replaceChildren();
 
+
   if (
-    !Array.isArray(signalHistory) ||
+    !Array.isArray(
+      signalHistory
+    ) ||
     !signalHistory.length
   ) {
+
     list.textContent =
       'No new signal alerts yet.';
 
     return;
   }
 
+
   for (
     const alert of
-    signalHistory.slice(0, 20)
+    signalHistory.slice(
+      0,
+      20
+    )
   ) {
+
     const row =
-      document.createElement('div');
+      document.createElement(
+        'div'
+      );
+
 
     row.className =
       'alert-row';
 
+
     const text =
-      document.createElement('span');
+      document.createElement(
+        'span'
+      );
+
 
     text.textContent =
-      (alert.source ||
-        'Stride Signals') +
+      (
+        alert.source ||
+        'Stride Signals'
+      ) +
       ' · ' +
       alert.side.toUpperCase() +
       ' · ' +
@@ -3054,52 +5098,78 @@ function renderSignalAlerts() {
       ' · ' +
       alert.tf +
       ' · ₹' +
-      fmt(alert.price);
+      fmt(
+        alert.price
+      );
+
 
     text.className =
       alert.side === 'Buy'
         ? 'up'
         : 'down';
 
+
     const time =
-      document.createElement('small');
+      document.createElement(
+        'small'
+      );
+
 
     time.textContent =
       new Date(
-        alert.time * 1000
+        alert.time *
+        1000
       ).toLocaleString(
         'en-IN',
         {
           timeZone:
             'Asia/Kolkata',
-          day: '2-digit',
-          month: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
+
+          day:
+            '2-digit',
+
+          month:
+            'short',
+
+          hour:
+            '2-digit',
+
+          minute:
+            '2-digit',
+
+          hour12:
+            false
         }
       ) +
       ' IST';
+
 
     row.append(
       text,
       time
     );
 
-    list.append(row);
+
+    list.append(
+      row
+    );
   }
 }
 
+
 function processSignalAlerts() {
+
   const fresh =
     signalTracker.collect(
       state.signals || [],
       signalAlertsEnabled
     );
 
+
   for (
     const event of fresh
   ) {
+
     const candle =
       state.data.find(
         c =>
@@ -3107,33 +5177,49 @@ function processSignalAlerts() {
           event.time
       );
 
-    if (!candle) continue;
+
+    if (!candle) {
+      continue;
+    }
+
 
     const alert = {
+
       source:
         'Stride Signals',
+
       side:
         event.signal,
+
       name:
         current().name,
+
       tf:
         state.tf,
+
       time:
         event.time,
+
       price:
         candle.close
     };
+
 
     signalHistory.unshift(
       alert
     );
 
-    signalHistory.splice(20);
+
+    signalHistory.splice(
+      20
+    );
+
 
     save(
       'stride-signal-history',
       signalHistory
     );
+
 
     toast(
       alert.side.toUpperCase() +
@@ -3142,90 +5228,129 @@ function processSignalAlerts() {
       ' · ' +
       alert.tf +
       ' · ₹' +
-      fmt(alert.price)
+      fmt(
+        alert.price
+      )
     );
   }
+
 
   renderSignalAlerts();
 }
 
-if ($('#signal-alert-switch')) {
+
+if (
+  $('#signal-alert-switch')
+) {
+
   $('#signal-alert-switch').onchange =
     event => {
+
       signalAlertsEnabled =
         event.target.checked;
+
 
       save(
         'stride-signal-alerts-enabled',
         signalAlertsEnabled
       );
 
+
       signalTracker.baseline(
-        state.signals || []
+        state.signals ||
+        []
       );
+
 
       renderSignalAlerts();
     };
 }
 
-$$('[data-test-signal]').forEach(
-  button => {
-    button.onclick = () =>
-      toast(
-        'TEST ' +
-        button.dataset.testSignal +
-        ' signal · ' +
-        current().name +
-        ' · ' +
-        state.tf +
-        ' · test notification only'
-      );
-  }
-);
+
+$$('[data-test-signal]')
+  .forEach(
+    button => {
+
+      button.onclick =
+        () =>
+          toast(
+            'TEST ' +
+            button.dataset.testSignal +
+            ' signal · ' +
+            current().name +
+            ' · ' +
+            state.tf +
+            ' · test notification only'
+          );
+    }
+  );
+
 
 renderSignalAlerts();
 
-/* -------------------------------------------------------
+
+/* ======================================================
    PRO SCALPER
-------------------------------------------------------- */
+====================================================== */
+
 
 function renderScalper(
   ctx,
   g
 ) {
-  /*
-    1m / 3m / 5m live scalping
-  */
 
   const supported =
-    ['1m', '3m', '5m']
-      .includes(state.tf);
+    [
+      '1m',
+      '3m',
+      '5m'
+    ].includes(
+      state.tf
+    );
+
 
   const enabled =
     scalpEnabled &&
     supported;
+
 
   const last =
     state.scalps
       ?.filter(Boolean)
       .at(-1);
 
+
   const setup =
     state.scalps
-      ?.filter(s => s?.signal)
+      ?.filter(
+        s =>
+          s?.signal
+      )
       .at(-1);
 
-  if ($('#scalp-enable')) {
+
+  if (
+    $('#scalp-enable')
+  ) {
+
     $('#scalp-enable').checked =
       scalpEnabled;
   }
 
-  if ($('#scalp-alerts')) {
+
+  if (
+    $('#scalp-alerts')
+  ) {
+
     $('#scalp-alerts').checked =
       scalpAlerts;
   }
 
-  if ($('#scalp-state')) {
+
+  if (
+    $('#scalp-state')
+  ) {
+
     $('#scalp-state').textContent =
       !scalpEnabled
         ? 'Mode off'
@@ -3239,6 +5364,7 @@ function renderScalper(
                 ? 'SELL conditions aligned'
                 : 'WAIT · mixed conditions';
 
+
     $('#scalp-state').className =
       enabled &&
       last?.direction === 1
@@ -3249,57 +5375,93 @@ function renderScalper(
           : 'muted';
   }
 
-  if ($('#scalp-confirmations')) {
-    $('#scalp-confirmations').textContent =
-      enabled && last
-        ? 'EMA 9/21: ' +
-          (
-            last.ema > 0
-              ? 'bullish'
-              : last.ema < 0
-                ? 'bearish'
-                : 'flat'
-          ) +
-          ' · VWAP: ' +
-          (
-            last.vwap > 0
-              ? 'above'
-              : last.vwap < 0
-                ? 'below'
-                : 'N/A'
-          ) +
-          ' · RSI 14: ' +
-          (
-            Number.isFinite(last.rsi)
-              ? last.rsi.toFixed(1)
-              : '—'
+
+  if (
+    $('#scalp-confirmations')
+  ) {
+
+    if (
+      enabled &&
+      last
+    ) {
+
+      const vwapText =
+        last.vwapAvailable
+          ? last.vwap > 0
+            ? 'above'
+            : last.vwap < 0
+              ? 'below'
+              : 'at VWAP'
+          : 'N/A (index volume unavailable)';
+
+
+      $('#scalp-confirmations').textContent =
+        'EMA 9/21: ' +
+        (
+          last.ema > 0
+            ? 'bullish'
+            : last.ema < 0
+              ? 'bearish'
+              : 'flat'
+        ) +
+        ' · VWAP: ' +
+        vwapText +
+        ' · RSI 14: ' +
+        (
+          Number.isFinite(
+            last.rsi
           )
-        : 'Uses EMA 9/21, session VWAP when available, and RSI 14';
+            ? last.rsi.toFixed(1)
+            : '—'
+        );
+
+    } else {
+
+      $('#scalp-confirmations').textContent =
+        'Uses EMA 9/21, RSI 14 and genuine session VWAP when volume is available';
+    }
   }
 
-  if ($('#scalp-setup')) {
+
+  if (
+    $('#scalp-setup')
+  ) {
+
     $('#scalp-setup').textContent =
-      enabled && setup
+      enabled &&
+      setup
         ? 'Latest ' +
           setup.signal.toUpperCase() +
           ' setup · ' +
           new Date(
-            setup.time * 1000
+            setup.time *
+            1000
           ).toLocaleString(
             'en-IN',
             {
               timeZone:
                 'Asia/Kolkata',
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
+
+              day:
+                '2-digit',
+
+              month:
+                'short',
+
+              hour:
+                '2-digit',
+
+              minute:
+                '2-digit',
+
+              hour12:
+                false
             }
           ) +
           ' IST · live-session levels'
         : 'No setup displayed';
   }
+
 
   for (
     const key of [
@@ -3308,16 +5470,26 @@ function renderScalper(
       'target'
     ]
   ) {
-    if ($('#scalp-' + key)) {
+
+    if (
       $('#scalp-' + key)
-        .textContent =
-          enabled && setup
-            ? fmt(setup[key])
-            : '—';
+    ) {
+
+      $('#scalp-' + key).textContent =
+        enabled &&
+        setup
+          ? fmt(
+              setup[key]
+            )
+          : '—';
     }
   }
 
-  if (!enabled) return;
+
+  if (!enabled) {
+    return;
+  }
+
 
   const {
     start,
@@ -3331,7 +5503,9 @@ function renderScalper(
     down
   } = g;
 
+
   ctx.save();
+
 
   ctx.beginPath();
 
@@ -3344,63 +5518,96 @@ function renderScalper(
 
   ctx.clip();
 
+
   ctx.font =
     'bold 10px system-ui';
 
+
   state.scalps
-    .slice(start, end)
-    .forEach((s, i) => {
-      if (!s?.signal) return;
+    .slice(
+      start,
+      end
+    )
+    .forEach(
+      (
+        s,
+        i
+      ) => {
 
-      ctx.fillStyle =
-        s.signal === 'Buy'
-          ? up
-          : down;
+        if (
+          !s?.signal
+        ) {
+          return;
+        }
 
-      ctx.fillText(
-        'SC ' +
-        s.signal.toUpperCase(),
 
-        Math.max(
-          0,
-          Math.min(
-            plot - 48,
-            x(i) - 22
-          )
-        ),
+        ctx.fillStyle =
+          s.signal === 'Buy'
+            ? up
+            : down;
 
-        Math.max(
-          top + 12,
-          Math.min(
-            bottom - 5,
-            y(s.entry) +
-            (
-              s.signal === 'Buy'
-                ? 25
-                : -30
+
+        ctx.fillText(
+          'SC ' +
+          s.signal.toUpperCase(),
+
+          Math.max(
+            0,
+            Math.min(
+              plot - 48,
+              x(i) - 22
+            )
+          ),
+
+          Math.max(
+            top + 12,
+            Math.min(
+              bottom - 5,
+
+              y(
+                s.entry
+              ) +
+              (
+                s.signal ===
+                'Buy'
+                  ? 25
+                  : -30
+              )
             )
           )
-        )
-      );
-    });
+        );
+      }
+    );
+
 
   ctx.restore();
 }
 
+
 function processScalpAlerts() {
+
   const fresh =
     scalpTracker.collect(
       state.scalps || [],
+
       scalpEnabled &&
       scalpAlerts &&
-      ['1m', '3m', '5m']
-        .includes(state.tf)
+      [
+        '1m',
+        '3m',
+        '5m'
+      ].includes(
+        state.tf
+      )
     );
+
 
   for (
     const event of fresh
   ) {
+
     const alert = {
+
       source:
         'Pro Scalper',
 
@@ -3420,16 +5627,22 @@ function processScalpAlerts() {
         event.entry
     };
 
+
     signalHistory.unshift(
       alert
     );
 
-    signalHistory.splice(20);
+
+    signalHistory.splice(
+      20
+    );
+
 
     save(
       'stride-signal-history',
       signalHistory
     );
+
 
     toast(
       'Pro Scalper ' +
@@ -3439,125 +5652,188 @@ function processScalpAlerts() {
       ' · ' +
       state.tf +
       ' · ₹' +
-      fmt(event.entry)
+      fmt(
+        event.entry
+      )
     );
   }
+
 
   renderSignalAlerts();
 }
 
-if ($('#scalp-enable')) {
+
+if (
+  $('#scalp-enable')
+) {
+
   $('#scalp-enable').onchange =
     event => {
+
       scalpEnabled =
         event.target.checked;
+
 
       save(
         'stride-scalper',
         scalpEnabled
       );
 
+
       scalpTracker.baseline(
-        state.scalps || []
+        state.scalps ||
+        []
       );
 
+
       momentumTracker.baseline(
-        state.momentum || []
+        state.momentum ||
+        []
       );
+
 
       draw();
     };
 }
 
-if ($('#scalp-alerts')) {
+
+if (
+  $('#scalp-alerts')
+) {
+
   $('#scalp-alerts').onchange =
     event => {
+
       scalpAlerts =
         event.target.checked;
+
 
       save(
         'stride-scalper-alerts',
         scalpAlerts
       );
 
+
       scalpTracker.baseline(
-        state.scalps || []
+        state.scalps ||
+        []
       );
     };
 }
 
-$$('[data-scalp-tf]').forEach(
-  button => {
-    button.onclick = () => {
-      const target =
-        document.querySelector(
-          '[data-tf="' +
-          button.dataset.scalpTf +
-          '"]'
-        );
 
-      target?.click();
-    };
-  }
-);
+$$('[data-scalp-tf]')
+  .forEach(
+    button => {
 
-/* -------------------------------------------------------
+      button.onclick =
+        () => {
+
+          const target =
+            document.querySelector(
+              '[data-tf="' +
+              button.dataset.scalpTf +
+              '"]'
+            );
+
+
+          target?.click();
+        };
+    }
+  );
+
+
+/* ======================================================
    NATIVE APP
-------------------------------------------------------- */
+====================================================== */
+
 
 if (
-  window.Capacitor?.isNativePlatform()
+  window.Capacitor
+    ?.isNativePlatform()
 ) {
+
   document.body.classList.add(
     'native-app'
   );
 
-  if ($('#install')) {
-    $('#install').hidden = true;
+
+  if (
+    $('#install')
+  ) {
+
+    $('#install').hidden =
+      true;
   }
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    MOMENTUM
-------------------------------------------------------- */
+====================================================== */
+
 
 function renderMomentum(
   ctx,
   g
 ) {
+
   const last =
     state.momentum
-      ?.filter(s => s?.signal)
+      ?.filter(
+        s =>
+          s?.signal
+      )
       .at(-1);
 
-  if ($('#momentum-alerts')) {
+
+  if (
+    $('#momentum-alerts')
+  ) {
+
     $('#momentum-alerts').checked =
       momentumAlerts;
   }
 
-  if ($('#momentum-status')) {
+
+  if (
+    $('#momentum-status')
+  ) {
+
     $('#momentum-status').textContent =
       last
         ? 'Last ' +
           last.signal.toUpperCase() +
           ' · ' +
           new Date(
-            last.time * 1000
+            last.time *
+            1000
           ).toLocaleString(
             'en-IN',
             {
               timeZone:
                 'Asia/Kolkata',
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
+
+              day:
+                '2-digit',
+
+              month:
+                'short',
+
+              hour:
+                '2-digit',
+
+              minute:
+                '2-digit',
+
+              hour12:
+                false
             }
           ) +
           ' IST'
         : 'No confirmed momentum crossing';
   }
+
 
   if (
     !state.overlays.has(
@@ -3566,6 +5842,7 @@ function renderMomentum(
   ) {
     return;
   }
+
 
   const {
     start,
@@ -3579,7 +5856,9 @@ function renderMomentum(
     down
   } = g;
 
+
   ctx.save();
+
 
   ctx.beginPath();
 
@@ -3592,59 +5871,85 @@ function renderMomentum(
 
   ctx.clip();
 
+
   ctx.font =
     'bold 10px system-ui';
 
+
   state.momentum
-    .slice(start, end)
-    .forEach((s, i) => {
-      if (!s?.signal) return;
+    .slice(
+      start,
+      end
+    )
+    .forEach(
+      (
+        s,
+        i
+      ) => {
 
-      ctx.fillStyle =
-        s.signal === 'Buy'
-          ? up
-          : down;
+        if (
+          !s?.signal
+        ) {
+          return;
+        }
 
-      ctx.fillText(
-        'M ' +
-        s.signal.toUpperCase(),
 
-        Math.max(
-          0,
-          Math.min(
-            plot - 48,
-            x(i) - 22
-          )
-        ),
+        ctx.fillStyle =
+          s.signal === 'Buy'
+            ? up
+            : down;
 
-        Math.max(
-          top + 12,
-          Math.min(
-            bottom - 5,
-            y(s.price) +
-            (
-              s.signal === 'Buy'
-                ? 40
-                : -45
+
+        ctx.fillText(
+          'M ' +
+          s.signal.toUpperCase(),
+
+          Math.max(
+            0,
+            Math.min(
+              plot - 48,
+              x(i) - 22
+            )
+          ),
+
+          Math.max(
+            top + 12,
+            Math.min(
+              bottom - 5,
+
+              y(
+                s.price
+              ) +
+              (
+                s.signal ===
+                'Buy'
+                  ? 40
+                  : -45
+              )
             )
           )
-        )
-      );
-    });
+        );
+      }
+    );
+
 
   ctx.restore();
 }
 
+
 function processMomentumAlerts() {
+
   const fresh =
     momentumTracker.collect(
       state.momentum || [],
       momentumAlerts
     );
 
+
   for (
     const event of fresh
   ) {
+
     signalHistory.unshift({
       source:
         'Stride Momentum',
@@ -3665,12 +5970,17 @@ function processMomentumAlerts() {
         event.price
     });
 
-    signalHistory.splice(20);
+
+    signalHistory.splice(
+      20
+    );
+
 
     save(
       'stride-signal-history',
       signalHistory
     );
+
 
     toast(
       'Momentum ' +
@@ -3680,32 +5990,45 @@ function processMomentumAlerts() {
       ' · ' +
       state.tf +
       ' · ₹' +
-      fmt(event.price)
+      fmt(
+        event.price
+      )
     );
   }
+
 
   renderSignalAlerts();
 }
 
-if ($('#momentum-alerts')) {
+
+if (
+  $('#momentum-alerts')
+) {
+
   $('#momentum-alerts').onchange =
     event => {
+
       momentumAlerts =
         event.target.checked;
+
 
       save(
         'stride-momentum-alerts',
         momentumAlerts
       );
 
+
       momentumTracker.baseline(
-        state.momentum || []
+        state.momentum ||
+        []
       );
     };
 }
 
-/* -------------------------------------------------------
+
+/* ======================================================
    INITIAL WATCHLIST
-------------------------------------------------------- */
+====================================================== */
+
 
 renderWatch();
