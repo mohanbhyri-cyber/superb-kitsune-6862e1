@@ -3,7 +3,7 @@
 // PRO SCALPER — LIVE MARKET ADAPTER
 // Client contains NO Upstox credentials.
 // All authenticated Upstox requests must go through
-// /.netlify/functions/*
+// /api/*
 // ============================================================
 
 export const instruments = [
@@ -345,8 +345,8 @@ function normalizeCandle(c) {
 //
 // Backend endpoints expected:
 //
-// /.netlify/functions/upstox-history
-// /.netlify/functions/live-quote
+// /api/upstox-history
+// /api/live-quote
 //
 // NO random/demo fallback.
 // ============================================================
@@ -394,7 +394,7 @@ export class UpstoxMarketAdapter {
     this.status = 'CONNECTING';
 
     const url =
-      '/.netlify/functions/upstox-history' +
+      '/api/upstox-history' +
       '?symbol=' +
       encodeURIComponent(symbol) +
       '&timeframe=' +
@@ -509,7 +509,7 @@ export class UpstoxMarketAdapter {
   // ----------------------------------------------------------
   // LIVE QUOTE SUBSCRIPTION
   //
-  // Polling current Netlify function every 3 seconds.
+  // Polling current Cloudflare route every 3 seconds.
   //
   // IMPORTANT:
   // There is NO Math.random fallback.
@@ -538,7 +538,7 @@ export class UpstoxMarketAdapter {
 
         const response =
           await fetch(
-            '/.netlify/functions/live-quote' +
+            '/api/live-quote' +
             '?symbol=' +
             encodeURIComponent(symbol),
             {
