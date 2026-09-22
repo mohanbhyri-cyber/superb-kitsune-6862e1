@@ -773,11 +773,50 @@
 
 
         <p class="disclaimer">
-          Rule-based technical analysis calculated from live-session
-          market candles. Supertrend (10, 3) and ADX/DMI (14) confirm
-          directional outlooks when enabled; neither guarantees profit.
-          No order is automatically executed.
+          Rule-based analysis from Upstox candles. Signals can lag or
+          fail, and trading can cause losses. No profit is guaranteed
+          and no order is automatically executed.
         </p>
+
+        <details class="tradeiq-toolkit">
+          <summary>TradeIQ toolkit <span id="tradeiq-state">Loading…</span></summary>
+          <div class="tradeiq-body">
+            <div class="toolkit-row"><span>Supertrend (10, 3)</span><b id="tradeiq-trend">—</b></div>
+            <div class="toolkit-row"><span>ADX/DMI (14), ADX ≥ 20</span><b id="tradeiq-strength">—</b></div>
+            <div class="toolkit-row"><span>EMA 9/21 + RSI 14</span><b id="tradeiq-momentum">—</b></div>
+            <p>Custom confluence check on the last closed candle. All three
+              must agree for BUY or SELL alignment. “WAIT” means mixed
+              conditions. This does not place orders or predict returns.</p>
+          </div>
+        </details>
+
+        <details class="indicator-evaluation">
+          <summary>Risk disclaimer &amp; evaluation framework</summary>
+          <div class="evaluation-body">
+            <p><strong>Read the filters:</strong> Supertrend shows trend
+              direction. ADX measures strength, while +DI and -DI show
+              directional movement. A directional outlook needs ADX
+              at least 20 and matching DI when this filter is on.</p>
+            <p><strong>Know the limits:</strong> Sideways markets can
+              cause false signals. Rapid moves, gaps and slippage can
+              make an actual trade differ from the chart. This view
+              does not measure returns or account for trading costs.</p>
+            <ol>
+              <li>Choose the instrument, timeframe, entry, exit and
+                maximum risk before reviewing results.</li>
+              <li>Record every signal on a closed candle, including
+                signals the filters reject.</li>
+              <li>Compare outcomes after costs across many sessions.
+                Track sample size, win rate, average gain and loss,
+                and largest drawdown.</li>
+              <li>Check later, unseen sessions before relying on any
+                apparent pattern. Past results cannot guarantee future
+                returns.</li>
+            </ol>
+            <a href="https://investor.sebi.gov.in/investment-thingsbeforeinv.html"
+               target="_blank" rel="noopener noreferrer">SEBI investor risk guidance ↗</a>
+          </div>
+        </details>
 
       </section>
 

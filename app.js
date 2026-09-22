@@ -2612,6 +2612,43 @@ function summary() {
       side === -1 ? minusValue > plusValue : false));
   const label = side && stPass && dmiPass ? candidate : 'Neutral';
 
+  const closedClose = Number(state.data[closed]?.close);
+  const closedEMA9 = calc.e9?.[closed];
+  const closedEMA21 = calc.e21?.[closed];
+  const closedRSI = calc.rsi?.[closed];
+  const ready = [closedClose, trend?.supertrend[closed], adxValue,
+    plusValue, minusValue, closedEMA9, closedEMA21, closedRSI]
+    .every(Number.isFinite);
+  const dmiDirection = plusValue > minusValue ? 1 :
+    minusValue > plusValue ? -1 : 0;
+  const momentumDirection = closedEMA9 > closedEMA21 && closedRSI >= 50
+    ? 1 : closedEMA9 < closedEMA21 && closedRSI < 50 ? -1 : 0;
+  const toolkitSide = ready && adxValue >= 20 &&
+    stDirection !== 0 && stDirection === dmiDirection &&
+    stDirection === momentumDirection ? stDirection : 0;
+  const toolkitState = !ready ? 'WARMING UP' :
+    toolkitSide === 1 ? 'BUY aligned' :
+    toolkitSide === -1 ? 'SELL aligned' : 'WAIT';
+  const toolkitStatus = $('#tradeiq-state');
+  if (toolkitStatus) {
+    toolkitStatus.textContent = toolkitState;
+    toolkitStatus.className = toolkitSide === 1 ? 'up' :
+      toolkitSide === -1 ? 'down' : 'muted';
+  }
+  const toolkitTrend = $('#tradeiq-trend');
+  if (toolkitTrend) toolkitTrend.textContent = !ready ? 'Warming up' :
+    stDirection === 1 ? 'Bullish' : stDirection === -1 ? 'Bearish' : 'Mixed';
+  const toolkitStrength = $('#tradeiq-strength');
+  if (toolkitStrength) toolkitStrength.textContent = !ready ? 'Warming up' :
+    'ADX ' + adxValue.toFixed(1) + ' · ' +
+    (adxValue < 20 ? 'Weak trend' : dmiDirection === 1 ? '+DI leads' :
+      dmiDirection === -1 ? '-DI leads' : 'DI tied');
+  const toolkitMomentum = $('#tradeiq-momentum');
+  if (toolkitMomentum) toolkitMomentum.textContent = !ready ? 'Warming up' :
+    momentumDirection === 1 ? 'Bullish' :
+    momentumDirection === -1 ? 'Bearish' : 'Mixed';
+
+
 
   if (
     $('#signal-label')
