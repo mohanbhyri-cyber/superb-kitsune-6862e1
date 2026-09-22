@@ -3,7 +3,6 @@ import { trendIndicators } from './trend-indicators.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
-import { setupMarketChat } from './market-chat.js';
 import {
   analyseNiftyEdge,
   backtestNiftyEdge
@@ -224,45 +223,6 @@ const state = {
     overall: 'NO TRADE'
   }
 };
-
-function marketChatSnapshot() {
-  const candle = state.data.at(-1);
-  if (!candle || !state.calc) return { ready: false };
-  const closed = Math.max(0, state.data.length - 2);
-  const time = new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false
-  }).format(new Date(candle.time * 1000));
-  const finite = value => typeof value === 'number' && Number.isFinite(value)
-    ? value : null;
-  return {
-    ready: true,
-    timeframe: state.tf,
-    candleTime: time,
-    price: finite(candle.close),
-    high: finite(Math.max(...state.data.map(c => c.high))),
-    low: finite(Math.min(...state.data.map(c => c.low))),
-    rsi: finite(state.calc.rsi?.at(-1)),
-    ema9: finite(state.calc.e9?.at(-1)),
-    ema21: finite(state.calc.e21?.at(-1)),
-    macdHist: finite(state.calc.hist?.at(-1)),
-    trend: state.trend?.direction?.[closed] || 0,
-    adx: finite(state.trend?.adx?.[closed]),
-    futuresVWAP: finite(state.futuresVWAP),
-    signal: state.smartSignal?.signal,
-    strength: state.smartSignal?.strength,
-    confluence: state.smartSignal?.confluence,
-    bullishScore: state.smartSignal?.bullishScore,
-    bearishScore: state.smartSignal?.bearishScore,
-    marketState: state.smartMarketState,
-    structure: state.smartStructure?.event ?? state.smartStructure?.structure,
-    plan: state.smartPlan,
-    backtest: state.proBacktest
-  };
-}
-
-setupMarketChat(marketChatSnapshot);
 
 
 const colors = {
