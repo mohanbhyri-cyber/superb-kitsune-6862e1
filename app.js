@@ -11,6 +11,7 @@ import {
   scanCandles,
   candleConfluence
 } from './smrt-candle-scanner.js';
+import { finalizeTrade } from './smrt-trade-finalizer.js';
 import {
   analyseProSuite
 } from './pro-suite.js';
@@ -135,6 +136,8 @@ const state = {
   candleScanner: null,
 
   candleSetup: null,
+
+  tradeFinalizer: null,
 
   proSuite: null,
 
@@ -1451,6 +1454,27 @@ function draw() {
       state.niftyEdge,
       state.mtf
     );
+
+
+  state.tradeFinalizer =
+    finalizeTrade({
+      edge:
+        state.niftyEdge,
+      marketMap:
+        state.marketMap,
+      candleSetup:
+        state.candleSetup,
+      mtf:
+        state.mtf,
+      calc:
+        state.calc,
+      trend:
+        state.trend,
+      data:
+        state.data,
+      futuresVWAP:
+        state.futuresVWAP
+    });
 
 
   refreshProSuite();
@@ -3441,6 +3465,8 @@ function summary() {
 
   renderCandleScanner();
 
+  renderTradeFinalizer();
+
   renderWatch();
 }
 
@@ -4311,6 +4337,10 @@ async function loadData() {
 
 
   state.calc =
+    null;
+
+
+  state.tradeFinalizer =
     null;
 
 
@@ -7327,6 +7357,163 @@ renderSignalAlerts();
 /* ======================================================
    PRO SCALPER
 ====================================================== */
+
+
+function renderTradeFinalizer() {
+
+  const f =
+    state.tradeFinalizer;
+
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !== undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!f) {
+
+    set(
+      '#finalizer-state',
+      'NO TRADE',
+      'muted'
+    );
+
+    set(
+      '#finalizer-score',
+      '0 / 100'
+    );
+
+    return;
+  }
+
+
+  set(
+    '#finalizer-state',
+    f.state,
+    f.state.includes(
+      'BUY'
+    )
+      ? 'up'
+      : f.state.includes(
+          'SELL'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#finalizer-score',
+    f.score +
+    ' / 100'
+  );
+
+
+  set(
+    '#finalizer-bull',
+    'Bull ' +
+    f.bullScore
+  );
+
+
+  set(
+    '#finalizer-bear',
+    'Bear ' +
+    f.bearScore
+  );
+
+
+  set(
+    '#finalizer-invalidation',
+    f.invalidation
+  );
+
+
+  set(
+    '#finalizer-entry',
+    f.plan
+      ? '₹' +
+        fmt(
+          f.plan.entry
+        )
+      : '—'
+  );
+
+
+  set(
+    '#finalizer-stop',
+    f.plan
+      ? '₹' +
+        fmt(
+          f.plan.stop
+        )
+      : '—'
+  );
+
+
+  set(
+    '#finalizer-tp1',
+    f.plan
+      ? '₹' +
+        fmt(
+          f.plan.target1
+        )
+      : '—'
+  );
+
+
+  set(
+    '#finalizer-tp2',
+    f.plan
+      ? '₹' +
+        fmt(
+          f.plan.target2
+        )
+      : '—'
+  );
+
+
+  set(
+    '#finalizer-tp3',
+    f.plan
+      ? '₹' +
+        fmt(
+          f.plan.target3
+        )
+      : '—'
+  );
+
+
+  set(
+    '#finalizer-reasons',
+    f.reasons?.length
+      ? f.reasons.join(
+          ' · '
+        )
+      : 'Waiting for confirmed closed-candle confluence'
+  );
+}
 
 
 function renderCandleScanner() {
