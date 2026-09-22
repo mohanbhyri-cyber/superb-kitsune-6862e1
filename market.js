@@ -526,6 +526,8 @@ export class UpstoxMarketAdapter {
   ) {
 
     let alive = true;
+    let timer = null;
+    let inFlight = false;
 
     let last = null;
 
@@ -534,7 +536,10 @@ export class UpstoxMarketAdapter {
 
     const tick = async () => {
 
-      if (!alive) return;
+      if (!alive || inFlight) return;
+      if (document.hidden) return;
+      inFlight = true;
+      timer = null;
 
 
       try {
@@ -653,25 +658,32 @@ export class UpstoxMarketAdapter {
         // NO fake tick.
         // NO Math.random().
         // NO demo price.
+      } finally {
+        inFlight = false;
+        if (alive && !document.hidden) {
+          timer = setTimeout(tick, 3000);
+        }
       }
     };
 
+    const resume = () => {
+      if (!document.hidden && alive && !inFlight && timer === null) tick();
+      if (document.hidden) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    document.addEventListener('visibilitychange', resume);
 
     tick();
-
-
-    const timer =
-      setInterval(
-        tick,
-        3000
-      );
 
 
     return () => {
 
       alive = false;
 
-      clearInterval(timer);
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', resume);
 
       this.status =
         'DISCONNECTED';
@@ -894,3 +906,4 @@ export function strideSignals(
 
   return result;
 }
+
