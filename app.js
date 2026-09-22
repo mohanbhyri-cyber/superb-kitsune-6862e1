@@ -893,8 +893,17 @@ function renderProSuiteSummary() {
       ?.latest;
 
   const edgeActionable =
-    state.niftyEdge
-      ?.latestActionable;
+    [
+      'BUY+',
+      'SELL+',
+      'BUY',
+      'SELL'
+    ].includes(
+      edgeLatest
+        ?.signal
+    )
+      ? edgeLatest
+      : null;
 
   const smart =
     edgeLatest
@@ -4197,11 +4206,19 @@ async function refreshMTF() {
 
     const edge =
       state.niftyEdge
-        ?.latestActionable;
+        ?.latest;
 
     const signalSide =
-      edge?.side ??
-      0;
+      [
+        'BUY+',
+        'SELL+',
+        'BUY',
+        'SELL'
+      ].includes(
+        edge?.signal
+      )
+        ? edge.side
+        : 0;
 
     const s5 =
       state.mtf['5m']
@@ -7732,7 +7749,7 @@ function renderNiftyEdge(
   }
 
   const latest =
-    analysis.latestActionable;
+    analysis.latest;
 
   if (!latest) {
     return;
@@ -7867,8 +7884,20 @@ function renderNiftyEdge(
     }
   );
 
+  const currentActionable =
+    [
+      'BUY+',
+      'SELL+',
+      'BUY',
+      'SELL'
+    ].includes(
+      latest.signal
+    );
+
   const plan =
-    latest.plan;
+    currentActionable
+      ? latest.plan
+      : null;
 
   if (
     plan &&
