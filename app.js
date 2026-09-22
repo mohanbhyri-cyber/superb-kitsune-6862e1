@@ -12,7 +12,7 @@ import {
   candleConfluence
 } from './smrt-candle-scanner.js';
 import { finalizeTrade } from './smrt-trade-finalizer.js';
-import { analyseSSLQQE } from './smrt-ssl-qqe.js';
+import { analyseGainzSSL } from './smrt-gainz-ssl-combo.js';
 import {
   analyseProSuite
 } from './pro-suite.js';
@@ -140,7 +140,7 @@ const state = {
 
   tradeFinalizer: null,
 
-  sslQqe: null,
+  gainzSSL: null,
 
   proSuite: null,
 
@@ -1480,16 +1480,16 @@ function draw() {
     });
 
 
-  state.sslQqe =
-    analyseSSLQQE(
+  state.gainzSSL =
+    analyseGainzSSL(
       state.data,
       {
         finalizer:
           state.tradeFinalizer,
         mtf:
           state.mtf,
-        sslPeriod:
-          10
+        signalExpiry:
+          3
       }
     );
 
@@ -2402,7 +2402,7 @@ function draw() {
   );
 
 
-  renderSSLQQE(
+  renderGainzSSL(
     ctx,
     {
       start,
@@ -3500,7 +3500,7 @@ function summary() {
 
   renderTradeFinalizer();
 
-  renderSSLQQEPanel();
+  renderGainzSSLPanel();
 
   renderWatch();
 }
@@ -4375,7 +4375,7 @@ async function loadData() {
     null;
 
 
-  state.sslQqe =
+  state.gainzSSL =
     null;
 
 
@@ -7398,13 +7398,13 @@ renderSignalAlerts();
 ====================================================== */
 
 
-function renderSSLQQE(
+function renderGainzSSL(
   ctx,
   g
 ) {
 
   const combo =
-    state.sslQqe;
+    state.gainzSSL;
 
   if (!combo) {
     return;
@@ -7512,13 +7512,13 @@ function renderSSLQQE(
 
 
   drawSeries(
-    combo.sslHigh,
+    combo.ssl1,
     up,
     1.4
   );
 
   drawSeries(
-    combo.sslLow,
+    combo.ssl2,
     down,
     1.4
   );
@@ -7711,10 +7711,10 @@ function renderSSLQQE(
 }
 
 
-function renderSSLQQEPanel() {
+function renderGainzSSLPanel() {
 
   const combo =
-    state.sslQqe;
+    state.gainzSSL;
 
   const latest =
     combo?.latest;
@@ -7749,19 +7749,19 @@ function renderSSLQQEPanel() {
   if (!latest) {
 
     set(
-      '#ssl-qqe-signal',
+      '#gainz-ssl-signal',
       'NO TRADE',
       'muted'
     );
 
     set(
-      '#ssl-state',
+      '#gainz-baseline-state',
       'WARMING UP',
       'muted'
     );
 
     set(
-      '#qqe-state',
+      '#gainz-ssl-state',
       'WARMING UP',
       'muted'
     );
@@ -7771,7 +7771,7 @@ function renderSSLQQEPanel() {
 
 
   set(
-    '#ssl-qqe-signal',
+    '#gainz-ssl-signal',
     latest.signal,
     latest.signal.startsWith(
       'LONG'
@@ -7786,7 +7786,22 @@ function renderSSLQQEPanel() {
 
 
   set(
-    '#ssl-state',
+    '#gainz-baseline-state',
+    latest.baselineSide === 1
+      ? 'BULLISH'
+      : latest.baselineSide === -1
+        ? 'BEARISH'
+        : 'NEUTRAL',
+    latest.baselineSide === 1
+      ? 'up'
+      : latest.baselineSide === -1
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#gainz-ssl-state',
     latest.sslSide === 1
       ? 'BULLISH'
       : latest.sslSide === -1
@@ -7801,45 +7816,37 @@ function renderSSLQQEPanel() {
 
 
   set(
-    '#qqe-state',
-    latest.qqeSide === 1
-      ? 'BULLISH'
-      : latest.qqeSide === -1
-        ? 'BEARISH'
-        : 'NEUTRAL',
-    latest.qqeSide === 1
-      ? 'up'
-      : latest.qqeSide === -1
-        ? 'down'
-        : 'muted'
-  );
-
-
-  set(
-    '#qqe-value',
-    Number.isFinite(
-      Number(
-        latest.qqeValue
-      )
-    )
-      ? Number(
-          latest.qqeValue
-        ).toFixed(
-          1
+    '#gainz-risk',
+    latest.riskLevel +
+    (
+      Number.isFinite(
+        Number(
+          latest.riskPercentile
         )
-      : '—'
+      )
+        ? ' · ' +
+          Number(
+            latest.riskPercentile
+          ).toFixed(
+            0
+          ) +
+          '%'
+        : ''
+    )
   );
 
 
   set(
-    '#ssl-qqe-score',
+    '#gainz-entry-distance',
+    latest.entryDistance +
+    ' · ' +
     latest.score +
     ' pts'
   );
 
 
   set(
-    '#ssl-qqe-reasons',
+    '#gainz-reasons',
     latest.reasons?.length
       ? latest.reasons.join(
           ' · '
