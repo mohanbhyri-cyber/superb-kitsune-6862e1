@@ -21,12 +21,6 @@ export const instruments = [
     name: 'NIFTY 50',
     kind: 'INDEX',
     description: 'Nifty 50 Index'
-  },
-  {
-    id: 'BANKNIFTY',
-    name: 'BANK NIFTY',
-    kind: 'INDEX',
-    description: 'Nifty Bank Index'
   }
 ];
 
