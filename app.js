@@ -5204,6 +5204,67 @@ if (
 }
 
 
+async function ensureNotificationPermission() {
+
+  if (!('Notification' in window)) {
+    return false;
+  }
+
+  if (Notification.permission === 'granted') {
+    return true;
+  }
+
+  if (Notification.permission === 'denied') {
+    return false;
+  }
+
+  try {
+    return (await Notification.requestPermission()) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+
+async function showSignalNotification(title, body) {
+
+  const allowed =
+    await ensureNotificationPermission();
+
+  if (!allowed) {
+    return;
+  }
+
+  const options = {
+    body,
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: 'stride-signal-' + Date.now(),
+    renotify: false
+  };
+
+  try {
+    const registration =
+      await navigator.serviceWorker?.ready;
+
+    if (registration?.showNotification) {
+      await registration.showNotification(
+        title,
+        options
+      );
+      return;
+    }
+  } catch {}
+
+  try {
+    new Notification(
+      title,
+      options
+    );
+  } catch {}
+}
+
+
 /* ======================================================
    SIGNAL ALERTS
 ====================================================== */
@@ -5428,9 +5489,18 @@ function processSignalAlerts() {
       ' · ' +
       alert.tf +
       ' · ₹' +
-      fmt(
-        alert.price
-      )
+      fmt(alert.price)
+    );
+
+    showSignalNotification(
+      'Stride ' +
+      alert.side.toUpperCase() +
+      ' · ' +
+      alert.name,
+      alert.tf +
+      ' · ₹' +
+      fmt(alert.price) +
+      ' · Live Upstox'
     );
   }
 
@@ -5449,6 +5519,9 @@ if (
       signalAlertsEnabled =
         event.target.checked;
 
+      if (signalAlertsEnabled) {
+        ensureNotificationPermission();
+      }
 
       save(
         'stride-signal-alerts-enabled',
@@ -5472,16 +5545,33 @@ $$('[data-test-signal]')
     button => {
 
       button.onclick =
-        () =>
-          toast(
+        async () => {
+
+          const side =
+            button.dataset.testSignal;
+
+          const message =
             'TEST ' +
-            button.dataset.testSignal +
+            side +
             ' signal · ' +
             current().name +
             ' · ' +
             state.tf +
-            ' · test notification only'
+            ' · live alert test';
+
+          toast(
+            message
           );
+
+          await showSignalNotification(
+            'Stride TEST ' +
+            side +
+            ' · ' +
+            current().name,
+            state.tf +
+            ' · Browser notification test'
+          );
+        };
     }
   );
 
@@ -5852,9 +5942,18 @@ function processScalpAlerts() {
       ' · ' +
       state.tf +
       ' · ₹' +
-      fmt(
-        event.entry
-      )
+      fmt(event.entry)
+    );
+
+    showSignalNotification(
+      'Pro Scalper ' +
+      event.signal.toUpperCase() +
+      ' · ' +
+      current().name,
+      state.tf +
+      ' · ₹' +
+      fmt(event.entry) +
+      ' · Live Upstox'
     );
   }
 
@@ -6190,9 +6289,18 @@ function processMomentumAlerts() {
       ' · ' +
       state.tf +
       ' · ₹' +
-      fmt(
-        event.price
-      )
+      fmt(event.price)
+    );
+
+    showSignalNotification(
+      'Stride Momentum ' +
+      event.signal.toUpperCase() +
+      ' · ' +
+      current().name,
+      state.tf +
+      ' · ₹' +
+      fmt(event.price) +
+      ' · Live Upstox'
     );
   }
 
