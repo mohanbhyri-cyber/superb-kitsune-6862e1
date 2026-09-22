@@ -12,7 +12,7 @@ import {
   candleConfluence
 } from './smrt-candle-scanner.js';
 import { finalizeTrade } from './smrt-trade-finalizer.js';
-import { scalpReversalSignal } from './smrt-scalp-reversal.js';
+import { analyseSSLQQE } from './smrt-ssl-qqe.js';
 import {
   analyseProSuite
 } from './pro-suite.js';
@@ -140,7 +140,7 @@ const state = {
 
   tradeFinalizer: null,
 
-  scalpReversal: null,
+  sslQqe: null,
 
   proSuite: null,
 
@@ -1480,19 +1480,18 @@ function draw() {
     });
 
 
-  state.scalpReversal =
-    scalpReversalSignal({
-      edge:
-        state.niftyEdge,
-      marketMap:
-        state.marketMap,
-      candleSetup:
-        state.candleSetup,
-      finalizer:
-        state.tradeFinalizer,
-      mtf:
-        state.mtf
-    });
+  state.sslQqe =
+    analyseSSLQQE(
+      state.data,
+      {
+        finalizer:
+          state.tradeFinalizer,
+        mtf:
+          state.mtf,
+        sslPeriod:
+          10
+      }
+    );
 
 
   refreshProSuite();
@@ -2403,7 +2402,7 @@ function draw() {
   );
 
 
-  renderScalpReversal(
+  renderSSLQQE(
     ctx,
     {
       start,
@@ -3501,6 +3500,8 @@ function summary() {
 
   renderTradeFinalizer();
 
+  renderSSLQQEPanel();
+
   renderWatch();
 }
 
@@ -4374,7 +4375,7 @@ async function loadData() {
     null;
 
 
-  state.scalpReversal =
+  state.sslQqe =
     null;
 
 
@@ -7397,49 +7398,109 @@ renderSignalAlerts();
 ====================================================== */
 
 
-function renderScalpReversal(
+function renderSSLQQE(
   ctx,
   g
 ) {
 
-  const s =
-    state.scalpReversal;
+  const combo =
+    state.sslQqe;
 
-  if (
-    !s ||
-    s.signal ===
-      'NO TRADE'
-  ) {
+  if (!combo) {
     return;
   }
 
+  const latest =
+    combo.latest;
+
   const {
+    start,
+    end,
     plot,
     top,
     bottom,
+    x,
     y,
     up,
     down
   } = g;
 
-  const plan =
-    s.plan;
 
-  if (!plan) {
-    return;
-  }
+  const drawSeries =
+    (
+      arr,
+      color,
+      width = 1.2
+    ) => {
 
-  const color =
-    s.side === 1
-      ? up
-      : down;
+      if (
+        !Array.isArray(
+          arr
+        )
+      ) {
+        return;
+      }
 
-  const sideLabel =
-    s.side === 1
-      ? s.signal
-      : s.signal;
+      ctx.strokeStyle =
+        color;
+
+      ctx.lineWidth =
+        width;
+
+      ctx.beginPath();
+
+      let began =
+        false;
+
+      arr
+        .slice(
+          start,
+          end
+        )
+        .forEach(
+          (
+            value,
+            i
+          ) => {
+
+            if (
+              !Number.isFinite(
+                Number(value)
+              )
+            ) {
+
+              began =
+                false;
+
+              return;
+            }
+
+            if (began) {
+
+              ctx.lineTo(
+                x(i),
+                y(value)
+              );
+
+            } else {
+
+              ctx.moveTo(
+                x(i),
+                y(value)
+              );
+
+              began =
+                true;
+            }
+          }
+        );
+
+      ctx.stroke();
+    };
+
 
   ctx.save();
+
   ctx.beginPath();
   ctx.rect(
     0,
@@ -7449,152 +7510,343 @@ function renderScalpReversal(
   );
   ctx.clip();
 
-  ctx.font =
-    'bold 11px system-ui';
 
-  const yEntry =
-    y(
-      plan.entry
-    );
-
-  ctx.fillStyle =
-    color;
-
-  ctx.fillRect(
-    Math.max(
-      0,
-      plot - 155
-    ),
-    yEntry - 11,
-    72,
-    22
+  drawSeries(
+    combo.sslHigh,
+    up,
+    1.4
   );
 
-  ctx.fillStyle =
-    '#ffffff';
-
-  ctx.fillText(
-    sideLabel,
-    Math.max(
-      5,
-      plot - 149
-    ),
-    yEntry + 4
+  drawSeries(
+    combo.sslLow,
+    down,
+    1.4
   );
 
-  const levels = [
-    [
-      'SL',
-      plan.stop,
-      down
-    ],
-    [
-      'ENTRY',
-      plan.entry,
-      '#7f8794'
-    ],
-    [
-      'TP1',
-      plan.target1,
-      up
-    ],
-    [
-      'TP2',
-      plan.target2,
-      up
-    ],
-    [
-      'TP3',
-      plan.target3,
-      up
-    ]
-  ];
 
-  for (
-    const [
-      label,
-      value,
-      levelColor
-    ] of levels
+  if (
+    latest &&
+    latest.signal !==
+      'NO TRADE'
   ) {
 
-    if (
-      !Number.isFinite(
-        Number(value)
-      )
-    ) {
-      continue;
-    }
+    const plan =
+      latest.plan;
 
-    const py =
-      y(value);
+    const color =
+      latest.side === 1
+        ? up
+        : down;
 
-    if (
-      py < top ||
-      py > bottom
-    ) {
-      continue;
-    }
 
-    ctx.strokeStyle =
-      levelColor;
-
-    ctx.globalAlpha =
-      0.75;
-
-    ctx.setLineDash(
-      [6, 4]
-    );
-
-    ctx.beginPath();
-    ctx.moveTo(
+    const labelX =
       Math.max(
-        0,
-        plot - 250
-      ),
-      py
-    );
-    ctx.lineTo(
-      plot - 82,
-      py
-    );
-    ctx.stroke();
+        8,
+        plot - 160
+      );
 
-    ctx.setLineDash(
-      []
-    );
 
-    ctx.globalAlpha =
-      1;
+    const labelY =
+      plan &&
+      Number.isFinite(
+        Number(
+          plan.entry
+        )
+      )
+        ? Math.max(
+            top + 14,
+            Math.min(
+              bottom - 24,
+              y(
+                plan.entry
+              ) -
+              11
+            )
+          )
+        : top + 12;
+
 
     ctx.fillStyle =
-      levelColor;
+      color;
 
     ctx.fillRect(
-      plot - 80,
-      py - 9,
-      78,
-      18
+      labelX,
+      labelY,
+      74,
+      22
     );
+
 
     ctx.fillStyle =
       '#ffffff';
 
     ctx.font =
-      'bold 10px system-ui';
+      'bold 11px system-ui';
 
     ctx.fillText(
-      label +
-      ' ' +
-      fmt(value),
-      plot - 76,
-      py + 3
+      latest.signal,
+      labelX + 8,
+      labelY + 15
     );
+
+
+    if (plan) {
+
+      const levels = [
+        [
+          'SL',
+          plan.stop,
+          down
+        ],
+        [
+          'ENTRY',
+          plan.entry,
+          '#7f8794'
+        ],
+        [
+          'TP1',
+          plan.target1,
+          up
+        ],
+        [
+          'TP2',
+          plan.target2,
+          up
+        ],
+        [
+          'TP3',
+          plan.target3,
+          up
+        ]
+      ];
+
+
+      for (
+        const [
+          label,
+          value,
+          levelColor
+        ] of levels
+      ) {
+
+        if (
+          !Number.isFinite(
+            Number(value)
+          )
+        ) {
+          continue;
+        }
+
+        const py =
+          y(value);
+
+        if (
+          py < top ||
+          py > bottom
+        ) {
+          continue;
+        }
+
+
+        ctx.strokeStyle =
+          levelColor;
+
+        ctx.globalAlpha =
+          0.72;
+
+        ctx.setLineDash(
+          [6, 4]
+        );
+
+        ctx.beginPath();
+        ctx.moveTo(
+          Math.max(
+            0,
+            plot - 240
+          ),
+          py
+        );
+        ctx.lineTo(
+          plot - 82,
+          py
+        );
+        ctx.stroke();
+
+        ctx.setLineDash(
+          []
+        );
+
+        ctx.globalAlpha =
+          1;
+
+        ctx.fillStyle =
+          levelColor;
+
+        ctx.fillRect(
+          plot - 80,
+          py - 9,
+          78,
+          18
+        );
+
+        ctx.fillStyle =
+          '#ffffff';
+
+        ctx.font =
+          'bold 10px system-ui';
+
+        ctx.fillText(
+          label +
+          ' ' +
+          fmt(value),
+          plot - 76,
+          py + 3
+        );
+      }
+    }
   }
+
 
   ctx.restore();
 }
 
+
+function renderSSLQQEPanel() {
+
+  const combo =
+    state.sslQqe;
+
+  const latest =
+    combo?.latest;
+
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !== undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!latest) {
+
+    set(
+      '#ssl-qqe-signal',
+      'NO TRADE',
+      'muted'
+    );
+
+    set(
+      '#ssl-state',
+      'WARMING UP',
+      'muted'
+    );
+
+    set(
+      '#qqe-state',
+      'WARMING UP',
+      'muted'
+    );
+
+    return;
+  }
+
+
+  set(
+    '#ssl-qqe-signal',
+    latest.signal,
+    latest.signal.startsWith(
+      'LONG'
+    )
+      ? 'up'
+      : latest.signal.startsWith(
+          'SHORT'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#ssl-state',
+    latest.sslSide === 1
+      ? 'BULLISH'
+      : latest.sslSide === -1
+        ? 'BEARISH'
+        : 'NEUTRAL',
+    latest.sslSide === 1
+      ? 'up'
+      : latest.sslSide === -1
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#qqe-state',
+    latest.qqeSide === 1
+      ? 'BULLISH'
+      : latest.qqeSide === -1
+        ? 'BEARISH'
+        : 'NEUTRAL',
+    latest.qqeSide === 1
+      ? 'up'
+      : latest.qqeSide === -1
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#qqe-value',
+    Number.isFinite(
+      Number(
+        latest.qqeValue
+      )
+    )
+      ? Number(
+          latest.qqeValue
+        ).toFixed(
+          1
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ssl-qqe-score',
+    latest.score +
+    ' pts'
+  );
+
+
+  set(
+    '#ssl-qqe-reasons',
+    latest.reasons?.length
+      ? latest.reasons.join(
+          ' · '
+        )
+      : 'Waiting for SSL and QQE alignment'
+  );
+}
 
 function renderTradeFinalizer() {
 
