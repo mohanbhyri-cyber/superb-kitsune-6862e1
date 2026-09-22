@@ -12,6 +12,7 @@ import {
   candleConfluence
 } from './smrt-candle-scanner.js';
 import { finalizeTrade } from './smrt-trade-finalizer.js';
+import { scalpReversalSignal } from './smrt-scalp-reversal.js';
 import {
   analyseProSuite
 } from './pro-suite.js';
@@ -138,6 +139,8 @@ const state = {
   candleSetup: null,
 
   tradeFinalizer: null,
+
+  scalpReversal: null,
 
   proSuite: null,
 
@@ -1477,6 +1480,21 @@ function draw() {
     });
 
 
+  state.scalpReversal =
+    scalpReversalSignal({
+      edge:
+        state.niftyEdge,
+      marketMap:
+        state.marketMap,
+      candleSetup:
+        state.candleSetup,
+      finalizer:
+        state.tradeFinalizer,
+      mtf:
+        state.mtf
+    });
+
+
   refreshProSuite();
   }
 
@@ -2370,6 +2388,22 @@ function draw() {
 
 
   renderMarketMap(
+    ctx,
+    {
+      start,
+      end,
+      plot,
+      top,
+      bottom,
+      x,
+      y,
+      up,
+      down
+    }
+  );
+
+
+  renderScalpReversal(
     ctx,
     {
       start,
@@ -4337,6 +4371,10 @@ async function loadData() {
 
 
   state.calc =
+    null;
+
+
+  state.scalpReversal =
     null;
 
 
@@ -7357,6 +7395,205 @@ renderSignalAlerts();
 /* ======================================================
    PRO SCALPER
 ====================================================== */
+
+
+function renderScalpReversal(
+  ctx,
+  g
+) {
+
+  const s =
+    state.scalpReversal;
+
+  if (
+    !s ||
+    s.signal ===
+      'NO TRADE'
+  ) {
+    return;
+  }
+
+  const {
+    plot,
+    top,
+    bottom,
+    y,
+    up,
+    down
+  } = g;
+
+  const plan =
+    s.plan;
+
+  if (!plan) {
+    return;
+  }
+
+  const color =
+    s.side === 1
+      ? up
+      : down;
+
+  const sideLabel =
+    s.side === 1
+      ? s.signal
+      : s.signal;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(
+    0,
+    top,
+    plot,
+    bottom - top
+  );
+  ctx.clip();
+
+  ctx.font =
+    'bold 11px system-ui';
+
+  const yEntry =
+    y(
+      plan.entry
+    );
+
+  ctx.fillStyle =
+    color;
+
+  ctx.fillRect(
+    Math.max(
+      0,
+      plot - 155
+    ),
+    yEntry - 11,
+    72,
+    22
+  );
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.fillText(
+    sideLabel,
+    Math.max(
+      5,
+      plot - 149
+    ),
+    yEntry + 4
+  );
+
+  const levels = [
+    [
+      'SL',
+      plan.stop,
+      down
+    ],
+    [
+      'ENTRY',
+      plan.entry,
+      '#7f8794'
+    ],
+    [
+      'TP1',
+      plan.target1,
+      up
+    ],
+    [
+      'TP2',
+      plan.target2,
+      up
+    ],
+    [
+      'TP3',
+      plan.target3,
+      up
+    ]
+  ];
+
+  for (
+    const [
+      label,
+      value,
+      levelColor
+    ] of levels
+  ) {
+
+    if (
+      !Number.isFinite(
+        Number(value)
+      )
+    ) {
+      continue;
+    }
+
+    const py =
+      y(value);
+
+    if (
+      py < top ||
+      py > bottom
+    ) {
+      continue;
+    }
+
+    ctx.strokeStyle =
+      levelColor;
+
+    ctx.globalAlpha =
+      0.75;
+
+    ctx.setLineDash(
+      [6, 4]
+    );
+
+    ctx.beginPath();
+    ctx.moveTo(
+      Math.max(
+        0,
+        plot - 250
+      ),
+      py
+    );
+    ctx.lineTo(
+      plot - 82,
+      py
+    );
+    ctx.stroke();
+
+    ctx.setLineDash(
+      []
+    );
+
+    ctx.globalAlpha =
+      1;
+
+    ctx.fillStyle =
+      levelColor;
+
+    ctx.fillRect(
+      plot - 80,
+      py - 9,
+      78,
+      18
+    );
+
+    ctx.fillStyle =
+      '#ffffff';
+
+    ctx.font =
+      'bold 10px system-ui';
+
+    ctx.fillText(
+      label +
+      ' ' +
+      fmt(value),
+      plot - 76,
+      py + 3
+    );
+  }
+
+  ctx.restore();
+}
 
 
 function renderTradeFinalizer() {
