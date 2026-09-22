@@ -1,4 +1,5 @@
 import { momentumSignals } from './momentum.js';
+import { trendIndicators } from './trend-indicators.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
@@ -112,6 +113,8 @@ const state = {
 
   calc: null,
 
+  trend: null,
+
   futuresVWAP: null,
 
   futuresVWAPUpdated: 0,
@@ -156,6 +159,8 @@ const state = {
   overlays: new Set([
     'Momentum',
     'Stride Signals',
+    'Supertrend (10, 3)',
+    'ADX/DMI (14)',
     'EMA 9',
     'EMA 21',
     'EMA 50',
@@ -170,6 +175,8 @@ const state = {
 const colors = {
   'Momentum': '#58c8dc',
   'Stride Signals': '#72e4bd',
+  'Supertrend (10, 3)': '#56d6a0',
+  'ADX/DMI (14)': '#c5a0ed',
   'EMA 9': '#e6ba6f',
   'EMA 21': '#7fa8f5',
   'EMA 50': '#c098e8',
@@ -817,6 +824,8 @@ function draw() {
     indicators(
       state.data
     );
+
+  state.trend = trendIndicators(state.data);
 
 
   state.scalps =
@@ -1488,6 +1497,15 @@ function draw() {
     }
   }
 
+
+  if (state.overlays.has('Supertrend (10, 3)') && state.trend) {
+    const upLine = state.trend.supertrend.map((v, i) =>
+      state.trend.direction[i] === 1 ? v : null);
+    const downLine = state.trend.supertrend.map((v, i) =>
+      state.trend.direction[i] === -1 ? v : null);
+    line(upLine, up);
+    line(downLine, down);
+  }
 
   /*
     NIFTY index candles often do not carry tradable volume.
@@ -2576,12 +2594,23 @@ function summary() {
     e + m + rs;
 
 
-  const label =
-    score >= 2
-      ? 'Buy'
-      : score <= -2
-        ? 'Sell'
-        : 'Neutral';
+  const candidate =
+    score >= 2 ? 'Buy' : score <= -2 ? 'Sell' : 'Neutral';
+  // Use the latest closed Upstox candle for confirmation.
+  const closed = Math.max(0, state.data.length - 2);
+  const trend = state.trend;
+  const stOn = state.overlays.has('Supertrend (10, 3)');
+  const dmiOn = state.overlays.has('ADX/DMI (14)');
+  const stDirection = trend?.direction[closed] || 0;
+  const adxValue = trend?.adx[closed];
+  const plusValue = trend?.plusDI[closed];
+  const minusValue = trend?.minusDI[closed];
+  const side = candidate === 'Buy' ? 1 : candidate === 'Sell' ? -1 : 0;
+  const stPass = !stOn || (side !== 0 && stDirection === side);
+  const dmiPass = !dmiOn || (Number.isFinite(adxValue) &&
+    adxValue >= 20 && (side === 1 ? plusValue > minusValue :
+      side === -1 ? minusValue > plusValue : false));
+  const label = side && stPass && dmiPass ? candidate : 'Neutral';
 
 
   if (
@@ -2619,8 +2648,9 @@ function summary() {
   ) {
 
     $('#signal-summary').textContent =
-      Math.abs(score) +
-      ' of 3 net directional signals';
+      Math.abs(score) + ' of 3 net directional signals' +
+      (candidate === 'Neutral' ? '' : label === 'Neutral'
+        ? ' · awaiting trend confirmation' : ' · confirmed');
   }
 
 
@@ -2682,11 +2712,22 @@ function summary() {
         </b>
 
       </div>
+      <div class="reason">
+        <span>Supertrend (10, 3) ${stOn ? '· filter on' : '· filter off'}</span>
+        <b>${stDirection === 1 ? 'Bullish' : stDirection === -1 ? 'Bearish' : 'Warming up'}</b>
+      </div>
+      <div class="reason">
+        <span>ADX/DMI (14) ${dmiOn ? '· filter on' : '· filter off'}</span>
+        <b>${Number.isFinite(adxValue)
+          ? 'ADX ' + adxValue.toFixed(1) + ' · +DI ' + plusValue.toFixed(1) +
+            ' / -DI ' + minusValue.toFixed(1)
+          : 'Warming up'}</b>
+      </div>
     `;
   }
 
 
-  $$('.signal-meter i')
+  $('.signal-meter i')
     .forEach(
       (
         el,
@@ -3442,6 +3483,7 @@ if (
 
 
       draw();
+      summary();
     };
 }
 
