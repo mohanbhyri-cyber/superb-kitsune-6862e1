@@ -1422,6 +1422,112 @@
   </section>
 
 
+  <section
+    class="panel"
+    id="trade-finalizer-panel"
+    style="margin-top:16px"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT Trade Finalizer
+      </h2>
+
+      <span class="muted">
+        NIFTY 50 · closed-candle decision support
+      </span>
+    </div>
+
+    <div class="pro-suite-grid">
+
+      <div class="pro-suite-card">
+        <small>Final Setup</small>
+
+        <strong
+          id="finalizer-state"
+          class="muted"
+        >
+          NO TRADE
+        </strong>
+
+        <span id="finalizer-score">
+          0 / 100
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Directional Evidence</small>
+
+        <strong id="finalizer-bull">
+          Bull 0
+        </strong>
+
+        <span id="finalizer-bear">
+          Bear 0
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Invalidation</small>
+
+        <strong
+          id="finalizer-invalidation"
+          style="font-size:13px"
+        >
+          Waiting for setup
+        </strong>
+      </div>
+
+    </div>
+
+    <div
+      class="pro-backtest-grid"
+      style="margin-top:10px"
+    >
+
+      <div>
+        <small>Entry</small>
+        <strong id="finalizer-entry">—</strong>
+      </div>
+
+      <div>
+        <small>Stop Loss</small>
+        <strong id="finalizer-stop">—</strong>
+      </div>
+
+      <div>
+        <small>TP1</small>
+        <strong id="finalizer-tp1">—</strong>
+      </div>
+
+      <div>
+        <small>TP2</small>
+        <strong id="finalizer-tp2">—</strong>
+      </div>
+
+      <div>
+        <small>TP3</small>
+        <strong id="finalizer-tp3">—</strong>
+      </div>
+
+    </div>
+
+    <p
+      id="finalizer-reasons"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Waiting for confirmed closed-candle confluence
+    </p>
+
+    <p class="disclaimer">
+      Informational decision-support only. The finalizer does not place
+      orders and no accuracy or profit level is guaranteed.
+    </p>
+
+  </section>
+
+
   <div class="page-footer">
 
     <span>
