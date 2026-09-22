@@ -179,6 +179,69 @@
 
         <div class="control-right">
 
+          <div class="replay-controls">
+
+            <button
+              id="replay-toggle"
+              title="Start or exit historical candle replay"
+            >
+              ↶ Replay
+            </button>
+
+            <button
+              id="replay-play"
+              disabled
+              title="Play or pause replay"
+            >
+              ▶ Play
+            </button>
+
+            <button
+              id="replay-step"
+              disabled
+              title="Advance one candle"
+            >
+              +1 Candle
+            </button>
+
+            <select
+              id="replay-speed"
+              title="Replay speed"
+            >
+              <option value="1200">
+                0.5×
+              </option>
+              <option
+                value="700"
+                selected
+              >
+                1×
+              </option>
+              <option value="350">
+                2×
+              </option>
+              <option value="180">
+                4×
+              </option>
+            </select>
+
+            <button
+              id="replay-live"
+              disabled
+              title="Return to live market"
+            >
+              Live
+            </button>
+
+            <span
+              id="replay-status"
+              class="replay-status live"
+            >
+              LIVE
+            </span>
+
+          </div>
+
           <button id="indicators-toggle">
             ≋ Indicators
           </button>
@@ -193,6 +256,59 @@
         </div>
 
       </div>
+
+
+      <section
+        id="mtf-confirmation"
+        class="mtf-confirmation"
+      >
+
+        <div class="mtf-title">
+
+          <strong>
+            Multi-Timeframe Confirmation
+          </strong>
+
+          <span class="muted">
+            5m + 15m + 1h
+          </span>
+
+        </div>
+
+
+        <div class="mtf-grid">
+
+          <div>
+            <small>5m</small>
+            <strong id="mtf-5m" class="muted">
+              LOADING…
+            </strong>
+          </div>
+
+          <div>
+            <small>15m</small>
+            <strong id="mtf-15m" class="muted">
+              LOADING…
+            </strong>
+          </div>
+
+          <div>
+            <small>1h</small>
+            <strong id="mtf-1h" class="muted">
+              LOADING…
+            </strong>
+          </div>
+
+          <div class="mtf-overall">
+            <small>Overall</small>
+            <strong id="mtf-overall" class="muted">
+              NO TRADE
+            </strong>
+          </div>
+
+        </div>
+
+      </section>
 
 
       <div
