@@ -168,7 +168,7 @@ async function liveQuote(url, token) {
   }
 
   const endpoint =
-    "https://api.upstox.com/v2/market-quote/ltp" +
+    "https://api.upstox.com/v2/market-quote/quotes" +
     "?instrument_key=" +
     encodeURIComponent(instrumentKey);
 
@@ -189,12 +189,51 @@ async function liveQuote(url, token) {
       });
     }
 
+    const netChange =
+      Number(quote?.net_change);
+
+    const previousClose =
+      Number.isFinite(netChange)
+        ? price - netChange
+        : null;
+
+    const changePercent =
+      Number.isFinite(netChange) &&
+      Number.isFinite(previousClose) &&
+      previousClose !== 0
+        ? (netChange / previousClose) * 100
+        : null;
+
     return json({
       live: true,
       source: "UPSTOX",
       symbol,
       instrumentKey,
       price,
+      netChange:
+        Number.isFinite(netChange)
+          ? netChange
+          : null,
+      previousClose:
+        Number.isFinite(previousClose)
+          ? previousClose
+          : null,
+      changePercent:
+        Number.isFinite(changePercent)
+          ? changePercent
+          : null,
+      sessionOpen:
+        Number.isFinite(
+          Number(quote?.ohlc?.open)
+        )
+          ? Number(quote.ohlc.open)
+          : null,
+      volume:
+        Number.isFinite(
+          Number(quote?.volume)
+        )
+          ? Number(quote.volume)
+          : 0,
       time: Math.floor(Date.now() / 1000),
       timestamp:
         quote?.timestamp ?? Date.now(),
