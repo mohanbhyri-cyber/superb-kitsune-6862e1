@@ -10,6 +10,10 @@ import {
 } from './smrt-nifty-edge.js';
 import { analyseMarketMap } from './smrt-market-map.js';
 import {
+  scanCandles,
+  candleConfluence
+} from './smrt-candle-scanner.js';
+import {
   analyseProSuite,
   backtestSmartSignals
 } from './pro-suite.js';
@@ -130,6 +134,10 @@ const state = {
   niftyEdgeBacktest: null,
 
   marketMap: null,
+
+  candleScanner: null,
+
+  candleSetup: null,
 
   proSuite: null,
 
@@ -1352,6 +1360,21 @@ function draw() {
         futuresVWAP:
           state.futuresVWAP
       }
+    );
+
+
+  state.candleScanner =
+    scanCandles(
+      state.data
+    );
+
+
+  state.candleSetup =
+    candleConfluence(
+      state.candleScanner,
+      state.marketMap,
+      state.niftyEdge,
+      state.mtf
     );
 
 
@@ -3341,6 +3364,8 @@ function summary() {
 
   updateMarketMapPanel();
 
+  renderCandleScanner();
+
   renderWatch();
 }
 
@@ -4203,6 +4228,14 @@ async function loadData() {
 
 
   state.calc =
+    null;
+
+
+  state.candleScanner =
+    null;
+
+
+  state.candleSetup =
     null;
 
 
@@ -7196,6 +7229,133 @@ renderSignalAlerts();
 /* ======================================================
    PRO SCALPER
 ====================================================== */
+
+
+function renderCandleScanner() {
+
+  const scanner =
+    state.candleScanner;
+
+  const setup =
+    state.candleSetup;
+
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  const latest =
+    scanner?.latest;
+
+
+  const strongest =
+    latest
+      ?.patterns
+      ?.[0];
+
+
+  set(
+    '#candle-pattern',
+    strongest?.name ??
+    'NONE'
+  );
+
+
+  set(
+    '#candle-pattern-side',
+    strongest?.side === 1
+      ? 'BULLISH'
+      : strongest?.side === -1
+        ? 'BEARISH'
+        : strongest
+          ? 'NEUTRAL'
+          : '—',
+    strongest?.side === 1
+      ? 'up'
+      : strongest?.side === -1
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#candle-pattern-strength',
+    strongest
+      ? strongest.strength +
+        ' / 4'
+      : '0 / 4'
+  );
+
+
+  set(
+    '#candle-trade-state',
+    setup?.action ??
+    'NO TRADE',
+    setup?.action?.startsWith(
+      'BUY'
+    )
+      ? 'up'
+      : setup?.action?.startsWith(
+          'SELL'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#candle-confluence-score',
+    Number.isFinite(
+      Number(
+        setup?.score
+      )
+    )
+      ? setup.score +
+        ' pts'
+      : '0 pts'
+  );
+
+
+  set(
+    '#candle-pattern-list',
+    latest?.patterns?.length
+      ? latest.patterns
+          .slice(
+            0,
+            4
+          )
+          .map(
+            p =>
+              p.name
+          )
+          .join(
+            ' · '
+          )
+      : 'No confirmed closed-candle pattern'
+  );
+}
 
 
 function renderMarketMap(
