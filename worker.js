@@ -719,15 +719,29 @@ export default {
       new URL(request.url);
 
     const token =
-      env.UPSTOX_ANALYTICS_TOKEN;
+      env.UPSTOX_ANALYTICS_TOKEN ||
+      env.UPSTOX_ACCESS_TOKEN ||
+      env.UPSTOX_TOKEN;
+
+    if (
+      url.pathname === "/api/health"
+    ) {
+      return json({
+        live: Boolean(token),
+        source: "UPSTOX",
+        tokenConfigured: Boolean(token),
+        service: "Stride Trading Desk",
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     if (!token) {
       return json({
         live: false,
         source: "UPSTOX",
         reason:
-          "UPSTOX_ANALYTICS_TOKEN is not configured.",
-      });
+          "Upstox access token is not configured. Add the Cloudflare secret UPSTOX_ANALYTICS_TOKEN.",
+      }, 503);
     }
 
     if (
