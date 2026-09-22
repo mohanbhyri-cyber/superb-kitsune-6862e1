@@ -2727,7 +2727,7 @@ function summary() {
   }
 
 
-  $('.signal-meter i')
+  $$('.signal-meter i')
     .forEach(
       (
         el,
