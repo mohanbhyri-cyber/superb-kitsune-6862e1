@@ -7766,6 +7766,17 @@ function renderGainzSSLPanel() {
       'muted'
     );
 
+    set(
+      '#gainz-qqe-state',
+      'WARMING UP',
+      'muted'
+    );
+
+    set(
+      '#gainz-qqe-value',
+      '—'
+    );
+
     return;
   }
 
@@ -7812,6 +7823,37 @@ function renderGainzSSLPanel() {
       : latest.sslSide === -1
         ? 'down'
         : 'muted'
+  );
+
+
+  set(
+    '#gainz-qqe-state',
+    latest.qqeSide === 1
+      ? 'BULLISH'
+      : latest.qqeSide === -1
+        ? 'BEARISH'
+        : 'NEUTRAL',
+    latest.qqeSide === 1
+      ? 'up'
+      : latest.qqeSide === -1
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#gainz-qqe-value',
+    Number.isFinite(
+      Number(
+        latest.qqeValue
+      )
+    )
+      ? Number(
+          latest.qqeValue
+        ).toFixed(
+          1
+        )
+      : '—'
   );
 
 
