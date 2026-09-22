@@ -196,7 +196,25 @@ const state = {
     'S/R'
   ]),
 
-  hover: null
+  hover: null,
+
+  replay: {
+    active: false,
+    playing: false,
+    source: [],
+    index: 0,
+    timer: null,
+    speed: 700
+  },
+
+  mtf: {
+    loading: false,
+    updated: 0,
+    '5m': null,
+    '15m': null,
+    '1h': null,
+    overall: 'NO TRADE'
+  }
 };
 
 function marketChatSnapshot() {
@@ -3328,6 +3346,841 @@ function summary() {
 
 
 /* ======================================================
+   REPLAY + MULTI-TIMEFRAME CONFIRMATION
+====================================================== */
+
+
+function updateReplayControls() {
+
+  const r =
+    state.replay;
+
+
+  if (
+    $('#replay-toggle')
+  ) {
+
+    $('#replay-toggle').textContent =
+      r.active
+        ? '● Replay'
+        : '↶ Replay';
+
+
+    $('#replay-toggle').classList.toggle(
+      'active',
+      r.active
+    );
+  }
+
+
+  if (
+    $('#replay-play')
+  ) {
+
+    $('#replay-play').textContent =
+      r.playing
+        ? '❚❚ Pause'
+        : '▶ Play';
+
+
+    $('#replay-play').disabled =
+      !r.active;
+  }
+
+
+  if (
+    $('#replay-step')
+  ) {
+
+    $('#replay-step').disabled =
+      !r.active;
+  }
+
+
+  if (
+    $('#replay-live')
+  ) {
+
+    $('#replay-live').disabled =
+      !r.active;
+  }
+
+
+  if (
+    $('#replay-status')
+  ) {
+
+    if (!r.active) {
+
+      $('#replay-status').textContent =
+        'LIVE';
+
+      $('#replay-status').className =
+        'replay-status live';
+
+    } else {
+
+      const total =
+        r.source.length;
+
+      const shown =
+        Math.min(
+          total,
+          r.index + 1
+        );
+
+      $('#replay-status').textContent =
+        'REPLAY ' +
+        shown +
+        ' / ' +
+        total;
+
+      $('#replay-status').className =
+        'replay-status replay';
+    }
+  }
+}
+
+
+function clearReplayTimer() {
+
+  if (
+    state.replay.timer
+  ) {
+
+    clearInterval(
+      state.replay.timer
+    );
+
+    state.replay.timer =
+      null;
+  }
+
+
+  state.replay.playing =
+    false;
+}
+
+
+function renderReplayFrame() {
+
+  const r =
+    state.replay;
+
+
+  if (
+    !r.active ||
+    !r.source.length
+  ) {
+    return;
+  }
+
+
+  const end =
+    Math.max(
+      1,
+      Math.min(
+        r.source.length,
+        r.index + 1
+      )
+    );
+
+
+  state.data =
+    r.source.slice(
+      0,
+      end
+    );
+
+
+  state.quotes[
+    state.symbol
+  ] =
+    state.data.at(-1)
+      ?.close ??
+    null;
+
+
+  state.offset =
+    0;
+
+  state.hover =
+    null;
+
+  lastAnalysisKey =
+    null;
+
+
+  draw();
+
+  summary();
+
+  updateReplayControls();
+
+
+  if (
+    r.index >=
+    r.source.length - 1
+  ) {
+
+    clearReplayTimer();
+
+    updateReplayControls();
+
+    toast(
+      'Replay complete'
+    );
+  }
+}
+
+
+function startReplay() {
+
+  if (
+    state.replay.active
+  ) {
+    return;
+  }
+
+
+  if (
+    !Array.isArray(
+      state.data
+    ) ||
+    state.data.length < 35
+  ) {
+
+    toast(
+      'Not enough candles to start replay.'
+    );
+
+    return;
+  }
+
+
+  unsubscribe?.();
+
+  unsubscribe =
+    null;
+
+
+  const source =
+    state.data.map(
+      candle => ({
+        ...candle
+      })
+    );
+
+
+  const warmup =
+    Math.min(
+      source.length - 2,
+      Math.max(
+        30,
+        Math.min(
+          60,
+          source.length - 20
+        )
+      )
+    );
+
+
+  state.replay.active =
+    true;
+
+  state.replay.playing =
+    false;
+
+  state.replay.source =
+    source;
+
+  state.replay.index =
+    warmup;
+
+
+  setFeedStatus(
+    'REPLAY',
+    '● REPLAY MODE · historical candles'
+  );
+
+
+  renderReplayFrame();
+
+  toast(
+    'Replay mode started'
+  );
+}
+
+
+function stepReplay() {
+
+  const r =
+    state.replay;
+
+
+  if (
+    !r.active
+  ) {
+
+    startReplay();
+
+    return;
+  }
+
+
+  clearReplayTimer();
+
+
+  if (
+    r.index <
+    r.source.length - 1
+  ) {
+
+    r.index +=
+      1;
+
+    renderReplayFrame();
+  }
+}
+
+
+function toggleReplayPlay() {
+
+  const r =
+    state.replay;
+
+
+  if (
+    !r.active
+  ) {
+
+    startReplay();
+  }
+
+
+  if (
+    state.replay.playing
+  ) {
+
+    clearReplayTimer();
+
+    updateReplayControls();
+
+    return;
+  }
+
+
+  state.replay.playing =
+    true;
+
+
+  state.replay.timer =
+    setInterval(
+      () => {
+
+        if (
+          !state.replay.active
+        ) {
+
+          clearReplayTimer();
+
+          return;
+        }
+
+
+        if (
+          state.replay.index >=
+          state.replay.source.length - 1
+        ) {
+
+          clearReplayTimer();
+
+          updateReplayControls();
+
+          return;
+        }
+
+
+        state.replay.index +=
+          1;
+
+
+        renderReplayFrame();
+
+      },
+      state.replay.speed
+    );
+
+
+  updateReplayControls();
+}
+
+
+function exitReplay(
+  reloadLive = true
+) {
+
+  clearReplayTimer();
+
+
+  state.replay.active =
+    false;
+
+  state.replay.source =
+    [];
+
+  state.replay.index =
+    0;
+
+
+  updateReplayControls();
+
+
+  if (
+    reloadLive
+  ) {
+
+    loadData();
+
+  } else {
+
+    setFeedStatus(
+      'LOADING',
+      'Returning to live data…'
+    );
+  }
+}
+
+
+function timeframeTrend(
+  candles
+) {
+
+  if (
+    !Array.isArray(
+      candles
+    ) ||
+    candles.length < 30
+  ) {
+
+    return {
+      state: 'WARMING UP',
+      side: 0
+    };
+  }
+
+
+  const calc =
+    indicators(
+      candles
+    );
+
+  const tr =
+    trendIndicators(
+      candles
+    );
+
+
+  const closed =
+    Math.max(
+      0,
+      candles.length - 2
+    );
+
+
+  const e9 =
+    calc.e9?.[
+      closed
+    ];
+
+  const e21 =
+    calc.e21?.[
+      closed
+    ];
+
+  const e50 =
+    calc.e50?.[
+      closed
+    ];
+
+  const rsi =
+    calc.rsi?.[
+      closed
+    ];
+
+  const st =
+    tr.direction?.[
+      closed
+    ] ||
+    0;
+
+  const adx =
+    tr.adx?.[
+      closed
+    ];
+
+  const plus =
+    tr.plusDI?.[
+      closed
+    ];
+
+  const minus =
+    tr.minusDI?.[
+      closed
+    ];
+
+
+  if (
+    ![
+      e9,
+      e21,
+      e50,
+      rsi,
+      adx,
+      plus,
+      minus
+    ].every(
+      Number.isFinite
+    )
+  ) {
+
+    return {
+      state: 'WARMING UP',
+      side: 0
+    };
+  }
+
+
+  let bull =
+    0;
+
+  let bear =
+    0;
+
+
+  if (
+    e9 >
+    e21
+  ) {
+    bull += 1;
+  } else if (
+    e9 <
+    e21
+  ) {
+    bear += 1;
+  }
+
+
+  if (
+    e21 >
+    e50
+  ) {
+    bull += 1;
+  } else if (
+    e21 <
+    e50
+  ) {
+    bear += 1;
+  }
+
+
+  if (
+    st === 1
+  ) {
+    bull += 1;
+  } else if (
+    st === -1
+  ) {
+    bear += 1;
+  }
+
+
+  if (
+    adx >= 20 &&
+    plus >
+    minus
+  ) {
+    bull += 1;
+  } else if (
+    adx >= 20 &&
+    minus >
+    plus
+  ) {
+    bear += 1;
+  }
+
+
+  if (
+    rsi >= 52
+  ) {
+    bull += 1;
+  } else if (
+    rsi <= 48
+  ) {
+    bear += 1;
+  }
+
+
+  if (
+    bull >= 4
+  ) {
+
+    return {
+      state:
+        adx >= 25
+          ? 'STRONG BULLISH'
+          : 'BULLISH',
+      side: 1
+    };
+  }
+
+
+  if (
+    bear >= 4
+  ) {
+
+    return {
+      state:
+        adx >= 25
+          ? 'STRONG BEARISH'
+          : 'BEARISH',
+      side: -1
+    };
+  }
+
+
+  return {
+    state: 'RANGE / MIXED',
+    side: 0
+  };
+}
+
+
+function renderMTF() {
+
+  const map = [
+    [
+      '5m',
+      '#mtf-5m'
+    ],
+    [
+      '15m',
+      '#mtf-15m'
+    ],
+    [
+      '1h',
+      '#mtf-1h'
+    ]
+  ];
+
+
+  for (
+    const [
+      key,
+      selector
+    ] of map
+  ) {
+
+    const el =
+      $(selector);
+
+    const row =
+      state.mtf[
+        key
+      ];
+
+
+    if (!el) {
+      continue;
+    }
+
+
+    el.textContent =
+      row?.state ??
+      (
+        state.mtf.loading
+          ? 'LOADING…'
+          : '—'
+      );
+
+
+    el.className =
+      row?.side === 1
+        ? 'up'
+        : row?.side === -1
+          ? 'down'
+          : 'muted';
+  }
+
+
+  const overall =
+    $('#mtf-overall');
+
+
+  if (
+    overall
+  ) {
+
+    overall.textContent =
+      state.mtf.overall;
+
+
+    overall.className =
+      state.mtf.overall.includes(
+        'BUY'
+      )
+        ? 'up'
+        : state.mtf.overall.includes(
+            'SELL'
+          )
+          ? 'down'
+          : 'muted';
+  }
+}
+
+
+async function refreshMTF() {
+
+  if (
+    state.replay.active ||
+    state.mtf.loading
+  ) {
+    return;
+  }
+
+
+  state.mtf.loading =
+    true;
+
+  renderMTF();
+
+
+  try {
+
+    const [
+      m5,
+      m15,
+      h1
+    ] =
+      await Promise.all([
+        state.tf === '5m'
+          ? Promise.resolve(
+              state.data
+            )
+          : market.history(
+              state.symbol,
+              '5m'
+            ),
+
+        state.tf === '15m'
+          ? Promise.resolve(
+              state.data
+            )
+          : market.history(
+              state.symbol,
+              '15m'
+            ),
+
+        market.history(
+          state.symbol,
+          '1h'
+        )
+      ]);
+
+
+    state.mtf['5m'] =
+      timeframeTrend(
+        m5
+      );
+
+    state.mtf['15m'] =
+      timeframeTrend(
+        m15
+      );
+
+    state.mtf['1h'] =
+      timeframeTrend(
+        h1
+      );
+
+
+    const edge =
+      state.niftyEdge
+        ?.latestActionable;
+
+    const signalSide =
+      edge?.side ??
+      0;
+
+    const s5 =
+      state.mtf['5m']
+        ?.side ??
+      0;
+
+    const s15 =
+      state.mtf['15m']
+        ?.side ??
+      0;
+
+    const s1h =
+      state.mtf['1h']
+        ?.side ??
+      0;
+
+
+    if (
+      signalSide === 1 &&
+      s5 === 1 &&
+      s15 === 1 &&
+      s1h === 1
+    ) {
+
+      state.mtf.overall =
+        'HIGH-CONFIDENCE BUY+';
+
+    } else if (
+      signalSide === -1 &&
+      s5 === -1 &&
+      s15 === -1 &&
+      s1h === -1
+    ) {
+
+      state.mtf.overall =
+        'HIGH-CONFIDENCE SELL+';
+
+    } else {
+
+      state.mtf.overall =
+        'NO TRADE';
+    }
+
+
+    state.mtf.updated =
+      Date.now();
+
+  } catch (
+    error
+  ) {
+
+    console.warn(
+      'Multi-timeframe confirmation unavailable:',
+      error
+    );
+
+    state.mtf.overall =
+      'NO TRADE';
+
+  } finally {
+
+    state.mtf.loading =
+      false;
+
+    renderMTF();
+  }
+}
+
+
+/* ======================================================
    LIVE UPSTOX DATA
 ====================================================== */
 
@@ -3538,6 +4391,11 @@ async function loadData() {
 
     setFeedStatus(
       'LIVE'
+    );
+
+
+    refreshMTF().catch(
+      () => {}
     );
 
 
@@ -3997,6 +4855,16 @@ $$('[data-tf]')
           }
 
 
+          if (
+            state.replay.active
+          ) {
+
+            exitReplay(
+              false
+            );
+          }
+
+
           state.tf =
             tf;
 
@@ -4019,6 +4887,110 @@ $$('[data-tf]')
         };
     }
   );
+
+
+/* ======================================================
+   REPLAY CONTROLS
+====================================================== */
+
+
+if (
+  $('#replay-toggle')
+) {
+
+  $('#replay-toggle').onclick =
+    () => {
+
+      if (
+        state.replay.active
+      ) {
+
+        exitReplay(
+          true
+        );
+
+      } else {
+
+        startReplay();
+      }
+    };
+}
+
+
+if (
+  $('#replay-play')
+) {
+
+  $('#replay-play').onclick =
+    () => {
+
+      toggleReplayPlay();
+    };
+}
+
+
+if (
+  $('#replay-step')
+) {
+
+  $('#replay-step').onclick =
+    () => {
+
+      stepReplay();
+    };
+}
+
+
+if (
+  $('#replay-live')
+) {
+
+  $('#replay-live').onclick =
+    () => {
+
+      exitReplay(
+        true
+      );
+    };
+}
+
+
+if (
+  $('#replay-speed')
+) {
+
+  $('#replay-speed').onchange =
+    event => {
+
+      const value =
+        Number(
+          event.target.value
+        );
+
+
+      state.replay.speed =
+        Number.isFinite(
+          value
+        )
+          ? value
+          : 700;
+
+
+      if (
+        state.replay.playing
+      ) {
+
+        clearReplayTimer();
+
+        toggleReplayPlay();
+      }
+    };
+}
+
+
+updateReplayControls();
+
+renderMTF();
 
 
 /* ======================================================
