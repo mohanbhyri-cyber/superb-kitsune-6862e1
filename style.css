@@ -117,3 +117,81 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* =========================================================
+   ANALYSIS PAGE LAYOUT
+   Desktop: left/right panels
+   Mobile/tablet: stacked
+========================================================= */
+
+.analysis-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.analysis-layout-grid > .panel {
+  margin-top: 0 !important;
+  min-width: 0;
+  height: 100%;
+}
+
+#market-map-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#candle-scanner-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#trade-finalizer-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+#gainz-ssl-panel {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.analysis-layout-grid .panel-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.analysis-layout-grid .pro-suite-grid,
+.analysis-layout-grid .pro-backtest-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 1500px) {
+  main {
+    max-width: 1800px;
+  }
+}
+
+@media (max-width: 1050px) {
+  .analysis-layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #market-map-panel,
+  #candle-scanner-panel,
+  #trade-finalizer-panel,
+  #gainz-ssl-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .analysis-layout-grid .pro-suite-grid,
+  .analysis-layout-grid .pro-backtest-grid {
+    grid-template-columns: 1fr;
+  }
+}
