@@ -5,6 +5,10 @@ import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
 import { setupMarketChat } from './market-chat.js';
 import {
+  analyseNiftyEdge,
+  backtestNiftyEdge
+} from './smrt-nifty-edge.js';
+import {
   analyseProSuite,
   backtestSmartSignals
 } from './pro-suite.js';
@@ -119,6 +123,10 @@ const state = {
   calc: null,
 
   trend: null,
+
+  niftyEdge: null,
+
+  niftyEdgeBacktest: null,
 
   proSuite: null,
 
@@ -898,16 +906,43 @@ function refreshProSuite() {
 
 function renderProSuiteSummary() {
 
+  const edgeLatest =
+    state.niftyEdge
+      ?.latest;
+
+  const edgeActionable =
+    state.niftyEdge
+      ?.latestActionable;
+
   const smart =
-    state.smartSignal;
+    edgeLatest
+      ? {
+          signal:
+            edgeLatest.signal,
+          strength:
+            edgeLatest.strength,
+          confluence:
+            edgeLatest.score,
+          marketState:
+            edgeLatest.structure
+        }
+      : state.smartSignal;
 
   const plan =
+    edgeActionable
+      ?.plan ??
     state.smartPlan;
 
   const structure =
-    state.smartStructure;
+    edgeLatest
+      ? {
+          event:
+            edgeLatest.structure
+        }
+      : state.smartStructure;
 
   const backtest =
+    state.niftyEdgeBacktest ??
     state.proBacktest;
 
 
@@ -1269,6 +1304,23 @@ function draw() {
           state.signalSensitivity
         ]
       }
+    );
+
+
+  state.niftyEdge =
+    analyseNiftyEdge(
+      state.data,
+      {
+        futuresVWAP:
+          state.futuresVWAP
+      }
+    );
+
+
+  state.niftyEdgeBacktest =
+    backtestNiftyEdge(
+      state.data,
+      state.niftyEdge
     );
 
 
@@ -2133,6 +2185,22 @@ function draw() {
 
 
   renderScalper(
+    ctx,
+    {
+      start,
+      end,
+      plot,
+      top,
+      bottom,
+      x,
+      y,
+      up,
+      down
+    }
+  );
+
+
+  renderNiftyEdge(
     ctx,
     {
       start,
@@ -3251,6 +3319,14 @@ async function loadData() {
 
 
   state.calc =
+    null;
+
+
+  state.niftyEdge =
+    null;
+
+
+  state.niftyEdgeBacktest =
     null;
 
 
@@ -6113,6 +6189,273 @@ renderSignalAlerts();
 /* ======================================================
    PRO SCALPER
 ====================================================== */
+
+
+function renderNiftyEdge(
+  ctx,
+  g
+) {
+
+  const analysis =
+    state.niftyEdge;
+
+  if (!analysis) {
+    return;
+  }
+
+  const latest =
+    analysis.latestActionable;
+
+  if (!latest) {
+    return;
+  }
+
+  const {
+    start,
+    end,
+    plot,
+    top,
+    bottom,
+    x,
+    y,
+    up,
+    down
+  } = g;
+
+  const rows =
+    analysis.rows
+      .slice(
+        start,
+        end
+      );
+
+  ctx.save();
+
+  ctx.beginPath();
+  ctx.rect(
+    0,
+    top,
+    plot,
+    bottom - top
+  );
+  ctx.clip();
+
+  ctx.font =
+    'bold 11px system-ui';
+
+  rows.forEach(
+    (
+      row,
+      i
+    ) => {
+
+      if (
+        !row ||
+        ![
+          'BUY+',
+          'SELL+'
+        ].includes(
+          row.signal
+        )
+      ) {
+        return;
+      }
+
+      const candle =
+        state.data[
+          start + i
+        ];
+
+      if (!candle) {
+        return;
+      }
+
+      const buy =
+        row.side === 1;
+
+      const label =
+        row.signal;
+
+      const width =
+        48;
+
+      const height =
+        21;
+
+      const px =
+        Math.max(
+          0,
+          Math.min(
+            plot - width,
+            x(i) -
+            width / 2
+          )
+        );
+
+      const py =
+        Math.max(
+          top + 3,
+          Math.min(
+            bottom -
+            height -
+            2,
+            y(
+              buy
+                ? candle.low
+                : candle.high
+            ) +
+            (
+              buy
+                ? 20
+                : -31
+            )
+          )
+        );
+
+      ctx.fillStyle =
+        buy
+          ? up
+          : down;
+
+      ctx.fillRect(
+        px,
+        py,
+        width,
+        height
+      );
+
+      ctx.fillStyle =
+        getComputedStyle(
+          document.body
+        ).getPropertyValue(
+          '--bg'
+        );
+
+      ctx.fillText(
+        label,
+        px + 7,
+        py + 14
+      );
+    }
+  );
+
+  const plan =
+    latest.plan;
+
+  if (
+    plan &&
+    latest.time >=
+      state.data[
+        start
+      ]?.time
+  ) {
+
+    const levelBoxes = [
+      [
+        'ENTRY',
+        plan.entry,
+        '#777f8c'
+      ],
+      [
+        'SL',
+        plan.stop,
+        down
+      ],
+      [
+        'TP1',
+        plan.target1,
+        up
+      ],
+      [
+        'TP2',
+        plan.target2,
+        up
+      ],
+      [
+        'TP3',
+        plan.target3,
+        up
+      ]
+    ];
+
+    for (
+      const [
+        label,
+        value,
+        color
+      ] of levelBoxes
+    ) {
+
+      if (
+        !Number.isFinite(
+          Number(value)
+        )
+      ) {
+        continue;
+      }
+
+      const py =
+        Math.max(
+          top + 2,
+          Math.min(
+            bottom - 20,
+            y(value) - 9
+          )
+        );
+
+      ctx.strokeStyle =
+        color;
+
+      ctx.setLineDash(
+        [5, 4]
+      );
+
+      ctx.beginPath();
+      ctx.moveTo(
+        Math.max(
+          0,
+          plot - 165
+        ),
+        py + 9
+      );
+      ctx.lineTo(
+        plot - 82,
+        py + 9
+      );
+      ctx.stroke();
+
+      ctx.setLineDash(
+        []
+      );
+
+      ctx.fillStyle =
+        color;
+
+      ctx.fillRect(
+        plot - 80,
+        py,
+        78,
+        18
+      );
+
+      ctx.fillStyle =
+        '#ffffff';
+
+      ctx.font =
+        'bold 10px system-ui';
+
+      ctx.fillText(
+        label +
+        ' ' +
+        fmt(value),
+        plot - 76,
+        py + 12
+      );
+    }
+  }
+
+  ctx.restore();
+}
 
 
 function renderScalper(
