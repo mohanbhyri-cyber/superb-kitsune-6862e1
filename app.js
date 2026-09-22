@@ -1165,6 +1165,8 @@ function canvas(id) {
 ====================================================== */
 
 
+let lastAnalysisKey = null;
+
 function draw() {
 
   if (
@@ -1174,6 +1176,21 @@ function draw() {
   }
 
 
+  const lastCandle = state.data.at(-1);
+  const analysisKey = [
+    state.data.length,
+    state.data[0].time,
+    lastCandle.time,
+    lastCandle.open,
+    lastCandle.high,
+    lastCandle.low,
+    lastCandle.close,
+    lastCandle.volume,
+    state.signalSensitivity
+  ].join(':');
+
+  if (analysisKey !== lastAnalysisKey) {
+    lastAnalysisKey = analysisKey;
   state.pa =
     priceAction(
       state.data
@@ -1216,6 +1233,7 @@ function draw() {
 
 
   refreshProSuite();
+  }
 
 
   const {
@@ -3179,6 +3197,7 @@ async function loadData() {
 
   const id =
     ++request;
+  lastAnalysisKey = null;
 
 
   unsubscribe?.();
@@ -3338,19 +3357,17 @@ async function loadData() {
     updateTradingDate();
 
 
-    await refreshFuturesVWAP();
-
-
-    if (
-      id !== request
-    ) {
-      return;
-    }
-
-
     draw();
 
     summary();
+
+    // The optional futures VWAP request must not hold up the first chart.
+    refreshFuturesVWAP().then(() => {
+      if (id === request) {
+        draw();
+        summary();
+      }
+    });
 
 
     signalTracker.baseline(
@@ -4923,7 +4940,7 @@ if (
 
 
 const watchSubscriptions =
-  instruments.map(
+  instruments.filter(i => i.id !== state.symbol).map(
     i =>
       market.subscribe(
         i.id,
@@ -6752,3 +6769,4 @@ if (
 
 
 renderWatch();
+
