@@ -5830,41 +5830,73 @@ function renderScalper(
           return;
         }
 
+        const buy =
+          s.signal === 'Buy';
 
-        ctx.fillStyle =
-          s.signal === 'Buy'
-            ? up
-            : down;
+        const label =
+          buy
+            ? 'BUY'
+            : 'SELL';
 
+        const markerW =
+          42;
 
-        ctx.fillText(
-          'SC ' +
-          s.signal.toUpperCase(),
+        const markerH =
+          20;
 
+        const px =
           Math.max(
             0,
             Math.min(
-              plot - 48,
-              x(i) - 22
+              plot - markerW,
+              x(i) -
+              markerW / 2
             )
-          ),
+          );
 
+        const py =
           Math.max(
-            top + 12,
+            top + 3,
             Math.min(
-              bottom - 5,
+              bottom - markerH - 2,
 
               y(
                 s.entry
               ) +
               (
-                s.signal ===
-                'Buy'
-                  ? 25
-                  : -30
+                buy
+                  ? 24
+                  : -34
               )
             )
-          )
+          );
+
+        ctx.fillStyle =
+          buy
+            ? up
+            : down;
+
+        ctx.fillRect(
+          px,
+          py,
+          markerW,
+          markerH
+        );
+
+        ctx.fillStyle =
+          getComputedStyle(
+            document.body
+          ).getPropertyValue(
+            '--bg'
+          );
+
+        ctx.font =
+          'bold 11px system-ui';
+
+        ctx.fillText(
+          label,
+          px + 8,
+          py + 14
         );
       }
     );
@@ -6175,61 +6207,11 @@ function renderMomentum(
     'bold 10px system-ui';
 
 
-  state.momentum
-    .slice(
-      start,
-      end
-    )
-    .forEach(
-      (
-        s,
-        i
-      ) => {
-
-        if (
-          !s?.signal
-        ) {
-          return;
-        }
-
-
-        ctx.fillStyle =
-          s.signal === 'Buy'
-            ? up
-            : down;
-
-
-        ctx.fillText(
-          'M ' +
-          s.signal.toUpperCase(),
-
-          Math.max(
-            0,
-            Math.min(
-              plot - 48,
-              x(i) - 22
-            )
-          ),
-
-          Math.max(
-            top + 12,
-            Math.min(
-              bottom - 5,
-
-              y(
-                s.price
-              ) +
-              (
-                s.signal ===
-                'Buy'
-                  ? 40
-                  : -45
-              )
-            )
-          )
-        );
-      }
-    );
+  /*
+    Momentum remains active for analysis and alerts.
+    Its chart text labels are intentionally hidden so the
+    BUY / SELL markers stay readable.
+  */
 
 
   ctx.restore();
