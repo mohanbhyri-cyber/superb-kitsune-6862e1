@@ -20,6 +20,7 @@
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="market-chat.css">
 </head>
 
 <body>
@@ -1191,6 +1192,33 @@
 
   </section>
 
+  <section class="panel market-chat-panel" aria-labelledby="market-chat-title">
+    <div class="panel-heading">
+      <h2 id="market-chat-title">Market analysis chat</h2>
+      <span class="pro-suite-badge">NIFTY 50 · UPSTOX</span>
+    </div>
+    <p class="muted market-chat-intro">
+      Ask about the current chart, trend, indicators, levels, Smart Signal, or backtest.
+      Answers use the data already shown in this app.
+    </p>
+    <div class="market-chat-prompts" aria-label="Suggested questions">
+      <button type="button" data-market-question="Market summary">Market summary</button>
+      <button type="button" data-market-question="What is the trend?">Trend</button>
+      <button type="button" data-market-question="Explain the indicators">Indicators</button>
+      <button type="button" data-market-question="What are the levels?">Levels</button>
+      <button type="button" data-market-question="Explain the Smart Signal">Smart Signal</button>
+    </div>
+    <div id="market-chat-messages" class="market-chat-messages" role="log" aria-live="polite" aria-label="Market analysis conversation">
+      <div class="market-chat-message assistant">Ask a question or choose a topic above. I’ll use the latest available NIFTY candle and show its time in the answer.</div>
+    </div>
+    <form id="market-chat-form" class="market-chat-form">
+      <label class="market-chat-label" for="market-chat-input">Your question</label>
+      <input id="market-chat-input" type="text" maxlength="240" autocomplete="off" placeholder="e.g. Why is the Smart Signal WAIT?" required>
+      <button type="submit">Ask</button>
+    </form>
+    <p class="disclaimer">Rule-based analysis of Upstox data. No AI service or order placement; answers are informational and can lag the market.</p>
+  </section>
+
   <script>
     document.addEventListener(
       'DOMContentLoaded',
@@ -1341,3 +1369,4 @@
 
 </body>
 </html>
+
