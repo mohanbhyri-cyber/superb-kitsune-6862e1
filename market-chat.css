@@ -1,0 +1,14 @@
+.market-chat-panel{margin-top:20px}
+.market-chat-intro{margin:-6px 0 15px;font-size:12px}
+.market-chat-prompts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.market-chat-prompts button{border:1px solid var(--line);background:var(--panel2);font-size:12px}
+.market-chat-messages{height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.market-chat-message{max-width:min(85%,700px);padding:10px 12px;border-radius:9px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.market-chat-message.assistant{align-self:flex-start;background:var(--panel2)}
+.market-chat-message.user{align-self:flex-end;background:var(--green);color:var(--bg)}
+.market-chat-form{display:flex;align-items:end;gap:10px;margin-top:12px}
+.market-chat-label{flex:1;margin:0;font-size:11px;color:var(--muted)}
+.market-chat-form input{margin-top:4px}
+.market-chat-form button{background:var(--green);color:var(--bg);font-weight:600;padding:12px 18px}
+@media(max-width:760px){.market-chat-form{gap:6px}.market-chat-form button{padding:12px}.market-chat-message{max-width:95%}}
+
