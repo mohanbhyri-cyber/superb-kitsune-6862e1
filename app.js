@@ -4,8 +4,7 @@ import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
 import {
-  analyseNiftyEdge,
-  backtestNiftyEdge
+  analyseNiftyEdge
 } from './smrt-nifty-edge.js';
 import { analyseMarketMap } from './smrt-market-map.js';
 import {
@@ -13,8 +12,7 @@ import {
   candleConfluence
 } from './smrt-candle-scanner.js';
 import {
-  analyseProSuite,
-  backtestSmartSignals
+  analyseProSuite
 } from './pro-suite.js';
 
 import {
@@ -192,14 +190,12 @@ const state = {
     ),
 
   overlays: new Set([
-    'Momentum',
-    'Stride Signals',
     'Supertrend (10, 3)',
     'ADX/DMI (14)',
     'EMA 9',
     'EMA 21',
     'EMA 50',
-    'Volume',
+    'VWAP',
     'S/R'
   ]),
 
@@ -886,10 +882,7 @@ function refreshProSuite() {
 
 
   state.proBacktest =
-    backtestSmartSignals(
-      state.data,
-      result?.rows ?? []
-    );
+    null;
 }
 
 
@@ -1231,6 +1224,106 @@ function canvas(id) {
 
 let lastAnalysisKey = null;
 
+let liveRenderTimer =
+  null;
+
+let liveRenderQueued =
+  false;
+
+let lastLiveRender =
+  0;
+
+
+function scheduleLiveRender(
+  force = false
+) {
+
+  if (
+    liveRenderQueued &&
+    !force
+  ) {
+    return;
+  }
+
+
+  const now =
+    performance.now();
+
+  const elapsed =
+    now -
+    lastLiveRender;
+
+  const delay =
+    force
+      ? 0
+      : Math.max(
+          0,
+          120 - elapsed
+        );
+
+
+  liveRenderQueued =
+    true;
+
+
+  if (
+    liveRenderTimer
+  ) {
+
+    clearTimeout(
+      liveRenderTimer
+    );
+  }
+
+
+  liveRenderTimer =
+    setTimeout(
+      () => {
+
+        liveRenderQueued =
+          false;
+
+        liveRenderTimer =
+          null;
+
+        lastLiveRender =
+          performance.now();
+
+
+        requestAnimationFrame(
+          () => {
+
+            draw();
+
+            summary();
+          }
+        );
+
+      },
+      delay
+    );
+}
+
+
+function cancelScheduledRender() {
+
+  if (
+    liveRenderTimer
+  ) {
+
+    clearTimeout(
+      liveRenderTimer
+    );
+
+    liveRenderTimer =
+      null;
+  }
+
+
+  liveRenderQueued =
+    false;
+}
+
 function draw() {
 
   if (
@@ -1240,17 +1333,33 @@ function draw() {
   }
 
 
-  const lastCandle = state.data.at(-1);
+  const closedIndex =
+    Math.max(
+      0,
+      state.data.length - 2
+    );
+
+  const closedCandle =
+    state.data[
+      closedIndex
+    ] ||
+    state.data.at(-1);
+
   const analysisKey = [
     state.data.length,
-    state.data[0].time,
-    lastCandle.time,
-    lastCandle.open,
-    lastCandle.high,
-    lastCandle.low,
-    lastCandle.close,
-    lastCandle.volume,
-    state.signalSensitivity
+    state.data[0]?.time,
+    closedCandle?.time,
+    closedCandle?.open,
+    closedCandle?.high,
+    closedCandle?.low,
+    closedCandle?.close,
+    closedCandle?.volume,
+    state.signalSensitivity,
+    Number.isFinite(
+      state.futuresVWAP
+    )
+      ? state.futuresVWAP
+      : 'NA'
   ].join(':');
 
   if (analysisKey !== lastAnalysisKey) {
@@ -1307,10 +1416,7 @@ function draw() {
 
 
   state.niftyEdgeBacktest =
-    backtestNiftyEdge(
-      state.data,
-      state.niftyEdge
-    );
+    null;
 
 
   state.marketMap =
@@ -4361,8 +4467,12 @@ async function loadData() {
     // The optional futures VWAP request must not hold up the first chart.
     refreshFuturesVWAP().then(() => {
       if (id === request) {
-        draw();
-        summary();
+        lastAnalysisKey =
+          null;
+
+        scheduleLiveRender(
+          true
+        );
       }
     });
 
@@ -4465,9 +4575,13 @@ async function loadData() {
           }
 
 
-          if (
+          const isNewCandle =
             bucket >
-            last.time
+            last.time;
+
+
+          if (
+            isNewCandle
           ) {
 
             const previousClose =
@@ -4600,15 +4714,22 @@ async function loadData() {
 
           updateTradingDate();
 
-          draw();
+          scheduleLiveRender();
 
-          summary();
+          if (
+            isNewCandle
+          ) {
 
-          processSignalAlerts();
+            processSignalAlerts();
 
-          processScalpAlerts();
+            processScalpAlerts();
 
-          processMomentumAlerts();
+            processMomentumAlerts();
+
+            refreshMTF().catch(
+              () => {}
+            );
+          }
 
           checkAlerts();
 
