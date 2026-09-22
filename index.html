@@ -1530,58 +1530,85 @@
 
   <section
     class="panel"
-    id="scalp-reversal-panel"
+    id="ssl-qqe-panel"
     style="margin-top:16px"
   >
 
     <div class="panel-heading">
       <h2>
-        SMRT Scalp Reversal Pro
+        SMRT SSL + QQE Combo
       </h2>
 
       <span class="muted">
-        NIFTY 50 · LONG / SHORT setup
+        NIFTY 50 · closed-candle trend + momentum
       </span>
     </div>
 
     <div class="pro-suite-grid">
 
       <div class="pro-suite-card">
-        <small>Current Setup</small>
+        <small>Combo Signal</small>
 
-        <strong id="scalp-reversal-state">
-          Uses Trade Finalizer
+        <strong
+          id="ssl-qqe-signal"
+          class="muted"
+        >
+          NO TRADE
         </strong>
 
-        <span class="muted">
-          Closed-candle confirmation
+        <span id="ssl-qqe-score">
+          0 pts
         </span>
       </div>
 
       <div class="pro-suite-card">
-        <small>Setup Logic</small>
+        <small>SSL Channel</small>
 
-        <strong style="font-size:13px">
-          Trend + Reversal + MTF + Finalizer
+        <strong
+          id="ssl-state"
+          class="muted"
+        >
+          WARMING UP
         </strong>
 
         <span class="muted">
-          Weak confluence = NO TRADE
+          High/low EMA channel · Period 10
         </span>
       </div>
 
       <div class="pro-suite-card">
-        <small>Chart Output</small>
+        <small>QQE Momentum</small>
 
-        <strong style="font-size:13px">
-          LONG / SHORT · Entry · SL · TP1-TP3
+        <strong
+          id="qqe-state"
+          class="muted"
+        >
+          WARMING UP
         </strong>
+
+        <span>
+          QQE RSI:
+          <b id="qqe-value">—</b>
+        </span>
       </div>
 
     </div>
 
-  </section>
+    <p
+      id="ssl-qqe-reasons"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Waiting for SSL and QQE alignment
+    </p>
 
+    <p class="disclaimer">
+      Original SSL-style trend channel and QQE-style momentum filter.
+      Signals use closed candles and SMRT Trade Finalizer confirmation.
+      No automatic orders or guaranteed results.
+    </p>
+
+  </section>
 
   <div class="page-footer">
 
