@@ -15,6 +15,16 @@ const TIMEFRAMES = {
 };
 
 const IST = "Asia/Kolkata";
+const istFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: IST,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -30,18 +40,7 @@ function json(data, status = 200) {
 }
 
 function getISTParts(value = Date.now()) {
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: IST,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-
-  const parts = formatter.formatToParts(new Date(value));
+  const parts = istFormatter.formatToParts(new Date(value));
 
   return Object.fromEntries(
     parts
@@ -883,3 +882,4 @@ export default {
     );
   },
 };
+
