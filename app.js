@@ -91,6 +91,18 @@ const state = {
     )
   ),
 
+  officialChange: Object.fromEntries(
+    instruments.map(
+      i => [i.id, null]
+    )
+  ),
+
+  previousClose: Object.fromEntries(
+    instruments.map(
+      i => [i.id, null]
+    )
+  ),
+
   symbol: 'NIFTY',
 
   tf: '5m',
@@ -301,6 +313,19 @@ function quote() {
 
 
 function change(i) {
+
+  const official =
+    state.officialChange[
+      i.id
+    ];
+
+  if (
+    Number.isFinite(
+      official
+    )
+  ) {
+    return official;
+  }
 
   const price =
     i.id === state.symbol
@@ -1460,6 +1485,38 @@ function draw() {
         colors[name]
       );
     }
+  }
+
+
+  /*
+    NIFTY index candles often do not carry tradable volume.
+    When index VWAP is unavailable, draw the live NIFTY
+    futures VWAP as a separate fallback line.
+  */
+
+  if (
+    state.overlays.has(
+      'VWAP'
+    ) &&
+    state.symbol === 'NIFTY' &&
+    !state.data.some(
+      c =>
+        Number(c.volume) > 0
+    ) &&
+    Number.isFinite(
+      state.futuresVWAP
+    )
+  ) {
+
+    line(
+      Array(
+        state.data.length
+      ).fill(
+        state.futuresVWAP
+      ),
+      colors.VWAP,
+      [6, 4]
+    );
   }
 
 
@@ -2998,6 +3055,38 @@ async function loadData() {
             state.symbol
           ] =
             price;
+
+
+          if (
+            Number.isFinite(
+              Number(
+                tick.changePercent
+              )
+            )
+          ) {
+            state.officialChange[
+              state.symbol
+            ] =
+              Number(
+                tick.changePercent
+              );
+          }
+
+
+          if (
+            Number.isFinite(
+              Number(
+                tick.previousClose
+              )
+            )
+          ) {
+            state.previousClose[
+              state.symbol
+            ] =
+              Number(
+                tick.previousClose
+              );
+          }
 
 
           state.lastUpdate =
