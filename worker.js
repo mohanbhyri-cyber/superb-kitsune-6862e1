@@ -171,7 +171,7 @@ async function liveQuote(url, token) {
   }
 
   const endpoint =
-    "https://api.upstox.com/v2/market-quote/quotes" +
+    "https://api.upstox.com/v3/market-quote/quotes" +
     "?instrument_key=" +
     encodeURIComponent(instrumentKey);
 
@@ -195,10 +195,15 @@ async function liveQuote(url, token) {
     const netChange =
       Number(quote?.net_change);
 
+    const previousCloseRaw =
+      Number(quote?.prev_close_price);
+
     const previousClose =
-      Number.isFinite(netChange)
-        ? price - netChange
-        : null;
+      Number.isFinite(previousCloseRaw)
+        ? previousCloseRaw
+        : Number.isFinite(netChange)
+          ? price - netChange
+          : null;
 
     const changePercent =
       Number.isFinite(netChange) &&
@@ -237,9 +242,22 @@ async function liveQuote(url, token) {
         )
           ? Number(quote.volume)
           : 0,
-      time: Math.floor(Date.now() / 1000),
+      time:
+        Number.isFinite(
+          Number(quote?.last_trade_time)
+        )
+          ? Math.floor(
+              Number(
+                quote.last_trade_time
+              ) / 1000
+            )
+          : Math.floor(
+              Date.now() / 1000
+            ),
       timestamp:
-        quote?.timestamp ?? Date.now(),
+        quote?.timestamp ??
+        quote?.last_trade_time ??
+        Date.now(),
     });
   } catch (error) {
     return json({
