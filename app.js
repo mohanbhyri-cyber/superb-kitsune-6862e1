@@ -8,6 +8,7 @@ import {
   analyseNiftyEdge,
   backtestNiftyEdge
 } from './smrt-nifty-edge.js';
+import { analyseMarketMap } from './smrt-market-map.js';
 import {
   analyseProSuite,
   backtestSmartSignals
@@ -127,6 +128,8 @@ const state = {
   niftyEdge: null,
 
   niftyEdgeBacktest: null,
+
+  marketMap: null,
 
   proSuite: null,
 
@@ -1324,6 +1327,16 @@ function draw() {
     );
 
 
+  state.marketMap =
+    analyseMarketMap(
+      state.data,
+      {
+        futuresVWAP:
+          state.futuresVWAP
+      }
+    );
+
+
   refreshProSuite();
   }
 
@@ -2201,6 +2214,22 @@ function draw() {
 
 
   renderNiftyEdge(
+    ctx,
+    {
+      start,
+      end,
+      plot,
+      top,
+      bottom,
+      x,
+      y,
+      up,
+      down
+    }
+  );
+
+
+  renderMarketMap(
     ctx,
     {
       start,
@@ -3292,6 +3321,8 @@ function summary() {
 
   renderProSuiteSummary();
 
+  updateMarketMapPanel();
+
   renderWatch();
 }
 
@@ -3319,6 +3350,10 @@ async function loadData() {
 
 
   state.calc =
+    null;
+
+
+  state.marketMap =
     null;
 
 
@@ -6189,6 +6224,286 @@ renderSignalAlerts();
 /* ======================================================
    PRO SCALPER
 ====================================================== */
+
+
+function renderMarketMap(
+  ctx,
+  g
+) {
+
+  const map =
+    state.marketMap;
+
+  if (!map) {
+    return;
+  }
+
+  const {
+    plot,
+    top,
+    bottom,
+    y,
+    up,
+    down
+  } = g;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, top, plot, bottom - top);
+  ctx.clip();
+
+  const drawLevel = (
+    value,
+    label,
+    color
+  ) => {
+
+    if (
+      !Number.isFinite(
+        Number(value)
+      )
+    ) {
+      return;
+    }
+
+    const py =
+      y(value);
+
+    if (
+      py < top ||
+      py > bottom
+    ) {
+      return;
+    }
+
+    ctx.strokeStyle =
+      color;
+
+    ctx.globalAlpha =
+      0.62;
+
+    ctx.setLineDash(
+      [7, 5]
+    );
+
+    ctx.beginPath();
+    ctx.moveTo(0, py);
+    ctx.lineTo(plot, py);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle =
+      color;
+
+    ctx.font =
+      'bold 10px system-ui';
+
+    ctx.fillText(
+      label +
+      ' ' +
+      fmt(value),
+      8,
+      Math.max(
+        top + 11,
+        py - 4
+      )
+    );
+  };
+
+
+  drawLevel(
+    map.nearestResistance
+      ?.price,
+    'R',
+    down
+  );
+
+
+  drawLevel(
+    map.nearestSupport
+      ?.price,
+    'S',
+    up
+  );
+
+
+  ctx.restore();
+}
+
+
+function updateMarketMapPanel() {
+
+  const map =
+    state.marketMap;
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!map) {
+
+    set(
+      '#market-map-support',
+      '—'
+    );
+
+    set(
+      '#market-map-resistance',
+      '—'
+    );
+
+    set(
+      '#market-map-trend',
+      'WARMING UP',
+      'muted'
+    );
+
+    set(
+      '#market-map-reversal',
+      'NONE',
+      'muted'
+    );
+
+    set(
+      '#market-map-breakout',
+      'NONE',
+      'muted'
+    );
+
+    set(
+      '#market-map-action',
+      'NO TRADE',
+      'muted'
+    );
+
+    set(
+      '#market-map-score',
+      '0 / 10'
+    );
+
+    return;
+  }
+
+
+  set(
+    '#market-map-support',
+    map.nearestSupport
+      ? '₹' +
+        fmt(
+          map.nearestSupport
+            .price
+        )
+      : '—'
+  );
+
+
+  set(
+    '#market-map-resistance',
+    map.nearestResistance
+      ? '₹' +
+        fmt(
+          map.nearestResistance
+            .price
+        )
+      : '—'
+  );
+
+
+  const bullish =
+    map.trend.includes(
+      'BULLISH'
+    );
+
+  const bearish =
+    map.trend.includes(
+      'BEARISH'
+    );
+
+
+  set(
+    '#market-map-trend',
+    map.trend,
+    bullish
+      ? 'up'
+      : bearish
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#market-map-reversal',
+    map.reversal,
+    map.reversal.startsWith(
+      'BULLISH'
+    )
+      ? 'up'
+      : map.reversal.startsWith(
+          'BEARISH'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#market-map-breakout',
+    map.breakout,
+    map.breakout ===
+      'BREAKOUT UP'
+      ? 'up'
+      : map.breakout ===
+          'BREAKDOWN'
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#market-map-action',
+    map.action,
+    map.action.startsWith(
+      'BUY'
+    )
+      ? 'up'
+      : map.action.startsWith(
+          'SELL'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#market-map-score',
+    map.confluence +
+    ' / 10'
+  );
+}
 
 
 function renderNiftyEdge(
