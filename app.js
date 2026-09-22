@@ -3,6 +3,10 @@ import { trendIndicators } from './trend-indicators.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
+import {
+  analyseProSuite,
+  backtestSmartSignals
+} from './pro-suite.js';
 
 import {
   API_BASE,
@@ -114,6 +118,18 @@ const state = {
   calc: null,
 
   trend: null,
+
+  proSuite: null,
+
+  proBacktest: null,
+
+  smartSignal: null,
+
+  smartPlan: null,
+
+  smartStructure: null,
+
+  smartMarketState: 'WAIT',
 
   futuresVWAP: null,
 
@@ -755,6 +771,356 @@ function renderWatch() {
 
 
 /* ======================================================
+   STRIDE PRO TRADING SUITE
+====================================================== */
+
+function refreshProSuite() {
+
+  if (
+    !Array.isArray(
+      state.data
+    ) ||
+    !state.data.length
+  ) {
+
+    state.proSuite =
+      null;
+
+    state.proBacktest =
+      null;
+
+    state.smartSignal =
+      null;
+
+    state.smartPlan =
+      null;
+
+    state.smartStructure =
+      null;
+
+    state.smartMarketState =
+      'WAIT';
+
+    return;
+  }
+
+
+  const result =
+    analyseProSuite(
+      state.data,
+      {
+        strideSignals:
+          Array.isArray(
+            state.signals
+          )
+            ? state.signals
+            : []
+      }
+    );
+
+
+  state.proSuite =
+    result;
+
+
+  const latest =
+    result?.latest;
+
+
+  state.smartSignal =
+    latest?.smart ??
+    null;
+
+
+  state.smartPlan =
+    latest?.plan ??
+    null;
+
+
+  state.smartStructure =
+    latest?.structure ??
+    null;
+
+
+  state.smartMarketState =
+    latest?.smart
+      ?.marketState ??
+    'WAIT';
+
+
+  state.proBacktest =
+    backtestSmartSignals(
+      state.data,
+      result?.rows ?? []
+    );
+}
+
+
+function renderProSuiteSummary() {
+
+  const smart =
+    state.smartSignal;
+
+  const plan =
+    state.smartPlan;
+
+  const structure =
+    state.smartStructure;
+
+  const backtest =
+    state.proBacktest;
+
+
+  const setText =
+    (
+      selector,
+      value
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (el) {
+        el.textContent =
+          value;
+      }
+    };
+
+
+  setText(
+    '#smart-signal',
+    smart?.signal ??
+    'WAIT'
+  );
+
+
+  setText(
+    '#smart-strength',
+    smart?.strength
+      ? 'Strength: ' +
+        smart.strength
+      : 'Strength: —'
+  );
+
+
+  setText(
+    '#smart-confluence',
+    Number.isFinite(
+      Number(
+        smart?.confluence
+      )
+    )
+      ? 'Confluence: ' +
+        smart.confluence
+      : 'Confluence: —'
+  );
+
+
+  setText(
+    '#smart-market-state',
+    'Market: ' +
+    (
+      smart?.marketState ??
+      state.smartMarketState ??
+      'WAIT'
+    )
+  );
+
+
+  setText(
+    '#smart-structure',
+    'Structure: ' +
+    (
+      structure?.event ??
+      structure?.structure ??
+      '—'
+    )
+  );
+
+
+  setText(
+    '#smart-entry',
+    plan
+      ? 'Entry: ₹' +
+        fmt(
+          plan.entry
+        )
+      : 'Entry: —'
+  );
+
+
+  setText(
+    '#smart-stop',
+    plan
+      ? 'Stop: ₹' +
+        fmt(
+          plan.stop
+        )
+      : 'Stop: —'
+  );
+
+
+  setText(
+    '#smart-target1',
+    plan
+      ? 'Target 1: ₹' +
+        fmt(
+          plan.target1
+        )
+      : 'Target 1: —'
+  );
+
+
+  setText(
+    '#smart-target2',
+    plan
+      ? 'Target 2: ₹' +
+        fmt(
+          plan.target2
+        )
+      : 'Target 2: —'
+  );
+
+
+  setText(
+    '#smart-rr',
+    plan
+      ? 'R:R T1 ' +
+        Number(
+          plan.rr1
+        ).toFixed(
+          2
+        ) +
+        ' · T2 ' +
+        Number(
+          plan.rr2
+        ).toFixed(
+          2
+        )
+      : 'R:R: —'
+  );
+
+
+  setText(
+    '#backtest-trades',
+    'Trades: ' +
+    (
+      backtest
+        ?.totalTrades ??
+      0
+    )
+  );
+
+
+  setText(
+    '#backtest-wins',
+    'Wins: ' +
+    (
+      backtest
+        ?.wins ??
+      0
+    )
+  );
+
+
+  setText(
+    '#backtest-losses',
+    'Losses: ' +
+    (
+      backtest
+        ?.losses ??
+      0
+    )
+  );
+
+
+  setText(
+    '#backtest-win-rate',
+    'Win rate: ' +
+    (
+      Number.isFinite(
+        Number(
+          backtest
+            ?.winRate
+        )
+      )
+        ? Number(
+            backtest
+              .winRate
+          ).toFixed(
+            1
+          ) +
+          '%'
+        : '0.0%'
+    )
+  );
+
+
+  setText(
+    '#backtest-net-points',
+    'Net points: ' +
+    (
+      Number.isFinite(
+        Number(
+          backtest
+            ?.netPoints
+        )
+      )
+        ? Number(
+            backtest
+              .netPoints
+          ).toFixed(
+            2
+          )
+        : '0.00'
+    )
+  );
+
+
+  setText(
+    '#backtest-average-rr',
+    'Avg R:R: ' +
+    (
+      Number.isFinite(
+        Number(
+          backtest
+            ?.averageRR
+        )
+      )
+        ? Number(
+            backtest
+              .averageRR
+          ).toFixed(
+            2
+          )
+        : '0.00'
+    )
+  );
+
+
+  setText(
+    '#backtest-max-drawdown',
+    'Max drawdown: ' +
+    (
+      Number.isFinite(
+        Number(
+          backtest
+            ?.maxDrawdown
+        )
+      )
+        ? Number(
+            backtest
+              .maxDrawdown
+          ).toFixed(
+            2
+          )
+        : '0.00'
+    )
+  );
+}
+
+
+/* ======================================================
    CANVAS
 ====================================================== */
 
@@ -847,6 +1213,9 @@ function draw() {
         ]
       }
     );
+
+
+  refreshProSuite();
 
 
   const {
@@ -2795,6 +3164,8 @@ function summary() {
     );
 
 
+  renderProSuiteSummary();
+
   renderWatch();
 }
 
@@ -2822,6 +3193,30 @@ async function loadData() {
 
   state.calc =
     null;
+
+
+  state.proSuite =
+    null;
+
+
+  state.proBacktest =
+    null;
+
+
+  state.smartSignal =
+    null;
+
+
+  state.smartPlan =
+    null;
+
+
+  state.smartStructure =
+    null;
+
+
+  state.smartMarketState =
+    'WAIT';
 
 
   state.hover =
