@@ -6286,11 +6286,112 @@ function renderMomentum(
     'bold 10px system-ui';
 
 
-  /*
-    Momentum remains active for analysis and alerts.
-    Its chart text labels are intentionally hidden so the
-    BUY / SELL markers stay readable.
-  */
+  state.momentum
+    .slice(
+      start,
+      end
+    )
+    .forEach(
+      (
+        s,
+        i
+      ) => {
+
+        if (
+          !s?.signal
+        ) {
+          return;
+        }
+
+
+        const buy =
+          s.signal === 'Buy';
+
+
+        const label =
+          buy
+            ? 'M BUY'
+            : 'M SELL';
+
+
+        const markerW =
+          50;
+
+
+        const markerH =
+          18;
+
+
+        const px =
+          Math.max(
+            0,
+            Math.min(
+              plot - markerW,
+              x(i) -
+              markerW / 2
+            )
+          );
+
+
+        /*
+          Momentum markers are offset farther from the candle than
+          the main BUY / SELL and Pro Scalper markers to avoid overlap.
+        */
+        const py =
+          Math.max(
+            top + 3,
+            Math.min(
+              bottom - markerH - 2,
+
+              y(
+                s.price
+              ) +
+              (
+                buy
+                  ? 46
+                  : -58
+              )
+            )
+          );
+
+
+        ctx.fillStyle =
+          buy
+            ? up
+            : down;
+
+
+        ctx.globalAlpha =
+          0.9;
+
+
+        ctx.fillRect(
+          px,
+          py,
+          markerW,
+          markerH
+        );
+
+
+        ctx.globalAlpha =
+          1;
+
+
+        ctx.fillStyle =
+          getComputedStyle(
+            document.body
+          ).getPropertyValue(
+            '--bg'
+          );
+
+
+        ctx.fillText(
+          label,
+          px + 6,
+          py + 13
+        );
+      }
+    );
 
 
   ctx.restore();
