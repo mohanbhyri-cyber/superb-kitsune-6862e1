@@ -4,6 +4,7 @@ import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
 
 import {
+  API_BASE,
   instruments,
   intervals,
   indicators,
@@ -480,7 +481,7 @@ async function refreshFuturesVWAP() {
 
     const response =
       await fetch(
-        '/api/nifty-futures-vwap?interval=' +
+        API_BASE + '/api/nifty-futures-vwap?interval=' +
         encodeURIComponent(minutes),
         {
           cache: 'no-store'
