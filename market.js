@@ -6,6 +6,15 @@
 // /api/*
 // ============================================================
 
+export const API_BASE =
+  typeof window !== 'undefined' &&
+  ['127.0.0.1', 'localhost'].includes(
+    window.location.hostname
+  )
+    ? 'https://superb-kitsune-6862e1.mohanbhyri.workers.dev'
+    : '';
+
+
 export const instruments = [
   {
     id: 'NIFTY',
@@ -394,7 +403,7 @@ export class UpstoxMarketAdapter {
     this.status = 'CONNECTING';
 
     const url =
-      '/api/upstox-history' +
+      API_BASE + '/api/upstox-history' +
       '?symbol=' +
       encodeURIComponent(symbol) +
       '&timeframe=' +
@@ -538,7 +547,7 @@ export class UpstoxMarketAdapter {
 
         const response =
           await fetch(
-            '/api/live-quote' +
+            API_BASE + '/api/live-quote' +
             '?symbol=' +
             encodeURIComponent(symbol),
             {
