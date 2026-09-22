@@ -99,6 +99,10 @@ const state = {
 
   calc: null,
 
+  futuresVWAP: null,
+
+  futuresVWAPUpdated: 0,
+
   feedStatus: 'LOADING',
 
   lastUpdate: null,
@@ -427,6 +431,70 @@ function updateTradingDate() {
           firstCandle.time
         )
       : '—';
+}
+
+
+async function refreshFuturesVWAP() {
+
+  if (
+    state.symbol !== 'NIFTY'
+  ) {
+    state.futuresVWAP = null;
+    state.futuresVWAPUpdated = 0;
+    return;
+  }
+
+  const minutes = {
+    '1m': 1,
+    '3m': 3,
+    '5m': 5,
+    '15m': 15
+  }[state.tf] || 1;
+
+  try {
+
+    const response =
+      await fetch(
+        '/api/nifty-futures-vwap?interval=' +
+        encodeURIComponent(minutes),
+        {
+          cache: 'no-store'
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        'Futures VWAP request failed'
+      );
+    }
+
+    const data =
+      await response.json();
+
+    const value =
+      Number(data?.vwap);
+
+    state.futuresVWAP =
+      data?.live === true &&
+      Number.isFinite(value)
+        ? value
+        : null;
+
+    state.futuresVWAPUpdated =
+      state.futuresVWAP === null
+        ? 0
+        : Date.now();
+
+  } catch (error) {
+
+    console.warn(
+      'NIFTY futures VWAP unavailable:',
+      error
+    );
+
+    state.futuresVWAP = null;
+    state.futuresVWAPUpdated = 0;
+  }
 }
 
 
@@ -1973,6 +2041,35 @@ function draw() {
       );
 
 
+    const sessionVWAP =
+      hasVolume &&
+      Number.isFinite(vwap)
+        ? vwap
+        : null;
+
+
+    const fallbackVWAP =
+      state.symbol === 'NIFTY' &&
+      Number.isFinite(
+        state.futuresVWAP
+      )
+        ? state.futuresVWAP
+        : null;
+
+
+    const displayedVWAP =
+      sessionVWAP ??
+      fallbackVWAP;
+
+
+    const vwapLabel =
+      sessionVWAP !== null
+        ? 'VWAP · session'
+        : fallbackVWAP !== null
+          ? 'VWAP · NIFTY FUT'
+          : 'VWAP · unavailable';
+
+
     $('#levels').innerHTML = `
       <div>
 
@@ -1990,14 +2087,17 @@ function draw() {
       <div>
 
         <small>
-          VWAP · session
+          ${vwapLabel}
         </small>
 
         <strong>
           ${
-            hasVolume &&
-            Number.isFinite(vwap)
-              ? fmt(vwap)
+            Number.isFinite(
+              displayedVWAP
+            )
+              ? fmt(
+                  displayedVWAP
+                )
               : 'N/A'
           }
         </strong>
@@ -2705,6 +2805,16 @@ async function loadData() {
     */
 
     updateTradingDate();
+
+
+    await refreshFuturesVWAP();
+
+
+    if (
+      id !== request
+    ) {
+      return;
+    }
 
 
     draw();
