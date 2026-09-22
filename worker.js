@@ -432,63 +432,83 @@ function findNearestNiftyFuture(instruments) {
     )[0] || null;
 }
 
-async function loadNSEInstruments() {
-  const urls = [
-    "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz",
-    "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json",
-  ];
+async function findNearestNiftyFutureViaSearch(token) {
+  const endpoint =
+    "https://api.upstox.com/v2/instruments/search" +
+    "?query=NIFTY" +
+    "&exchanges=NSE" +
+    "&segments=FUT" +
+    "&page_number=1" +
+    "&records=30";
 
-  let lastError = null;
+  const body =
+    await upstoxFetch(
+      endpoint,
+      token
+    );
 
-  for (const endpoint of urls) {
-    try {
-      const response =
-        await fetch(endpoint, {
-          headers: {
-            Accept:
-              "application/json, */*",
-          },
-        });
+  const rows =
+    Array.isArray(body?.data)
+      ? body.data
+      : [];
 
-      if (!response.ok) {
-        lastError =
-          new Error(
-            `Instrument master HTTP ${response.status}.`
+  const now =
+    Date.now();
+
+  const candidates =
+    rows
+      .filter((item) => {
+        const type =
+          String(
+            item?.instrument_type || ""
+          ).toUpperCase();
+
+        const segment =
+          String(
+            item?.segment || ""
+          ).toUpperCase();
+
+        const underlying =
+          String(
+            item?.underlying_symbol || ""
+          ).toUpperCase();
+
+        const symbol =
+          String(
+            item?.trading_symbol || ""
+          ).toUpperCase();
+
+        const expiry =
+          expiryMs(
+            item?.expiry
           );
 
-        continue;
-      }
-
-      /*
-       * Cloudflare fetch normally handles HTTP
-       * content-encoding decompression.
-       */
-
-      const data =
-        await response.json();
-
-      if (
-        Array.isArray(data) &&
-        data.length
-      ) {
-        return data;
-      }
-
-      lastError =
-        new Error(
-          "Upstox instrument master was empty."
+        return (
+          type === "FUT" &&
+          segment === "NSE_FO" &&
+          (
+            underlying === "NIFTY" ||
+            symbol.startsWith("NIFTY ")
+          ) &&
+          !symbol.startsWith("BANKNIFTY") &&
+          Number.isFinite(expiry) &&
+          expiry >= now &&
+          item?.instrument_key
         );
-    } catch (error) {
-      lastError = error;
-    }
+      })
+      .sort(
+        (a, b) =>
+          expiryMs(a.expiry) -
+          expiryMs(b.expiry)
+      );
+
+  if (!candidates.length) {
+    throw new Error(
+      "No active NIFTY futures contract found from Upstox instrument search."
+    );
   }
 
-  throw (
-    lastError ||
-    new Error(
-      "Unable to load Upstox instrument master."
-    )
-  );
+  return candidates[0];
 }
 
 // ----------------------------------------------------
@@ -549,12 +569,9 @@ async function futuresVWAP(url, token) {
         ? requested
         : 1;
 
-    const instruments =
-      await loadNSEInstruments();
-
     const contract =
-      findNearestNiftyFuture(
-        instruments
+      await findNearestNiftyFutureViaSearch(
+        token
       );
 
     if (!contract) {
