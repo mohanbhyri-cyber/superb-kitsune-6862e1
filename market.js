@@ -230,7 +230,7 @@ export function indicators(candles) {
 
     return totalV
       ? totalPV / totalV
-      : Number(c.close);
+      : null;
   });
 
 
@@ -613,6 +613,27 @@ export class UpstoxMarketAdapter {
 
           volume:
             Number(q.volume) || 0,
+
+          changePercent:
+            Number.isFinite(
+              Number(q.changePercent)
+            )
+              ? Number(q.changePercent)
+              : null,
+
+          netChange:
+            Number.isFinite(
+              Number(q.netChange)
+            )
+              ? Number(q.netChange)
+              : null,
+
+          previousClose:
+            Number.isFinite(
+              Number(q.previousClose)
+            )
+              ? Number(q.previousClose)
+              : null,
 
           live: true
         });
