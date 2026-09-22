@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stride Pro Trading Suite · Sample Build</title>
+  <meta name="color-scheme" content="dark">
+  <style>
+    :root {
+      --bg:#0b1118;
+      --panel:#121a24;
+      --line:#243142;
+      --muted:#8fa3b8;
+      --text:#eef4fb;
+      --green:#55d8a0;
+      --red:#ff6b78;
+      --gold:#e8bd68;
+      --blue:#72a7ff;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(67,104,160,.18), transparent 30%),
+        var(--bg);
+      color:var(--text);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;
+    }
+    .wrap {
+      max-width:1180px;
+      margin:auto;
+      padding:24px;
+    }
+    .topbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:18px;
+    }
+    .title h1 { margin:0; font-size:24px; }
+    .title p { margin:6px 0 0; color:var(--muted); }
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      color:var(--gold);
+      background:rgba(232,189,104,.08);
+      font-size:12px;
+      font-weight:700;
+    }
+    .badge::before {
+      content:"";
+      width:8px;height:8px;border-radius:50%;
+      background:var(--gold);
+    }
+    .grid {
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:16px;
+    }
+    .panel {
+      background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.01)),var(--panel);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 18px 50px rgba(0,0,0,.22);
+    }
+    .panel h2 {
+      margin:0 0 14px;
+      font-size:16px;
+    }
+    .signal {
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+    }
+    .card {
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:14px;
+      background:rgba(255,255,255,.02);
+    }
+    .card small {
+      display:block;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-size:10px;
+      margin-bottom:7px;
+    }
+    .big {
+      font-size:26px;
+      font-weight:800;
+    }
+    .buy { color:var(--green); }
+    .sell { color:var(--red); }
+    .wait { color:var(--muted); }
+    .metric {
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      padding:9px 0;
+      border-bottom:1px solid rgba(255,255,255,.05);
+    }
+    .metric:last-child { border-bottom:0; }
+    .metric span:first-child { color:var(--muted); }
+    .levels {
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-top:12px;
+    }
+    .levels .card strong { font-size:18px; }
+    .backtest {
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:10px;
+    }
+    .backtest strong { display:block; font-size:18px; }
+    .foot {
+      margin-top:16px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+    .topline {
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:center;
+      margin-bottom:12px;
+    }
+    .price {
+      font-size:30px;
+      font-weight:800;
+      letter-spacing:-.02em;
+    }
+    .sub { color:var(--muted); font-size:12px; }
+    .status {
+      font-size:12px;
+      font-weight:700;
+      color:var(--green);
+    }
+    @media (max-width:850px) {
+      .grid { grid-template-columns:1fr; }
+      .signal { grid-template-columns:1fr; }
+      .backtest { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>Stride Pro Trading Suite</h1>
+        <p>NIFTY 50 · Sample build for layout/testing</p>
+      </div>
+      <span class="badge">SAMPLE / DEMO</span>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="topline">
+          <div>
+            <div class="sub">NIFTY 50</div>
+            <div class="price" id="sample-price">23,361.55</div>
+          </div>
+          <div class="status" id="sample-status">LIVE STYLE SAMPLE</div>
+        </div>
+
+        <h2>Smart Signal</h2>
+
+        <div class="signal">
+          <div class="card">
+            <small>Signal</small>
+            <div class="big buy" id="sample-signal">BUY</div>
+          </div>
+          <div class="card">
+            <small>Strength</small>
+            <div class="big">STRONG</div>
+          </div>
+          <div class="card">
+            <small>Confluence</small>
+            <div class="big">7 / 8</div>
+          </div>
+        </div>
+
+        <div class="levels">
+          <div class="card">
+            <small>Market state</small>
+            <strong>TRENDING</strong>
+          </div>
+          <div class="card">
+            <small>Structure</small>
+            <strong>BOS UP</strong>
+          </div>
+          <div class="card">
+            <small>Supertrend</small>
+            <strong class="buy">Bullish</strong>
+          </div>
+          <div class="card">
+            <small>ADX / DMI</small>
+            <strong>ADX 27.6 · +DI &gt; -DI</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Trade Plan</h2>
+        <div class="metric"><span>Entry</span><strong>₹23,361.55</strong></div>
+        <div class="metric"><span>Stop</span><strong>₹23,330.00</strong></div>
+        <div class="metric"><span>Target 1</span><strong>₹23,401.00</strong></div>
+        <div class="metric"><span>Target 2</span><strong>₹23,427.00</strong></div>
+        <div class="metric"><span>Risk : Reward</span><strong>1 : 2.08</strong></div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:16px">
+      <h2>Backtest Summary</h2>
+      <div class="backtest">
+        <div class="card"><small>Trades</small><strong>24</strong></div>
+        <div class="card"><small>Wins</small><strong>15</strong></div>
+        <div class="card"><small>Losses</small><strong>9</strong></div>
+        <div class="card"><small>Win rate</small><strong>62.5%</strong></div>
+        <div class="card"><small>Net points</small><strong>+318.4</strong></div>
+        <div class="card"><small>Avg R:R</small><strong>1.68</strong></div>
+        <div class="card"><small>Max drawdown</small><strong>94.2</strong></div>
+        <div class="card"><small>Mode</small><strong>Historical simulation</strong></div>
+      </div>
+
+      <p class="foot">
+        This page is a sample presentation build only. Values are illustrative so you can review the design before wiring every field to the live analysis engine.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
