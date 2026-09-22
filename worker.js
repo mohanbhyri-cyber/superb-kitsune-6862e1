@@ -22,6 +22,9 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Content-Type, Authorization",
     },
   });
 }
@@ -773,6 +776,21 @@ export default {
   async fetch(request, env) {
     const url =
       new URL(request.url);
+
+    if (
+      request.method === "OPTIONS" &&
+      url.pathname.startsWith("/api/")
+    ) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-headers": "Content-Type, Authorization",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
 
     const token =
       env.UPSTOX_ANALYTICS_TOKEN ||
