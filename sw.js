@@ -1,4 +1,4 @@
-const CACHE='stride-v32';
+const CACHE='stride-v33';
 const ASSETS=['./','./index.html','./style.css','./app.js','./trend-indicators.js','./market.js','./price-action.js','./signal-alerts.js','./pro-scalper.js','./momentum.js','./pro-suite.js','./smrt-nifty-edge.js','./smrt-market-map.js','./smrt-candle-scanner.js','./smrt-trade-finalizer.js','./smrt-gainz-ssl-combo.js','./icon.svg','./icon-192.png','./icon-512.png','./manifest.webmanifest'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('stride-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
