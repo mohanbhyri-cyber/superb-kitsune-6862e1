@@ -5006,7 +5006,10 @@ async function loadData() {
           );
 
 
-          scheduleReconnect();
+          setFeedStatus(
+            'RECONNECTING',
+            'Keeping last chart while retrying live quote'
+          );
         }
       );
 
@@ -6446,7 +6449,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=47',
+      './sw.js?v=48',
       {
         updateViaCache: 'none'
       }
