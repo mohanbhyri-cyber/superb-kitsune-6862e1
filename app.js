@@ -20,9 +20,6 @@ import {
   analyseSmrtAiNifty
 } from './smrt-ai-nifty.js';
 import {
-  setupMarketChat
-} from './market-chat.js';
-import {
   analyseGlobalWatch
 } from './smrt-global-watch.js';
 import {
@@ -5399,133 +5396,11 @@ if (
 }
 
 
-function marketChatSnapshot() {
-
-  const last =
-    state.data.at(-1);
-
-  const closed =
-    Math.max(
-      0,
-      state.data.length - 2
-    );
-
-  const edge =
-    state.niftyEdge?.latest;
-
-  const finalizer =
-    state.liveTradeFinalizer ??
-    state.tradeFinalizer;
-
-  const gainz =
-    state.gainzSSL;
-
-  const map =
-    state.marketMap;
-
-  return {
-    ready:
-      Boolean(
-        last &&
-        state.calc
-      ),
-    timeframe:
-      state.tf,
-    candleTime:
-      last?.time
-        ? new Date(
-            last.time * 1000
-          ).toLocaleTimeString(
-            'en-IN',
-            {
-              timeZone:
-                'Asia/Kolkata',
-              hour:
-                '2-digit',
-              minute:
-                '2-digit',
-              hour12:
-                false
-            }
-          )
-        : '—',
-    price:
-      quote(),
-    high:
-      last?.high,
-    low:
-      last?.low,
-    rsi:
-      state.calc?.rsi?.[closed],
-    ema9:
-      state.calc?.e9?.[closed],
-    ema21:
-      state.calc?.e21?.[closed],
-    ema50:
-      state.calc?.e50?.[closed],
-    macdHist:
-      state.calc?.hist?.[closed],
-    trend:
-      state.trend?.direction?.[closed] || 0,
-    adx:
-      state.trend?.adx?.[closed],
-    futuresVWAP:
-      state.futuresVWAP,
-    signal:
-      finalizer?.state ??
-      edge?.signal ??
-      'NO TRADE',
-    strength:
-      edge?.strength ??
-      '—',
-    confluence:
-      finalizer?.score ??
-      edge?.score ??
-      null,
-    bullishScore:
-      finalizer?.bullScore ??
-      edge?.bullScore ??
-      null,
-    bearishScore:
-      finalizer?.bearScore ??
-      edge?.bearScore ??
-      null,
-    marketState:
-      map?.trend ??
-      edge?.structure ??
-      'WAIT',
-    structure:
-      edge?.structure ??
-      map?.structure ??
-      '—',
-    support:
-      map?.nearestSupport?.price,
-    resistance:
-      map?.nearestResistance?.price,
-    sslSide:
-      gainz?.sslSide ?? 0,
-    qqeSide:
-      gainz?.qqeSide ?? 0,
-    qqeValue:
-      gainz?.qqeValue,
-    mtf:
-      state.mtf,
-    plan:
-      finalizer?.plan ??
-      null
-  };
-}
-
-
 let checkAlerts =
   () => {};
 
 
 loadData();
-
-setupMarketChat(
-  marketChatSnapshot
-);
 
 refreshGlobalWatch().catch(
   () => {}
