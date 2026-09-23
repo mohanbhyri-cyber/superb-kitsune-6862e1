@@ -28,6 +28,9 @@ import {
 import {
   analyseChartConsensus
 } from './smrt-chart-consensus.js';
+import {
+  createTradingViewDatafeed
+} from './tradingview-datafeed.js';
 
 import {
   API_BASE,
@@ -38,6 +41,14 @@ import {
   strideSignals
 } from './market.js';
 
+
+window.SMRTTradingViewDatafeed =
+  createTradingViewDatafeed(
+    API_BASE
+  );
+
+window.SMRTTradingViewDatafeedStatus =
+  'READY · UPSTOX';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
