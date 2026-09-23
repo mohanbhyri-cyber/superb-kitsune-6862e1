@@ -195,3 +195,34 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* SMRT 24/7 Global Watch */
+.global-watch-rows{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:10px;
+}
+
+.global-watch-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:rgba(255,255,255,.02);
+}
+
+.global-watch-row span{
+  color:var(--muted);
+  font-size:12px;
+}
+
+@media(max-width:900px){
+  .global-watch-rows{
+    grid-template-columns:1fr;
+  }
+}
