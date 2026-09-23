@@ -512,21 +512,18 @@ function updateTradingDate() {
   if (!el) return;
 
   /*
-    Use the first actual Upstox
-    candle loaded for the session.
-
-    This means the displayed date
-    follows the actual candle data,
-    not merely the computer clock.
+    History includes the previous trading session plus
+    the current session. Display the date of the latest
+    actual Upstox candle.
   */
 
-  const firstCandle =
-    state.data[0];
+  const latestCandle =
+    state.data.at(-1);
 
   el.textContent =
-    firstCandle?.time
+    latestCandle?.time
       ? formatTradingDate(
-          firstCandle.time
+          latestCandle.time
         )
       : '—';
 }
@@ -4511,7 +4508,7 @@ async function loadData() {
 
   setFeedStatus(
     'LOADING',
-    'Loading Upstox candles from 09:15 IST…'
+    'Loading current + previous trading session…'
   );
 
 
@@ -4584,14 +4581,31 @@ async function loadData() {
 
 
     /*
-      FIRST REAL CANDLE
-      = SESSION OPEN REFERENCE
+      SESSION OPEN REFERENCE:
+      history now contains yesterday/previous trading
+      session as well, so use the first candle from the
+      latest trading date.
     */
+
+    const latestSessionDate =
+      formatTradingDate(
+        state.data.at(-1).time
+      );
+
+    const latestSessionFirst =
+      state.data.find(
+        candle =>
+          formatTradingDate(
+            candle.time
+          ) ===
+          latestSessionDate
+      ) ||
+      state.data[0];
 
     state.sessionOpen[
       state.symbol
     ] =
-      state.data[0].open;
+      latestSessionFirst.open;
 
 
     state.quotes[
