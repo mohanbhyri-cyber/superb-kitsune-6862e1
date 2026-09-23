@@ -4631,6 +4631,9 @@ async function loadData() {
     updateTradingDate();
 
 
+    activateAllIndicators();
+
+
     draw();
 
     summary();
