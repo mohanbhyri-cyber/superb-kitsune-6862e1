@@ -28,6 +28,9 @@ import {
 import {
   analyseNotebookPredictor
 } from './smrt-notebook-predictor.js';
+import {
+  analyseAllIndicators
+} from './smrt-all-indicators.js';
 
 import {
   API_BASE,
@@ -167,6 +170,8 @@ const state = {
   notebookPredictor: null,
 
   notebookDailyUpdated: 0,
+
+  allIndicatorsConsensus: null,
 
   gainzSSL: null,
 
@@ -3731,6 +3736,8 @@ function summary() {
   renderTradeFinalizer();
 
   renderGainzSSLPanel();
+
+  recomputeAllIndicatorsConsensus();
 
   renderWatch();
 }
@@ -8640,6 +8647,164 @@ function refreshLiveTradeFinalizer() {
 }
 
 
+function recomputeAllIndicatorsConsensus() {
+
+  state.allIndicatorsConsensus =
+    analyseAllIndicators({
+      finalizer:
+        state.liveTradeFinalizer ??
+        state.tradeFinalizer,
+      edge:
+        state.niftyEdge,
+      marketMap:
+        state.marketMap,
+      mtf:
+        state.mtf,
+      gainz:
+        state.gainzSSL,
+      aiNifty:
+        state.aiNifty,
+      notebook:
+        state.notebookPredictor,
+      globalWatch:
+        state.globalWatch
+    });
+
+  renderAllIndicatorsConsensus();
+}
+
+
+function renderAllIndicatorsConsensus() {
+
+  const result =
+    state.allIndicatorsConsensus;
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !==
+        undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!result) {
+    set(
+      '#all-indicators-signal',
+      'LOADING…',
+      'muted'
+    );
+
+    return;
+  }
+
+
+  set(
+    '#all-indicators-signal',
+    result.signal,
+    result.signal.includes(
+      'BUY'
+    )
+      ? 'up'
+      : result.signal.includes(
+          'SELL'
+        )
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#all-indicators-confidence',
+    result.confidence +
+    ' / 100'
+  );
+
+
+  set(
+    '#all-indicators-bull',
+    'Bull weight ' +
+    result.bullWeight
+  );
+
+
+  set(
+    '#all-indicators-bear',
+    'Bear weight ' +
+    result.bearWeight
+  );
+
+
+  set(
+    '#all-indicators-alignment',
+    result.alignedCount +
+    ' aligned · ' +
+    result.opposingCount +
+    ' opposing · ' +
+    result.totalVotes +
+    ' active groups'
+  );
+
+
+  const list =
+    $('#all-indicators-votes');
+
+  if (list) {
+    list.innerHTML =
+      result.votes
+        .map(
+          vote => {
+            const cls =
+              vote.side === 1
+                ? 'up'
+                : 'down';
+
+            return (
+              '<div class="all-indicator-vote">' +
+                '<span>' +
+                  vote.name +
+                '</span>' +
+                '<strong class="' +
+                  cls +
+                '">' +
+                  (
+                    vote.side === 1
+                      ? 'BULLISH'
+                      : 'BEARISH'
+                  ) +
+                '</strong>' +
+              '</div>'
+            );
+          }
+        )
+        .join('');
+  }
+
+
+  set(
+    '#all-indicators-reason',
+    result.reason
+  );
+}
+
+
 function renderNotebookPredictor() {
 
   const model =
@@ -8792,6 +8957,8 @@ async function refreshNotebookPredictor() {
 
     renderNotebookPredictor();
 
+    recomputeAllIndicatorsConsensus();
+
   } catch (error) {
     console.warn(
       'Notebook predictor unavailable:',
@@ -8812,6 +8979,8 @@ async function refreshNotebookPredictor() {
       };
 
     renderNotebookPredictor();
+
+    recomputeAllIndicatorsConsensus();
   }
 }
 
@@ -9005,6 +9174,8 @@ async function refreshGlobalWatch() {
 
     renderGlobalWatch();
 
+    recomputeAllIndicatorsConsensus();
+
   } catch (error) {
     console.warn(
       '24/7 Global Watch unavailable:',
@@ -9015,6 +9186,8 @@ async function refreshGlobalWatch() {
       null;
 
     renderGlobalWatch();
+
+    recomputeAllIndicatorsConsensus();
   }
 }
 
@@ -9217,6 +9390,8 @@ function recomputeAiNifty() {
     });
 
   renderAiNifty();
+
+  recomputeAllIndicatorsConsensus();
 
   const chatSignal =
     $('#ai-chat-live-signal');
