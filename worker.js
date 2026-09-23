@@ -1673,6 +1673,261 @@ async function externalNiftySources() {
 }
 
 
+async function globalMarketWatch() {
+  const symbols = [
+    {
+      key: "sp500_futures",
+      name: "S&P 500 Futures",
+      symbol: "ES=F",
+      role: "risk"
+    },
+    {
+      key: "nasdaq_futures",
+      name: "Nasdaq Futures",
+      symbol: "NQ=F",
+      role: "risk"
+    },
+    {
+      key: "dow_futures",
+      name: "Dow Futures",
+      symbol: "YM=F",
+      role: "risk"
+    },
+    {
+      key: "vix",
+      name: "VIX",
+      symbol: "^VIX",
+      role: "inverse"
+    },
+    {
+      key: "usd_inr",
+      name: "USD/INR",
+      symbol: "INR=X",
+      role: "inverse_small"
+    },
+    {
+      key: "nikkei",
+      name: "Nikkei 225",
+      symbol: "^N225",
+      role: "risk"
+    },
+    {
+      key: "hang_seng",
+      name: "Hang Seng",
+      symbol: "^HSI",
+      role: "risk"
+    }
+  ];
+
+  const fetchOne =
+    async item => {
+      const endpoint =
+        "https://query1.finance.yahoo.com/v8/finance/chart/" +
+        encodeURIComponent(
+          item.symbol
+        ) +
+        "?interval=5m&range=1d&includePrePost=true";
+
+      const response =
+        await fetch(
+          endpoint,
+          {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0",
+              Accept:
+                "application/json",
+            },
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          item.name +
+          " HTTP " +
+          response.status
+        );
+      }
+
+      const body =
+        await response.json();
+
+      const result =
+        body?.chart?.result?.[0];
+
+      if (!result) {
+        throw new Error(
+          item.name +
+          " returned no data"
+        );
+      }
+
+      const meta =
+        result.meta || {};
+
+      const closes =
+        Array.isArray(
+          result
+            ?.indicators
+            ?.quote
+            ?.[0]
+            ?.close
+        )
+          ? result.indicators.quote[0].close
+          : [];
+
+      const valid =
+        closes
+          .map(Number)
+          .filter(
+            Number.isFinite
+          );
+
+      const price =
+        Number(
+          meta.regularMarketPrice
+        );
+
+      const previousClose =
+        Number(
+          meta.chartPreviousClose ??
+          meta.previousClose
+        );
+
+      const changePercent =
+        Number.isFinite(price) &&
+        Number.isFinite(previousClose) &&
+        previousClose !== 0
+          ? (
+              (
+                price -
+                previousClose
+              ) /
+              previousClose
+            ) * 100
+          : null;
+
+      let momentum = null;
+
+      if (
+        valid.length >= 4
+      ) {
+        const latest =
+          valid.at(-1);
+
+        const prior =
+          valid.at(-4);
+
+        if (
+          Number.isFinite(latest) &&
+          Number.isFinite(prior) &&
+          prior !== 0
+        ) {
+          momentum =
+            (
+              (
+                latest -
+                prior
+              ) /
+              prior
+            ) * 100;
+        }
+      }
+
+      return {
+        key:
+          item.key,
+        name:
+          item.name,
+        symbol:
+          item.symbol,
+        role:
+          item.role,
+        price:
+          Number.isFinite(price)
+            ? price
+            : null,
+        previousClose:
+          Number.isFinite(
+            previousClose
+          )
+            ? previousClose
+            : null,
+        changePercent:
+          Number.isFinite(
+            changePercent
+          )
+            ? changePercent
+            : null,
+        momentum:
+          Number.isFinite(
+            momentum
+          )
+            ? momentum
+            : null,
+        marketState:
+          meta.marketState ||
+          null,
+        timestamp:
+          Number(
+            meta.regularMarketTime
+          ) ||
+          result.timestamp?.at(-1) ||
+          null,
+      };
+    };
+
+  const settled =
+    await Promise.allSettled(
+      symbols.map(
+        fetchOne
+      )
+    );
+
+  const items = [];
+  const errors = [];
+
+  for (
+    const result of settled
+  ) {
+    if (
+      result.status ===
+      "fulfilled"
+    ) {
+      items.push(
+        result.value
+      );
+    } else {
+      errors.push(
+        result.reason
+          ?.message ||
+        String(
+          result.reason
+        )
+      );
+    }
+  }
+
+  return json({
+    live:
+      items.length > 0,
+    type:
+      "GLOBAL_MARKET_WATCH",
+    label:
+      "24/7 Global Watch",
+    source:
+      "YAHOO_FINANCE",
+    count:
+      items.length,
+    items,
+    errors,
+    timestamp:
+      new Date()
+        .toISOString(),
+  });
+}
+
+
 // ----------------------------------------------------
 // WORKER ROUTER
 // ----------------------------------------------------
@@ -1707,6 +1962,12 @@ export default {
       url.pathname === "/api/external-nifty"
     ) {
       return externalNiftySources();
+    }
+
+    if (
+      url.pathname === "/api/global-watch"
+    ) {
+      return globalMarketWatch();
     }
 
     if (
