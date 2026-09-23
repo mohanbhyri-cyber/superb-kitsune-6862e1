@@ -469,25 +469,82 @@ async function intradayHistory(url, token) {
     });
   }
 
-  const endpoint =
+  const intradayEndpoint =
     "https://api.upstox.com/v3/historical-candle/intraday/" +
     encodeURIComponent(instrumentKey) +
     "/minutes/" +
     interval;
 
+  const today =
+    todayIST();
+
+  const historicalTodayEndpoint =
+    "https://api.upstox.com/v3/historical-candle/" +
+    encodeURIComponent(instrumentKey) +
+    "/minutes/" +
+    interval +
+    "/" +
+    today +
+    "/" +
+    today;
+
   try {
-    const body =
-      await upstoxFetch(endpoint, token);
+    let rows = [];
 
-    const rows =
-      body?.data?.candles;
+    try {
+      const intradayBody =
+        await upstoxFetch(
+          intradayEndpoint,
+          token
+        );
 
-    if (!Array.isArray(rows)) {
+      if (
+        Array.isArray(
+          intradayBody?.data?.candles
+        )
+      ) {
+        rows =
+          intradayBody.data.candles;
+      }
+    } catch (error) {
+      console.warn(
+        "Primary intraday candle fetch failed",
+        error?.message || error
+      );
+    }
+
+    if (!rows.length) {
+      try {
+        const historicalTodayBody =
+          await upstoxFetch(
+            historicalTodayEndpoint,
+            token
+          );
+
+        if (
+          Array.isArray(
+            historicalTodayBody?.data?.candles
+          )
+        ) {
+          rows =
+            historicalTodayBody.data.candles;
+        }
+      } catch (error) {
+        console.warn(
+          "Today historical-candle fallback failed",
+          error?.message || error
+        );
+      }
+    }
+
+    if (!rows.length) {
       return json({
         live: false,
         source: "UPSTOX",
+        symbol,
+        timeframe,
         reason:
-          "Upstox did not return candle data.",
+          "No current-session candles returned by Upstox intraday or historical API.",
         candles: [],
       });
     }
@@ -547,6 +604,8 @@ async function intradayHistory(url, token) {
         todayIST(),
       currentSessionCount:
         todayCandles.length,
+      historyMode:
+        "intraday-with-historical-fallback",
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
