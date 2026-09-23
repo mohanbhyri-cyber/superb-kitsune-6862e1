@@ -4140,6 +4140,32 @@ function summary() {
 
   updateTradingDate();
 
+  if (
+    $('#tv-range-clock')
+  ) {
+    $('#tv-range-clock').textContent =
+      new Date()
+        .toLocaleTimeString(
+          'en-IN',
+          {
+            timeZone:
+              'Asia/Kolkata',
+            hour:
+              '2-digit',
+            minute:
+              '2-digit',
+            hour12:
+              false
+          }
+        ) +
+      ' IST · ' +
+      (
+        isNseCashMarketOpen()
+          ? 'LIVE'
+          : 'CLOSED'
+      );
+  }
+
 
   if (
     !state.data.length
@@ -6231,6 +6257,109 @@ let checkAlerts =
 
 
 loadData();
+
+
+// TradingView-style chart controls.
+if (
+  $('#chart-view-tv')
+) {
+  $('#chart-view-tv').onclick =
+    () =>
+      setChartView(
+        'tradingview'
+      );
+}
+
+if (
+  $('#chart-view-classic')
+) {
+  $('#chart-view-classic').onclick =
+    () =>
+      setChartView(
+        'classic'
+      );
+}
+
+if (
+  $('#tv-indicators-btn')
+) {
+  $('#tv-indicators-btn').onclick =
+    () => {
+      $('#indicators')
+        ?.classList.toggle(
+          'hidden'
+        );
+    };
+}
+
+if (
+  $('#tv-reset-btn')
+) {
+  $('#tv-reset-btn').onclick =
+    () => {
+      state.count = 90;
+      state.offset = 0;
+      state.hover = null;
+
+      tvLiteChart
+        ?.timeScale()
+        ?.fitContent();
+
+      draw();
+    };
+}
+
+if (
+  $('#tv-theme-btn')
+) {
+  $('#tv-theme-btn').onclick =
+    () =>
+      $('#theme')?.click();
+}
+
+$('[data-tv-range]')
+  .forEach(
+    button => {
+      button.onclick =
+        () => {
+          const value =
+            button.dataset
+              .tvRange;
+
+          if (
+            value === 'fit'
+          ) {
+            tvLiteChart
+              ?.timeScale()
+              ?.fitContent();
+
+            return;
+          }
+
+          const count =
+            Number(value);
+
+          if (
+            Number.isFinite(
+              count
+            )
+          ) {
+            state.count =
+              count;
+
+            state.offset =
+              0;
+
+            draw();
+          }
+        };
+    }
+  );
+
+setChartView(
+  'tradingview'
+);
+
 
 refreshGlobalWatch().catch(
   () => {}
