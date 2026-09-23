@@ -50,6 +50,20 @@ window.SMRTTradingViewDatafeed =
 window.SMRTTradingViewDatafeedStatus =
   'READY · UPSTOX';
 
+setTimeout(
+  () => {
+    if (
+      !window.TradingView?.widget
+    ) {
+      setTradingViewDatafeedStatus?.(
+        'TradingView Datafeed API · READY · Advanced runtime pending',
+        'muted'
+      );
+    }
+  },
+  0
+);
+
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
@@ -1376,6 +1390,225 @@ function canvas(id) {
 ====================================================== */
 
 
+let tvAdvancedWidget = null;
+let tvAdvancedAttempted = false;
+let tvAdvancedReady = false;
+
+
+function setTradingViewDatafeedStatus(
+  text,
+  className = 'muted'
+) {
+
+  const el =
+    $('#tradingview-datafeed-status');
+
+  if (!el) {
+    return;
+  }
+
+  el.textContent =
+    text;
+
+  el.className =
+    'tv-datafeed-status ' +
+    className;
+}
+
+
+function loadScriptOnce(
+  src
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const existing =
+        document.querySelector(
+          'script[data-smrt-tv-advanced="1"]'
+        );
+
+      if (
+        existing &&
+        window.TradingView?.widget
+      ) {
+        resolve();
+
+        return;
+      }
+
+      if (existing) {
+        existing.addEventListener(
+          'load',
+          () => resolve(),
+          {
+            once: true
+          }
+        );
+
+        existing.addEventListener(
+          'error',
+          () =>
+            reject(
+              new Error(
+                'TradingView Advanced Charts runtime unavailable'
+              )
+            ),
+          {
+            once: true
+          }
+        );
+
+        return;
+      }
+
+      const script =
+        document.createElement(
+          'script'
+        );
+
+      script.src =
+        src;
+
+      script.async =
+        true;
+
+      script.dataset
+        .smrtTvAdvanced =
+          '1';
+
+      script.onload =
+        () =>
+          resolve();
+
+      script.onerror =
+        () =>
+          reject(
+            new Error(
+              'TradingView Advanced Charts runtime not installed'
+            )
+          );
+
+      document.head
+        .appendChild(
+          script
+        );
+    }
+  );
+}
+
+
+async function initTradingViewAdvancedChart() {
+
+  if (
+    tvAdvancedReady &&
+    tvAdvancedWidget
+  ) {
+    return true;
+  }
+
+  if (
+    tvAdvancedAttempted
+  ) {
+    return false;
+  }
+
+  tvAdvancedAttempted =
+    true;
+
+  const container =
+    $('#tv-advanced-chart');
+
+  if (!container) {
+    return false;
+  }
+
+  try {
+    if (
+      !window.TradingView?.widget
+    ) {
+      await loadScriptOnce(
+        '/charting_library/charting_library.standalone.js'
+      );
+    }
+
+    if (
+      !window.TradingView?.widget
+    ) {
+      throw new Error(
+        'TradingView Advanced Charts library is not available'
+      );
+    }
+
+    container.innerHTML =
+      '';
+
+    tvAdvancedWidget =
+      new window.TradingView.widget({
+        container:
+          'tv-advanced-chart',
+        library_path:
+          '/charting_library/',
+        datafeed:
+          window.SMRTTradingViewDatafeed,
+        symbol:
+          'NSE:NIFTY',
+        interval:
+          state.tf === '1m'
+            ? '1'
+            : state.tf === '3m'
+              ? '3'
+              : state.tf === '15m'
+                ? '15'
+                : '5',
+        locale:
+          'en',
+        timezone:
+          'Asia/Kolkata',
+        autosize:
+          true,
+        theme:
+          'dark',
+        currency_code:
+          'INR',
+        enabled_features: [
+          'display_market_status',
+          'popup_hints'
+        ],
+        disabled_features: [
+          'use_localstorage_for_settings'
+        ]
+      });
+
+    tvAdvancedReady =
+      true;
+
+    setTradingViewDatafeedStatus(
+      'TradingView Advanced Charts · Upstox LIVE',
+      'up'
+    );
+
+    return true;
+
+  } catch (error) {
+    console.info(
+      'Advanced Charts runtime not installed; using Lightweight Charts.',
+      error
+    );
+
+    setTradingViewDatafeedStatus(
+      'TradingView Lightweight · Upstox LIVE',
+      'muted'
+    );
+
+    return false;
+  }
+}
+
+
 let tvLiteChart = null;
 let tvLiteSeries = null;
 let tvLiteMarkers = null;
@@ -1797,24 +2030,82 @@ function setChartView(
       : 'tradingview';
 
 
-  const tv =
+  const advanced =
+    $('#tv-advanced-chart');
+
+  const lite =
     $('#tv-lightweight-chart');
 
   const classic =
     $('#chart');
 
 
-  tv?.classList.toggle(
-    'hidden',
+  if (
     state.tvChartMode ===
       'classic'
-  );
+  ) {
 
-  classic?.classList.toggle(
-    'hidden',
-    state.tvChartMode ===
-      'tradingview'
-  );
+    advanced?.classList.add(
+      'hidden'
+    );
+
+    lite?.classList.add(
+      'hidden'
+    );
+
+    classic?.classList.remove(
+      'hidden'
+    );
+
+  } else {
+
+    classic?.classList.add(
+      'hidden'
+    );
+
+    initTradingViewAdvancedChart()
+      .then(
+        ready => {
+
+          if (
+            ready &&
+            state.tvChartMode ===
+              'tradingview'
+          ) {
+            advanced
+              ?.classList
+              .remove(
+                'hidden'
+              );
+
+            lite
+              ?.classList
+              .add(
+                'hidden'
+              );
+          } else if (
+            state.tvChartMode ===
+              'tradingview'
+          ) {
+            advanced
+              ?.classList
+              .add(
+                'hidden'
+              );
+
+            lite
+              ?.classList
+              .remove(
+                'hidden'
+              );
+
+            syncTradingViewLiteChart(
+              true
+            );
+          }
+        }
+      );
+  }
 
 
   $('#chart-view-tv')
@@ -1834,12 +2125,8 @@ function setChartView(
 
   if (
     state.tvChartMode ===
-      'tradingview'
+      'classic'
   ) {
-    syncTradingViewLiteChart(
-      true
-    );
-  } else {
     draw();
   }
 }
