@@ -294,6 +294,9 @@ let unsubscribe;
 
 let request = 0;
 
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+
 let geometry;
 
 let drag;
@@ -4349,12 +4352,70 @@ async function refreshMTF() {
 }
 
 
+function scheduleReconnect() {
+
+  if (
+    state.replay.active
+  ) {
+    return;
+  }
+
+
+  clearTimeout(
+    reconnectTimer
+  );
+
+
+  reconnectAttempts +=
+    1;
+
+
+  const delay =
+    Math.min(
+      15000,
+      1500 *
+      reconnectAttempts
+    );
+
+
+  setFeedStatus(
+    'RECONNECTING',
+    'Retrying in ' +
+    Math.ceil(
+      delay /
+      1000
+    ) +
+    's'
+  );
+
+
+  reconnectTimer =
+    setTimeout(
+      () => {
+
+        loadData().catch(
+          () => {}
+        );
+      },
+      delay
+    );
+}
+
+
 /* ======================================================
    LIVE UPSTOX DATA
 ====================================================== */
 
 
 async function loadData() {
+
+  clearTimeout(
+    reconnectTimer
+  );
+
+  reconnectTimer =
+    null;
+
 
   const id =
     ++request;
@@ -4576,6 +4637,17 @@ async function loadData() {
     momentumTracker.baseline(
       state.momentum || []
     );
+
+
+    reconnectAttempts =
+      0;
+
+    clearTimeout(
+      reconnectTimer
+    );
+
+    reconnectTimer =
+      null;
 
 
     setFeedStatus(
@@ -4833,9 +4905,7 @@ async function loadData() {
           );
 
 
-          setFeedStatus(
-            'RECONNECTING'
-          );
+          scheduleReconnect();
         }
       );
 
@@ -4867,6 +4937,9 @@ async function loadData() {
       error?.message ||
       'Upstox market data unavailable.'
     );
+
+
+    scheduleReconnect();
   }
 }
 
