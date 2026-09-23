@@ -140,6 +140,8 @@ const state = {
 
   tradeFinalizer: null,
 
+  liveTradeFinalizer: null,
+
   gainzSSL: null,
 
   proSuite: null,
@@ -4566,6 +4568,9 @@ async function loadData() {
   state.tradeFinalizer =
     null;
 
+  state.liveTradeFinalizer =
+    null;
+
 
   state.candleScanner =
     null;
@@ -4748,6 +4753,9 @@ async function loadData() {
 
 
     activateAllIndicators();
+
+
+    refreshLiveTradeFinalizer();
 
 
     draw();
@@ -5073,6 +5081,9 @@ async function loadData() {
 
           state.lastUpdate =
             Date.now();
+
+
+          refreshLiveTradeFinalizer();
 
 
           if (
@@ -8218,9 +8229,116 @@ function renderGainzSSLPanel() {
   );
 }
 
+function refreshLiveTradeFinalizer() {
+
+  if (
+    !Array.isArray(
+      state.data
+    ) ||
+    state.data.length < 30
+  ) {
+    state.liveTradeFinalizer =
+      null;
+
+    return;
+  }
+
+
+  const last =
+    state.data.at(-1);
+
+  const seconds =
+    Number(
+      intervals[
+        state.tf
+      ]
+    ) || 300;
+
+
+  const synthetic =
+    [
+      ...state.data.map(
+        candle => ({
+          ...candle
+        })
+      ),
+      {
+        ...last,
+        time:
+          Number(last.time) +
+          seconds
+      }
+    ];
+
+
+  const liveCalc =
+    indicators(
+      synthetic
+    );
+
+  const liveTrend =
+    trendIndicators(
+      synthetic
+    );
+
+  const liveEdge =
+    analyseNiftyEdge(
+      synthetic,
+      {
+        futuresVWAP:
+          state.futuresVWAP
+      }
+    );
+
+  const liveMap =
+    analyseMarketMap(
+      synthetic,
+      {
+        futuresVWAP:
+          state.futuresVWAP
+      }
+    );
+
+  const liveScanner =
+    scanCandles(
+      synthetic
+    );
+
+  const liveSetup =
+    candleConfluence(
+      liveScanner,
+      liveMap,
+      liveEdge,
+      state.mtf
+    );
+
+
+  state.liveTradeFinalizer =
+    finalizeTrade({
+      edge:
+        liveEdge,
+      marketMap:
+        liveMap,
+      candleSetup:
+        liveSetup,
+      mtf:
+        state.mtf,
+      calc:
+        liveCalc,
+      trend:
+        liveTrend,
+      data:
+        synthetic,
+      futuresVWAP:
+        state.futuresVWAP
+    });
+}
+
+
 function renderTradeFinalizer() {
 
   const f =
+    state.liveTradeFinalizer ??
     state.tradeFinalizer;
 
 
