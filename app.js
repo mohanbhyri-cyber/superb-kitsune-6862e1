@@ -1611,6 +1611,7 @@ async function initTradingViewAdvancedChart() {
 
 let tvLiteChart = null;
 let tvLiteSeries = null;
+let tvLiteVolumeSeries = null;
 let tvLiteMarkers = null;
 let tvLiteLastLength = 0;
 let tvLiteLastFirstTime = null;
@@ -1935,6 +1936,26 @@ function syncTradingViewLiteChart(
     );
 
 
+  const volumeData =
+    state.data.map(
+      candle => ({
+        time:
+          Number(
+            candle.time
+          ),
+        value:
+          Number(
+            candle.volume
+          ) || 0,
+        color:
+          Number(candle.close) >=
+          Number(candle.open)
+            ? 'rgba(38,166,154,0.45)'
+            : 'rgba(239,83,80,0.45)'
+      })
+    );
+
+
   const firstTime =
     data[0]?.time;
 
@@ -1954,6 +1975,11 @@ function syncTradingViewLiteChart(
         data
       );
 
+      tvLiteVolumeSeries
+        ?.setData(
+          volumeData
+        );
+
       tvLiteLastLength =
         data.length;
 
@@ -1971,6 +1997,18 @@ function syncTradingViewLiteChart(
         tvLiteSeries.update(
           last
         );
+
+        const lastVolume =
+          volumeData.at(-1);
+
+        if (
+          lastVolume
+        ) {
+          tvLiteVolumeSeries
+            ?.update(
+              lastVolume
+            );
+        }
       }
     }
 
@@ -2028,6 +2066,12 @@ function setChartView(
     mode === 'classic'
       ? 'classic'
       : 'tradingview';
+
+  document.body.classList.toggle(
+    'tv-shell-mode',
+    state.tvChartMode ===
+      'tradingview'
+  );
 
 
   const advanced =
@@ -2105,6 +2149,20 @@ function setChartView(
           }
         }
       );
+  }
+
+
+  const tvProStatus =
+    $('#tv-pro-status');
+
+  if (
+    tvProStatus
+  ) {
+    tvProStatus.textContent =
+      state.tvChartMode ===
+        'tradingview'
+        ? 'TRADINGVIEW STYLE · UPSTOX LIVE'
+        : 'CLASSIC CHART · UPSTOX LIVE';
   }
 
 
