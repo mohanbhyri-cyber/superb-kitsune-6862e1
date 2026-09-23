@@ -641,6 +641,58 @@
 
       <!-- CHART -->
 
+      <div class="tv-pro-toolbar">
+
+        <div class="tv-pro-left">
+          <strong class="tv-pro-symbol">NIFTY 50</strong>
+
+          <span class="tv-pro-sep"></span>
+
+          <div class="tv-pro-timeframes">
+            <button data-tf="1m">1m</button>
+            <button data-tf="3m">3m</button>
+            <button data-tf="5m" class="active">5m</button>
+            <button data-tf="15m">15m</button>
+          </div>
+
+          <span class="tv-pro-sep"></span>
+
+          <button
+            type="button"
+            id="tv-indicators-btn"
+            class="tv-pro-button"
+          >
+            ƒx Indicators
+          </button>
+
+          <button
+            type="button"
+            id="tv-reset-btn"
+            class="tv-pro-button"
+          >
+            Reset
+          </button>
+        </div>
+
+        <div class="tv-pro-right">
+          <span
+            id="tv-pro-status"
+            class="tv-pro-status"
+          >
+            UPSTOX · NIFTY 50
+          </span>
+
+          <button
+            type="button"
+            id="tv-theme-btn"
+            class="tv-pro-button"
+          >
+            Dark Mode
+          </button>
+        </div>
+
+      </div>
+
       <div class="chart-wrap">
 
         <div class="draw-tools">
@@ -754,6 +806,19 @@
 
         </div>
 
+      </div>
+
+      <div class="tv-range-bar">
+        <button data-tv-range="40">1D</button>
+        <button data-tv-range="80">2D</button>
+        <button data-tv-range="120">More</button>
+        <button data-tv-range="fit">Fit</button>
+
+        <span class="tv-range-spacer"></span>
+
+        <span id="tv-range-clock">
+          IST · LIVE
+        </span>
       </div>
 
 
