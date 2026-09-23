@@ -195,3 +195,71 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* SMRT AI Analysis Chat */
+.ai-analysis-chat{
+  grid-column:1 / -1;
+}
+
+.ai-chat-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:10px 0 12px;
+}
+
+.ai-chat-actions button{
+  min-height:38px;
+}
+
+.ai-chat-messages{
+  min-height:150px;
+  max-height:320px;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px;
+  background:rgba(0,0,0,.16);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.ai-chat-message{
+  max-width:min(780px,90%);
+  padding:10px 12px;
+  border-radius:10px;
+  line-height:1.45;
+  white-space:pre-wrap;
+}
+
+.ai-chat-message.assistant{
+  align-self:flex-start;
+  background:rgba(114,228,189,.08);
+  border:1px solid rgba(114,228,189,.18);
+}
+
+.ai-chat-message.user{
+  align-self:flex-end;
+  background:rgba(127,168,245,.10);
+  border:1px solid rgba(127,168,245,.20);
+}
+
+.ai-chat-form{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 100px;
+  gap:8px;
+  margin-top:10px;
+}
+
+.ai-chat-form input{
+  width:100%;
+  min-width:0;
+}
+
+@media(max-width:700px){
+  .ai-chat-form{
+    grid-template-columns:1fr;
+  }
+}
