@@ -254,16 +254,107 @@ export function finalizeTrade({
     state = 'NO TRADE';
   }
 
-  // Prefer current closed-candle edge plan only.
-  const plan = state !== 'NO TRADE' && edgeNow?.plan
-    ? {
-        entry: edgeNow.plan.entry,
-        stop: edgeNow.plan.stop,
-        target1: edgeNow.plan.target1,
-        target2: edgeNow.plan.target2,
-        target3: edgeNow.plan.target3
+  // Build a fresh plan from the SAME closed candle whenever the
+  // Finalizer itself confirms a BUY/SELL setup. Prefer the NIFTY EDGE
+  // plan when available, but do not leave Entry/SL/TP blank merely
+  // because EDGE is still WATCH while Finalizer confluence is valid.
+  let plan = null;
+
+  if (
+    state !== 'NO TRADE'
+  ) {
+    if (
+      edgeNow?.plan
+    ) {
+      plan = {
+        entry:
+          edgeNow.plan.entry,
+        stop:
+          edgeNow.plan.stop,
+        target1:
+          edgeNow.plan.target1,
+        target2:
+          edgeNow.plan.target2,
+        target3:
+          edgeNow.plan.target3
+      };
+    } else if (
+      finite(atr) &&
+      Number(atr) > 0
+    ) {
+      const planSide =
+        state.includes('BUY')
+          ? 1
+          : -1;
+
+      const entry =
+        close;
+
+      let stop;
+
+      if (
+        planSide === 1
+      ) {
+        const atrStop =
+          entry -
+          Number(atr) * 1.2;
+
+        const supportStop =
+          finite(support) &&
+          Number(support) < entry
+            ? Number(support) -
+              Number(atr) * 0.15
+            : atrStop;
+
+        stop =
+          Math.min(
+            atrStop,
+            supportStop
+          );
+      } else {
+        const atrStop =
+          entry +
+          Number(atr) * 1.2;
+
+        const resistanceStop =
+          finite(resistance) &&
+          Number(resistance) > entry
+            ? Number(resistance) +
+              Number(atr) * 0.15
+            : atrStop;
+
+        stop =
+          Math.max(
+            atrStop,
+            resistanceStop
+          );
       }
-    : null;
+
+      const risk =
+        Math.abs(
+          entry - stop
+        );
+
+      if (
+        finite(risk) &&
+        risk > 0
+      ) {
+        plan = {
+          entry,
+          stop,
+          target1:
+            entry +
+            planSide * risk,
+          target2:
+            entry +
+            planSide * risk * 1.5,
+          target3:
+            entry +
+            planSide * risk * 2
+        };
+      }
+    }
+  }
 
   let invalidation = 'None';
 
