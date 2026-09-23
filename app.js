@@ -4990,7 +4990,12 @@ async function loadData() {
 
 
           setFeedStatus(
-            'LIVE'
+            tick.fallback
+              ? 'STALE'
+              : 'LIVE',
+            tick.fallback
+              ? 'UPSTOX FALLBACK · 1m candle feed'
+              : ''
           );
         },
 
@@ -6445,7 +6450,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=50',
+      './sw.js?v=51',
       {
         updateViaCache: 'none'
       }
