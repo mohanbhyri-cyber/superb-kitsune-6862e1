@@ -933,9 +933,13 @@ function renderProSuiteSummary() {
       : state.smartSignal;
 
   const plan =
-    edgeActionable
-      ?.plan ??
-    state.smartPlan;
+    edgeLatest
+      ? (
+          edgeActionable
+            ?.plan ??
+          null
+        )
+      : state.smartPlan;
 
   const structure =
     edgeLatest
@@ -6450,7 +6454,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=51',
+      './sw.js?v=52',
       {
         updateViaCache: 'none'
       }
