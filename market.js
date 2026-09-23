@@ -447,6 +447,7 @@ export class UpstoxMarketAdapter {
       this.status = 'OFFLINE';
 
       throw new Error(
+        data?.reason ||
         'Live candle data unavailable'
       );
     }
@@ -576,6 +577,7 @@ export class UpstoxMarketAdapter {
         ) {
 
           throw new Error(
+            q?.reason ||
             'Invalid live quote'
           );
         }
