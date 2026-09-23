@@ -19,9 +19,7 @@
 
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="market-chat.css">
-</head>
+  <link rel="stylesheet" href="style.css"></head>
 
 <body>
 
@@ -1649,90 +1647,6 @@
       risk filtering and closed-candle confirmation for NIFTY 50.
       No automatic orders or guaranteed results.
     </p>
-
-  </section>
-
-  <section
-    class="panel market-chat-panel analysis-chat"
-    id="market-chat-panel"
-    aria-labelledby="market-chat-title"
-  >
-
-    <div class="panel-heading">
-      <h2 id="market-chat-title">
-        SMRT Market Chat
-      </h2>
-
-      <span class="muted">
-        Uses current NIFTY 50 app data only
-      </span>
-    </div>
-
-    <div
-      class="market-chat-prompts"
-      aria-label="Suggested questions"
-    >
-      <button
-        type="button"
-        data-market-question="What is the current final trade setup?"
-      >
-        Final setup
-      </button>
-
-      <button
-        type="button"
-        data-market-question="What are support resistance and trend?"
-      >
-        Trend + levels
-      </button>
-
-      <button
-        type="button"
-        data-market-question="What are SSL and QQE showing?"
-      >
-        SSL + QQE
-      </button>
-
-      <button
-        type="button"
-        data-market-question="Why is it NO TRADE?"
-      >
-        Why no trade?
-      </button>
-    </div>
-
-    <div
-      id="market-chat-messages"
-      class="market-chat-messages"
-      aria-live="polite"
-    >
-      <div class="market-chat-message assistant">
-        Ask about the current NIFTY trend, levels, indicators,
-        Trade Finalizer, SSL + QQE, MTF confirmation, or trade plan.
-      </div>
-    </div>
-
-    <form
-      id="market-chat-form"
-      class="market-chat-form"
-    >
-      <label class="market-chat-label">
-        Ask about this chart
-        <input
-          id="market-chat-input"
-          maxlength="240"
-          autocomplete="off"
-          placeholder="Example: Why is it NO TRADE?"
-        >
-      </label>
-
-      <button
-        type="submit"
-        class="primary"
-      >
-        Ask
-      </button>
-    </form>
 
   </section>
 
