@@ -20,6 +20,7 @@
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="market-chat.css">
 </head>
 
 <body>
@@ -1533,91 +1534,6 @@
 
 
   <section
-    class="panel ai-analysis-chat"
-    id="ai-analysis-chat-panel"
-    style="margin-top:0"
-  >
-
-    <div class="panel-heading">
-      <h2>
-        SMRT AI Analysis Chat
-      </h2>
-
-      <span class="muted">
-        Live signal:
-        <strong
-          id="ai-chat-live-signal"
-          class="muted"
-        >
-          WAIT
-        </strong>
-      </span>
-    </div>
-
-    <div class="ai-chat-actions">
-      <button
-        type="button"
-        data-ai-chat="signal now"
-      >
-        Signal now
-      </button>
-
-      <button
-        type="button"
-        data-ai-chat="why this signal"
-      >
-        Why?
-      </button>
-
-      <button
-        type="button"
-        data-ai-chat="trend 5m 15m 1h"
-      >
-        Trend
-      </button>
-
-      <button
-        type="button"
-        data-ai-chat="trade plan entry stop targets"
-      >
-        Trade plan
-      </button>
-    </div>
-
-    <div
-      id="ai-chat-messages"
-      class="ai-chat-messages"
-      aria-live="polite"
-    ></div>
-
-    <form
-      id="ai-chat-form"
-      class="ai-chat-form"
-    >
-      <input
-        id="ai-chat-input"
-        type="text"
-        autocomplete="off"
-        placeholder="Ask: buy or sell now? why? entry?"
-      >
-
-      <button
-        type="submit"
-        class="primary"
-      >
-        Ask
-      </button>
-    </form>
-
-    <p class="disclaimer">
-      Decision-support only. Signals can be wrong or delayed.
-      No automatic orders are placed.
-    </p>
-
-  </section>
-
-
-  <section
     class="panel"
     id="trade-finalizer-panel"
     style="margin-top:0"
@@ -1844,6 +1760,79 @@
 
   </section>
 
+  <section
+    class="panel analysis-chat"
+    id="market-chat-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT Market Chat
+      </h2>
+
+      <span class="muted">
+        Uses current NIFTY 50 app data only
+      </span>
+    </div>
+
+    <div class="market-chat-actions">
+      <button
+        type="button"
+        data-market-question="final setup"
+      >
+        Final setup
+      </button>
+
+      <button
+        type="button"
+        data-market-question="trend and levels"
+      >
+        Trend + levels
+      </button>
+
+      <button
+        type="button"
+        data-market-question="ssl qqe"
+      >
+        SSL + QQE
+      </button>
+
+      <button
+        type="button"
+        data-market-question="why no trade"
+      >
+        Why no trade?
+      </button>
+    </div>
+
+    <div
+      id="market-chat-messages"
+      class="market-chat-messages"
+      aria-live="polite"
+    ></div>
+
+    <form
+      id="market-chat-form"
+      class="market-chat-form"
+    >
+      <input
+        id="market-chat-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Ask about this chart"
+      >
+
+      <button
+        type="submit"
+        class="primary"
+      >
+        Ask
+      </button>
+    </form>
+
+  </section>
+
   </div>
 
   <div class="page-footer">
@@ -1946,7 +1935,7 @@
 
 <script
   type="module"
-  src="app.js?v=61"
+  src="app.js?v=62"
 ></script>
 
 </body>
