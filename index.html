@@ -935,6 +935,375 @@
 
       </section>
 
+
+      <!-- COMPACT SMRT ANALYSIS IN RIGHT SIDEBAR -->
+      <div class="sidebar-analysis-grid">
+
+      <section
+        class="panel"
+        id="market-map-panel"
+        style="margin-top:0"
+      >
+
+        <div class="panel-heading">
+          <h2>
+            SMRT Market Map
+          </h2>
+
+          <span class="muted">
+            Support · Resistance · Trend · Reversal
+          </span>
+        </div>
+
+        <div class="pro-backtest-grid">
+
+          <div>
+            <small>Nearest Support</small>
+            <strong id="market-map-support">—</strong>
+          </div>
+
+          <div>
+            <small>Nearest Resistance</small>
+            <strong id="market-map-resistance">—</strong>
+          </div>
+
+          <div>
+            <small>Trend</small>
+            <strong id="market-map-trend" class="muted">
+              WARMING UP
+            </strong>
+          </div>
+
+          <div>
+            <small>Reversal</small>
+            <strong id="market-map-reversal" class="muted">
+              NONE
+            </strong>
+          </div>
+
+          <div>
+            <small>Breakout</small>
+            <strong id="market-map-breakout" class="muted">
+              NONE
+            </strong>
+          </div>
+
+          <div>
+            <small>Trade State</small>
+            <strong id="market-map-action" class="muted">
+              NO TRADE
+            </strong>
+          </div>
+
+          <div>
+            <small>Confluence</small>
+            <strong id="market-map-score">
+              0 / 10
+            </strong>
+          </div>
+
+        </div>
+
+        <p class="disclaimer">
+          Closed-candle technical analysis only. Support, resistance,
+          reversal and breakout signals can fail and do not guarantee
+          future results.
+        </p>
+
+      </section>
+
+
+      <section
+        class="panel"
+        id="candle-scanner-panel"
+        style="margin-top:0"
+      >
+
+        <div class="panel-heading">
+          <h2>
+            SMRT Candle Scanner
+          </h2>
+
+          <span class="muted">
+            Closed-candle pattern confirmation
+          </span>
+        </div>
+
+        <div class="pro-backtest-grid">
+
+          <div>
+            <small>Pattern</small>
+            <strong id="candle-pattern">NONE</strong>
+          </div>
+
+          <div>
+            <small>Direction</small>
+            <strong id="candle-pattern-side" class="muted">—</strong>
+          </div>
+
+          <div>
+            <small>Pattern Strength</small>
+            <strong id="candle-pattern-strength">0 / 4</strong>
+          </div>
+
+          <div>
+            <small>Confluence Trade</small>
+            <strong id="candle-trade-state" class="muted">NO TRADE</strong>
+          </div>
+
+          <div>
+            <small>Confluence Score</small>
+            <strong id="candle-confluence-score">0 pts</strong>
+          </div>
+
+        </div>
+
+        <p
+          id="candle-pattern-list"
+          class="pa-note"
+          style="margin-top:10px"
+        >
+          No confirmed closed-candle pattern
+        </p>
+
+        <p class="disclaimer">
+          Pattern alerts are filtered with SMRT trend, support/resistance,
+          breakout/reversal, NIFTY EDGE and multi-timeframe confirmation.
+          Pattern recognition alone does not guarantee a profitable trade.
+        </p>
+
+      </section>
+
+
+      <section
+        class="panel"
+        id="trade-finalizer-panel"
+        style="margin-top:0"
+      >
+
+        <div class="panel-heading">
+          <h2>
+            SMRT Trade Finalizer
+          </h2>
+
+          <span class="muted">
+            NIFTY 50 · closed-candle decision support
+          </span>
+        </div>
+
+        <div class="pro-suite-grid">
+
+          <div class="pro-suite-card">
+            <small>Final Setup</small>
+
+            <strong
+              id="finalizer-state"
+              class="muted"
+            >
+              NO TRADE
+            </strong>
+
+            <span id="finalizer-score">
+              0 / 100
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>Directional Evidence</small>
+
+            <strong id="finalizer-bull">
+              Bull 0
+            </strong>
+
+            <span id="finalizer-bear">
+              Bear 0
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>Invalidation</small>
+
+            <strong
+              id="finalizer-invalidation"
+              style="font-size:13px"
+            >
+              Waiting for setup
+            </strong>
+          </div>
+
+        </div>
+
+        <div
+          class="pro-backtest-grid"
+          style="margin-top:10px"
+        >
+
+          <div>
+            <small>Entry</small>
+            <strong id="finalizer-entry">—</strong>
+          </div>
+
+          <div>
+            <small>Stop Loss</small>
+            <strong id="finalizer-stop">—</strong>
+          </div>
+
+          <div>
+            <small>TP1</small>
+            <strong id="finalizer-tp1">—</strong>
+          </div>
+
+          <div>
+            <small>TP2</small>
+            <strong id="finalizer-tp2">—</strong>
+          </div>
+
+          <div>
+            <small>TP3</small>
+            <strong id="finalizer-tp3">—</strong>
+          </div>
+
+        </div>
+
+        <p
+          id="finalizer-reasons"
+          class="pa-note"
+          style="margin-top:10px"
+        >
+          Waiting for confirmed closed-candle confluence
+        </p>
+
+        <p class="disclaimer">
+          Informational decision-support only. The finalizer does not place
+          orders and no accuracy or profit level is guaranteed.
+        </p>
+
+      </section>
+
+
+      <section
+        class="panel"
+        id="gainz-ssl-panel"
+        style="margin-top:0"
+      >
+
+        <div class="panel-heading">
+          <h2>
+            SMRT Gainz + SSL + QQE Combo
+          </h2>
+
+          <span class="muted">
+            NIFTY 50 · SSL Hybrid + QQE momentum confirmation
+          </span>
+        </div>
+
+        <div class="pro-suite-grid">
+
+          <div class="pro-suite-card">
+            <small>Trade Signal</small>
+
+            <strong
+              id="gainz-ssl-signal"
+              class="muted"
+            >
+              NO TRADE
+            </strong>
+
+            <span class="muted">
+              Closed-candle confirmation
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>Baseline</small>
+
+            <strong
+              id="gainz-baseline-state"
+              class="muted"
+            >
+              WARMING UP
+            </strong>
+
+            <span class="muted">
+              HMA 60 + 0.2 channel
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>SSL Direction</small>
+
+            <strong
+              id="gainz-ssl-state"
+              class="muted"
+            >
+              WARMING UP
+            </strong>
+
+            <span class="muted">
+              SSL trend + continuation
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>QQE Direction</small>
+
+            <strong
+              id="gainz-qqe-state"
+              class="muted"
+            >
+              WARMING UP
+            </strong>
+
+            <span>
+              QQE RSI:
+              <b id="gainz-qqe-value">—</b>
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>Risk</small>
+
+            <strong id="gainz-risk">
+              —
+            </strong>
+
+            <span class="muted">
+              ATR 14 percentile
+            </span>
+          </div>
+
+          <div class="pro-suite-card">
+            <small>Entry Distance</small>
+
+            <strong id="gainz-entry-distance">
+              —
+            </strong>
+
+            <span class="muted">
+              Near / Extended / Far
+            </span>
+          </div>
+
+        </div>
+
+        <p
+          id="gainz-reasons"
+          class="pa-note"
+          style="margin-top:10px"
+        >
+          Waiting for SSL + QQE + baseline confirmation alignment
+        </p>
+
+        <p class="disclaimer">
+          SSL trend and continuation are combined with QQE momentum,
+          risk filtering and closed-candle confirmation for NIFTY 50.
+          No automatic orders or guaranteed results.
+        </p>
+
+      </section>
+
+      </div>
+
     </aside>
 
   </div>
@@ -1266,372 +1635,7 @@
   </script>
 
 
-  <div class="analysis-layout-grid">
 
-  <section
-    class="panel"
-    id="market-map-panel"
-    style="margin-top:0"
-  >
-
-    <div class="panel-heading">
-      <h2>
-        SMRT Market Map
-      </h2>
-
-      <span class="muted">
-        Support · Resistance · Trend · Reversal
-      </span>
-    </div>
-
-    <div class="pro-backtest-grid">
-
-      <div>
-        <small>Nearest Support</small>
-        <strong id="market-map-support">—</strong>
-      </div>
-
-      <div>
-        <small>Nearest Resistance</small>
-        <strong id="market-map-resistance">—</strong>
-      </div>
-
-      <div>
-        <small>Trend</small>
-        <strong id="market-map-trend" class="muted">
-          WARMING UP
-        </strong>
-      </div>
-
-      <div>
-        <small>Reversal</small>
-        <strong id="market-map-reversal" class="muted">
-          NONE
-        </strong>
-      </div>
-
-      <div>
-        <small>Breakout</small>
-        <strong id="market-map-breakout" class="muted">
-          NONE
-        </strong>
-      </div>
-
-      <div>
-        <small>Trade State</small>
-        <strong id="market-map-action" class="muted">
-          NO TRADE
-        </strong>
-      </div>
-
-      <div>
-        <small>Confluence</small>
-        <strong id="market-map-score">
-          0 / 10
-        </strong>
-      </div>
-
-    </div>
-
-    <p class="disclaimer">
-      Closed-candle technical analysis only. Support, resistance,
-      reversal and breakout signals can fail and do not guarantee
-      future results.
-    </p>
-
-  </section>
-
-
-  <section
-    class="panel"
-    id="candle-scanner-panel"
-    style="margin-top:0"
-  >
-
-    <div class="panel-heading">
-      <h2>
-        SMRT Candle Scanner
-      </h2>
-
-      <span class="muted">
-        Closed-candle pattern confirmation
-      </span>
-    </div>
-
-    <div class="pro-backtest-grid">
-
-      <div>
-        <small>Pattern</small>
-        <strong id="candle-pattern">NONE</strong>
-      </div>
-
-      <div>
-        <small>Direction</small>
-        <strong id="candle-pattern-side" class="muted">—</strong>
-      </div>
-
-      <div>
-        <small>Pattern Strength</small>
-        <strong id="candle-pattern-strength">0 / 4</strong>
-      </div>
-
-      <div>
-        <small>Confluence Trade</small>
-        <strong id="candle-trade-state" class="muted">NO TRADE</strong>
-      </div>
-
-      <div>
-        <small>Confluence Score</small>
-        <strong id="candle-confluence-score">0 pts</strong>
-      </div>
-
-    </div>
-
-    <p
-      id="candle-pattern-list"
-      class="pa-note"
-      style="margin-top:10px"
-    >
-      No confirmed closed-candle pattern
-    </p>
-
-    <p class="disclaimer">
-      Pattern alerts are filtered with SMRT trend, support/resistance,
-      breakout/reversal, NIFTY EDGE and multi-timeframe confirmation.
-      Pattern recognition alone does not guarantee a profitable trade.
-    </p>
-
-  </section>
-
-
-  <section
-    class="panel"
-    id="trade-finalizer-panel"
-    style="margin-top:0"
-  >
-
-    <div class="panel-heading">
-      <h2>
-        SMRT Trade Finalizer
-      </h2>
-
-      <span class="muted">
-        NIFTY 50 · closed-candle decision support
-      </span>
-    </div>
-
-    <div class="pro-suite-grid">
-
-      <div class="pro-suite-card">
-        <small>Final Setup</small>
-
-        <strong
-          id="finalizer-state"
-          class="muted"
-        >
-          NO TRADE
-        </strong>
-
-        <span id="finalizer-score">
-          0 / 100
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>Directional Evidence</small>
-
-        <strong id="finalizer-bull">
-          Bull 0
-        </strong>
-
-        <span id="finalizer-bear">
-          Bear 0
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>Invalidation</small>
-
-        <strong
-          id="finalizer-invalidation"
-          style="font-size:13px"
-        >
-          Waiting for setup
-        </strong>
-      </div>
-
-    </div>
-
-    <div
-      class="pro-backtest-grid"
-      style="margin-top:10px"
-    >
-
-      <div>
-        <small>Entry</small>
-        <strong id="finalizer-entry">—</strong>
-      </div>
-
-      <div>
-        <small>Stop Loss</small>
-        <strong id="finalizer-stop">—</strong>
-      </div>
-
-      <div>
-        <small>TP1</small>
-        <strong id="finalizer-tp1">—</strong>
-      </div>
-
-      <div>
-        <small>TP2</small>
-        <strong id="finalizer-tp2">—</strong>
-      </div>
-
-      <div>
-        <small>TP3</small>
-        <strong id="finalizer-tp3">—</strong>
-      </div>
-
-    </div>
-
-    <p
-      id="finalizer-reasons"
-      class="pa-note"
-      style="margin-top:10px"
-    >
-      Waiting for confirmed closed-candle confluence
-    </p>
-
-    <p class="disclaimer">
-      Informational decision-support only. The finalizer does not place
-      orders and no accuracy or profit level is guaranteed.
-    </p>
-
-  </section>
-
-
-  <section
-    class="panel"
-    id="gainz-ssl-panel"
-    style="margin-top:0"
-  >
-
-    <div class="panel-heading">
-      <h2>
-        SMRT Gainz + SSL + QQE Combo
-      </h2>
-
-      <span class="muted">
-        NIFTY 50 · SSL Hybrid + QQE momentum confirmation
-      </span>
-    </div>
-
-    <div class="pro-suite-grid">
-
-      <div class="pro-suite-card">
-        <small>Trade Signal</small>
-
-        <strong
-          id="gainz-ssl-signal"
-          class="muted"
-        >
-          NO TRADE
-        </strong>
-
-        <span class="muted">
-          Closed-candle confirmation
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>Baseline</small>
-
-        <strong
-          id="gainz-baseline-state"
-          class="muted"
-        >
-          WARMING UP
-        </strong>
-
-        <span class="muted">
-          HMA 60 + 0.2 channel
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>SSL Direction</small>
-
-        <strong
-          id="gainz-ssl-state"
-          class="muted"
-        >
-          WARMING UP
-        </strong>
-
-        <span class="muted">
-          SSL trend + continuation
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>QQE Direction</small>
-
-        <strong
-          id="gainz-qqe-state"
-          class="muted"
-        >
-          WARMING UP
-        </strong>
-
-        <span>
-          QQE RSI:
-          <b id="gainz-qqe-value">—</b>
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>Risk</small>
-
-        <strong id="gainz-risk">
-          —
-        </strong>
-
-        <span class="muted">
-          ATR 14 percentile
-        </span>
-      </div>
-
-      <div class="pro-suite-card">
-        <small>Entry Distance</small>
-
-        <strong id="gainz-entry-distance">
-          —
-        </strong>
-
-        <span class="muted">
-          Near / Extended / Far
-        </span>
-      </div>
-
-    </div>
-
-    <p
-      id="gainz-reasons"
-      class="pa-note"
-      style="margin-top:10px"
-    >
-      Waiting for SSL + QQE + baseline confirmation alignment
-    </p>
-
-    <p class="disclaimer">
-      SSL trend and continuation are combined with QQE momentum,
-      risk filtering and closed-candle confirmation for NIFTY 50.
-      No automatic orders or guaranteed results.
-    </p>
-
-  </section>
-
-  </div>
 
   <div class="page-footer">
 
