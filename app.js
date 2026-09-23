@@ -134,6 +134,8 @@ const state = {
 
   tf: '5m',
 
+  tvChartMode: 'tradingview',
+
   data: [],
 
   calc: null,
@@ -1363,6 +1365,475 @@ function canvas(id) {
 ====================================================== */
 
 
+let tvLiteChart = null;
+let tvLiteSeries = null;
+let tvLiteMarkers = null;
+let tvLiteLastLength = 0;
+let tvLiteLastFirstTime = null;
+let tvLiteLastMarkerKey = '';
+
+
+function initTradingViewLiteChart() {
+
+  const container =
+    $('#tv-lightweight-chart');
+
+  const L =
+    window.LightweightCharts;
+
+  if (
+    !container ||
+    !L ||
+    tvLiteChart
+  ) {
+    return;
+  }
+
+
+  try {
+    tvLiteChart =
+      L.createChart(
+        container,
+        {
+          autoSize: true,
+          layout: {
+            background: {
+              type:
+                L.ColorType?.Solid ||
+                'solid',
+              color:
+                '#10181b'
+            },
+            textColor:
+              '#9fb0b7',
+            attributionLogo:
+              true
+          },
+          grid: {
+            vertLines: {
+              color:
+                'rgba(255,255,255,0.05)'
+            },
+            horzLines: {
+              color:
+                'rgba(255,255,255,0.05)'
+            }
+          },
+          rightPriceScale: {
+            borderColor:
+              '#26363c',
+            scaleMargins: {
+              top: 0.08,
+              bottom: 0.08
+            }
+          },
+          timeScale: {
+            borderColor:
+              '#26363c',
+            timeVisible:
+              true,
+            secondsVisible:
+              false,
+            rightOffset:
+              4,
+            barSpacing:
+              9,
+            tickMarkFormatter:
+              time => {
+                const value =
+                  typeof time ===
+                  'number'
+                    ? time
+                    : null;
+
+                if (
+                  !Number.isFinite(
+                    value
+                  )
+                ) {
+                  return '';
+                }
+
+                return new Date(
+                  value * 1000
+                ).toLocaleTimeString(
+                  'en-IN',
+                  {
+                    timeZone:
+                      'Asia/Kolkata',
+                    hour:
+                      '2-digit',
+                    minute:
+                      '2-digit',
+                    hour12:
+                      false
+                  }
+                );
+              }
+          },
+          localization: {
+            priceFormatter:
+              price =>
+                Number(price)
+                  .toLocaleString(
+                    'en-IN',
+                    {
+                      minimumFractionDigits:
+                        2,
+                      maximumFractionDigits:
+                        2
+                    }
+                  )
+          }
+        }
+      );
+
+
+    if (
+      L.CandlestickSeries &&
+      tvLiteChart.addSeries
+    ) {
+      tvLiteSeries =
+        tvLiteChart.addSeries(
+          L.CandlestickSeries,
+          {
+            upColor:
+              '#72e4bd',
+            downColor:
+              '#f17c86',
+            borderUpColor:
+              '#72e4bd',
+            borderDownColor:
+              '#f17c86',
+            wickUpColor:
+              '#72e4bd',
+            wickDownColor:
+              '#f17c86'
+          }
+        );
+    } else if (
+      tvLiteChart
+        .addCandlestickSeries
+    ) {
+      tvLiteSeries =
+        tvLiteChart
+          .addCandlestickSeries({
+            upColor:
+              '#72e4bd',
+            downColor:
+              '#f17c86',
+            borderUpColor:
+              '#72e4bd',
+            borderDownColor:
+              '#f17c86',
+            wickUpColor:
+              '#72e4bd',
+            wickDownColor:
+              '#f17c86'
+          });
+    }
+
+
+    if (
+      tvLiteSeries &&
+      L.createSeriesMarkers
+    ) {
+      tvLiteMarkers =
+        L.createSeriesMarkers(
+          tvLiteSeries,
+          [],
+          {
+            autoScale:
+              true
+          }
+        );
+    }
+
+  } catch (error) {
+    console.warn(
+      'TradingView Lightweight Charts unavailable:',
+      error
+    );
+
+    tvLiteChart =
+      null;
+
+    tvLiteSeries =
+      null;
+
+    tvLiteMarkers =
+      null;
+  }
+}
+
+
+function buildTradingViewMarkers() {
+
+  const rows =
+    state.chartConsensus?.rows ||
+    [];
+
+  return rows
+    .map(
+      (
+        row,
+        index
+      ) => {
+
+        if (
+          !row?.signal
+        ) {
+          return null;
+        }
+
+        const candle =
+          state.data[
+            index
+          ];
+
+        if (!candle) {
+          return null;
+        }
+
+        const buy =
+          row.side === 1;
+
+        const strong =
+          row.signal.includes(
+            'STRONG'
+          );
+
+        return {
+          time:
+            Number(
+              candle.time
+            ),
+          position:
+            buy
+              ? 'belowBar'
+              : 'aboveBar',
+          color:
+            buy
+              ? '#72e4bd'
+              : '#f17c86',
+          shape:
+            buy
+              ? 'arrowUp'
+              : 'arrowDown',
+          text:
+            buy
+              ? (
+                  strong
+                    ? 'BUY+'
+                    : 'BUY'
+                )
+              : (
+                  strong
+                    ? 'SELL+'
+                    : 'SELL'
+                ),
+          size:
+            strong
+              ? 2
+              : 1
+        };
+      }
+    )
+    .filter(Boolean);
+}
+
+
+function syncTradingViewLiteChart(
+  force = false
+) {
+
+  if (
+    state.tvChartMode !==
+      'tradingview'
+  ) {
+    return;
+  }
+
+  initTradingViewLiteChart();
+
+  if (
+    !tvLiteSeries ||
+    !state.data.length
+  ) {
+    return;
+  }
+
+
+  const data =
+    state.data.map(
+      candle => ({
+        time:
+          Number(
+            candle.time
+          ),
+        open:
+          Number(
+            candle.open
+          ),
+        high:
+          Number(
+            candle.high
+          ),
+        low:
+          Number(
+            candle.low
+          ),
+        close:
+          Number(
+            candle.close
+          )
+      })
+    );
+
+
+  const firstTime =
+    data[0]?.time;
+
+  const structuralChange =
+    force ||
+    data.length !==
+      tvLiteLastLength ||
+    firstTime !==
+      tvLiteLastFirstTime;
+
+
+  try {
+    if (
+      structuralChange
+    ) {
+      tvLiteSeries.setData(
+        data
+      );
+
+      tvLiteLastLength =
+        data.length;
+
+      tvLiteLastFirstTime =
+        firstTime;
+
+      tvLiteChart
+        ?.timeScale()
+        ?.fitContent();
+    } else {
+      const last =
+        data.at(-1);
+
+      if (last) {
+        tvLiteSeries.update(
+          last
+        );
+      }
+    }
+
+
+    const markers =
+      buildTradingViewMarkers();
+
+    const markerKey =
+      markers
+        .map(
+          marker =>
+            marker.time +
+            ':' +
+            marker.text
+        )
+        .join('|');
+
+
+    if (
+      markerKey !==
+      tvLiteLastMarkerKey
+    ) {
+      tvLiteLastMarkerKey =
+        markerKey;
+
+      if (
+        tvLiteMarkers?.setMarkers
+      ) {
+        tvLiteMarkers.setMarkers(
+          markers
+        );
+      } else if (
+        tvLiteSeries.setMarkers
+      ) {
+        tvLiteSeries.setMarkers(
+          markers
+        );
+      }
+    }
+
+  } catch (error) {
+    console.warn(
+      'TradingView chart sync failed:',
+      error
+    );
+  }
+}
+
+
+function setChartView(
+  mode
+) {
+
+  state.tvChartMode =
+    mode === 'classic'
+      ? 'classic'
+      : 'tradingview';
+
+
+  const tv =
+    $('#tv-lightweight-chart');
+
+  const classic =
+    $('#chart');
+
+
+  tv?.classList.toggle(
+    'hidden',
+    state.tvChartMode ===
+      'classic'
+  );
+
+  classic?.classList.toggle(
+    'hidden',
+    state.tvChartMode ===
+      'tradingview'
+  );
+
+
+  $('#chart-view-tv')
+    ?.classList.toggle(
+      'active',
+      state.tvChartMode ===
+        'tradingview'
+    );
+
+  $('#chart-view-classic')
+    ?.classList.toggle(
+      'active',
+      state.tvChartMode ===
+        'classic'
+    );
+
+
+  if (
+    state.tvChartMode ===
+      'tradingview'
+  ) {
+    syncTradingViewLiteChart(
+      true
+    );
+  } else {
+    draw();
+  }
+}
+
+
 let lastAnalysisKey = null;
 
 let liveRenderTimer =
@@ -1637,6 +2108,9 @@ function draw() {
 
   refreshProSuite();
   }
+
+
+  syncTradingViewLiteChart();
 
 
   const {
