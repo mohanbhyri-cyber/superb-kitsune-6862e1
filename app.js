@@ -594,6 +594,13 @@ function setFeedStatus(
   state.feedStatus =
     status;
 
+
+  document.body.classList.toggle(
+    'data-unavailable',
+    status ===
+      'DATA UNAVAILABLE'
+  );
+
   const el =
     $('#updated');
 
