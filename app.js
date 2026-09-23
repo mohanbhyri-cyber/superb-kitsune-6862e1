@@ -22,6 +22,9 @@ import {
 import {
   setupMarketChat
 } from './market-chat.js';
+import {
+  analyseGlobalWatch
+} from './smrt-global-watch.js';
 
 import {
   API_BASE,
@@ -153,6 +156,10 @@ const state = {
   externalNifty: null,
 
   externalNiftyUpdated: 0,
+
+  globalWatch: null,
+
+  globalWatchUpdated: 0,
 
   gainzSSL: null,
 
@@ -5476,6 +5483,26 @@ setupMarketChat(
   marketChatSnapshot
 );
 
+refreshGlobalWatch().catch(
+  () => {}
+);
+
+
+const globalWatchTimer =
+  setInterval(
+    () => {
+      if (
+        !document.hidden
+      ) {
+        refreshGlobalWatch()
+          .catch(
+            () => {}
+          );
+      }
+    },
+    60000
+  );
+
 
 const externalNiftyTimer =
   setInterval(
@@ -6888,6 +6915,10 @@ window.addEventListener(
 
     clearInterval(
       externalNiftyTimer
+    );
+
+    clearInterval(
+      globalWatchTimer
     );
 
 
@@ -8575,6 +8606,209 @@ function refreshLiveTradeFinalizer() {
       futuresVWAP:
         state.futuresVWAP
     });
+}
+
+
+function renderGlobalWatch() {
+
+  const watch =
+    state.globalWatch;
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !==
+        undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!watch) {
+    set(
+      '#global-watch-bias',
+      'LOADING…',
+      'muted'
+    );
+
+    set(
+      '#global-watch-confidence',
+      '0 / 100'
+    );
+
+    return;
+  }
+
+
+  const bullish =
+    watch.bias.includes(
+      'BULLISH'
+    );
+
+  const bearish =
+    watch.bias.includes(
+      'BEARISH'
+    );
+
+
+  set(
+    '#global-watch-bias',
+    watch.bias,
+    bullish
+      ? 'up'
+      : bearish
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#global-watch-confidence',
+    watch.confidence +
+    ' / 100'
+  );
+
+
+  set(
+    '#global-watch-session',
+    isNseCashMarketOpen()
+      ? 'NSE OPEN · GLOBAL CONFIRMATION'
+      : 'NSE CLOSED · NEXT SESSION BIAS'
+  );
+
+
+  set(
+    '#global-watch-sources',
+    watch.sourceCount +
+    ' global cues'
+  );
+
+
+  const rows =
+    $('#global-watch-rows');
+
+  if (rows) {
+    rows.innerHTML =
+      watch.rows
+        .map(
+          row => {
+            const change =
+              Number(
+                row.changePercent
+              );
+
+            const changeText =
+              Number.isFinite(
+                change
+              )
+                ? (
+                    change >= 0
+                      ? '+'
+                      : ''
+                  ) +
+                  change.toFixed(
+                    2
+                  ) +
+                  '%'
+                : '—';
+
+            const cls =
+              row.side === 1
+                ? 'up'
+                : row.side === -1
+                  ? 'down'
+                  : 'muted';
+
+            return (
+              '<div class="global-watch-row">' +
+                '<span>' +
+                  row.name +
+                '</span>' +
+                '<strong class="' +
+                  cls +
+                '">' +
+                  changeText +
+                '</strong>' +
+              '</div>'
+            );
+          }
+        )
+        .join(
+          ''
+        );
+  }
+
+
+  set(
+    '#global-watch-reasons',
+    watch.reasons?.length
+      ? watch.reasons.join(
+          ' · '
+        )
+      : 'Global cues are mixed. No directional bias.'
+  );
+}
+
+
+async function refreshGlobalWatch() {
+
+  try {
+    const response =
+      await fetch(
+        API_BASE +
+        '/api/global-watch',
+        {
+          cache:
+            'no-store'
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        'Global watch request failed'
+      );
+    }
+
+    const payload =
+      await response.json();
+
+    state.globalWatch =
+      analyseGlobalWatch(
+        payload
+      );
+
+    state.globalWatchUpdated =
+      Date.now();
+
+    renderGlobalWatch();
+
+  } catch (error) {
+    console.warn(
+      '24/7 Global Watch unavailable:',
+      error
+    );
+
+    state.globalWatch =
+      null;
+
+    renderGlobalWatch();
+  }
 }
 
 
