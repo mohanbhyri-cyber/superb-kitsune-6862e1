@@ -1928,6 +1928,151 @@ async function globalMarketWatch() {
 }
 
 
+async function niftyDailyHistory(url, token) {
+  const instrumentKey =
+    SYMBOLS.NIFTY;
+
+  const days =
+    Math.max(
+      45,
+      Math.min(
+        180,
+        Number(
+          url.searchParams.get("days")
+        ) || 90
+      )
+    );
+
+  const toDate =
+    todayIST();
+
+  const fromDate =
+    istDateMinusDays(
+      days
+    );
+
+  const endpoint =
+    "https://api.upstox.com/v3/historical-candle/" +
+    encodeURIComponent(instrumentKey) +
+    "/days/1/" +
+    toDate +
+    "/" +
+    fromDate;
+
+  try {
+    const body =
+      await upstoxFetch(
+        endpoint,
+        token
+      );
+
+    const rows =
+      Array.isArray(
+        body?.data?.candles
+      )
+        ? body.data.candles
+        : [];
+
+    const candles =
+      rows
+        .map(
+          row => {
+            if (
+              !Array.isArray(row) ||
+              row.length < 6
+            ) {
+              return null;
+            }
+
+            const [
+              timestamp,
+              open,
+              high,
+              low,
+              close,
+              volume
+            ] = row;
+
+            const ms =
+              new Date(
+                timestamp
+              ).getTime();
+
+            if (
+              !Number.isFinite(ms)
+            ) {
+              return null;
+            }
+
+            const candle = {
+              time:
+                Math.floor(
+                  ms / 1000
+                ),
+              open:
+                Number(open),
+              high:
+                Number(high),
+              low:
+                Number(low),
+              close:
+                Number(close),
+              volume:
+                Number(volume) || 0
+            };
+
+            return [
+              candle.open,
+              candle.high,
+              candle.low,
+              candle.close
+            ].every(
+              Number.isFinite
+            )
+              ? candle
+              : null;
+          }
+        )
+        .filter(Boolean)
+        .sort(
+          (x, y) =>
+            x.time - y.time
+        );
+
+    return json({
+      live:
+        candles.length > 0,
+      source:
+        "UPSTOX",
+      symbol:
+        "NIFTY 50",
+      timeframe:
+        "1d",
+      fromDate,
+      toDate,
+      count:
+        candles.length,
+      candles
+    });
+
+  } catch (error) {
+    return json({
+      live: false,
+      source:
+        "UPSTOX",
+      symbol:
+        "NIFTY 50",
+      timeframe:
+        "1d",
+      reason:
+        error?.message ||
+        "Unable to load daily NIFTY history.",
+      candles: []
+    });
+  }
+}
+
+
 // ----------------------------------------------------
 // WORKER ROUTER
 // ----------------------------------------------------
@@ -2076,6 +2221,15 @@ export default {
       url.pathname === "/api/upstox-mtf-history"
     ) {
       return mtfHistory(
+        url,
+        token
+      );
+    }
+
+    if (
+      url.pathname === "/api/nifty-daily-history"
+    ) {
+      return niftyDailyHistory(
         url,
         token
       );
