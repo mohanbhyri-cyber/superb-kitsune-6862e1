@@ -1426,6 +1426,114 @@
 
   <section
     class="panel"
+    id="ai-nifty-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT AI NIFTY 50
+      </h2>
+
+      <span class="muted">
+        Upstox + Yahoo Finance + TradingView cross-check
+      </span>
+    </div>
+
+    <div class="pro-suite-grid">
+
+      <div class="pro-suite-card">
+        <small>AI Signal</small>
+
+        <strong
+          id="ai-nifty-signal"
+          class="muted"
+        >
+          WAIT
+        </strong>
+
+        <span id="ai-nifty-confidence">
+          0 / 100
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>External Sources</small>
+
+        <strong id="ai-nifty-sources">
+          0 sources
+        </strong>
+
+        <span id="ai-nifty-alignment">
+          Waiting for data
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Price Cross-Check</small>
+
+        <strong id="ai-nifty-price-agreement">
+          —
+        </strong>
+
+        <span class="muted">
+          External average vs Upstox
+        </span>
+      </div>
+
+    </div>
+
+    <div
+      class="pro-backtest-grid"
+      style="margin-top:10px"
+    >
+
+      <div>
+        <small>Entry</small>
+        <strong id="ai-nifty-entry">—</strong>
+      </div>
+
+      <div>
+        <small>Stop Loss</small>
+        <strong id="ai-nifty-stop">—</strong>
+      </div>
+
+      <div>
+        <small>TP1</small>
+        <strong id="ai-nifty-tp1">—</strong>
+      </div>
+
+      <div>
+        <small>TP2</small>
+        <strong id="ai-nifty-tp2">—</strong>
+      </div>
+
+      <div>
+        <small>TP3</small>
+        <strong id="ai-nifty-tp3">—</strong>
+      </div>
+
+    </div>
+
+    <p
+      id="ai-nifty-reasons"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Waiting for Upstox and external market confirmation
+    </p>
+
+    <p class="disclaimer">
+      Multi-source decision-support only. External websites may be delayed
+      or unavailable. BUY/SELL signals are not guaranteed and no orders are
+      placed automatically.
+    </p>
+
+  </section>
+
+
+  <section
+    class="panel"
     id="trade-finalizer-panel"
     style="margin-top:0"
   >
@@ -1753,7 +1861,7 @@
 
 <script
   type="module"
-  src="app.js?v=59"
+  src="app.js?v=60"
 ></script>
 
 </body>
