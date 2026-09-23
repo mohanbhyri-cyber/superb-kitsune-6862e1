@@ -699,9 +699,32 @@
 
         <div class="canvas-area">
 
+          <div class="chart-view-toggle">
+            <button
+              type="button"
+              id="chart-view-tv"
+              class="active"
+            >
+              TradingView
+            </button>
+
+            <button
+              type="button"
+              id="chart-view-classic"
+            >
+              Classic
+            </button>
+          </div>
+
           <div
             id="ohlc"
             class="ohlc"
+          ></div>
+
+          <div
+            id="tv-lightweight-chart"
+            class="tv-lightweight-chart"
+            aria-label="TradingView Lightweight Charts NIFTY chart"
           ></div>
 
           <canvas
@@ -776,6 +799,15 @@
         <span>
           IST · UTC+05:30
           <b>INR</b>
+          ·
+          <a
+            href="https://www.tradingview.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="tv-attribution"
+          >
+            Charts by TradingView
+          </a>
         </span>
 
       </footer>
@@ -2034,7 +2066,7 @@
 
 <script
   type="module"
-  src="app.js?v=68"
+  src="app.js?v=69"
 ></script>
 
 </body>
