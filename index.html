@@ -1621,6 +1621,105 @@
 
 
   <section
+    class="panel all-indicators-chat-panel"
+    id="all-indicators-chat-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT All Indicators Chat
+      </h2>
+
+      <span class="muted">
+        Live consensus:
+        <strong
+          id="all-chat-live-signal"
+          class="muted"
+        >
+          WAIT
+        </strong>
+      </span>
+    </div>
+
+    <div class="all-chat-actions">
+      <button
+        type="button"
+        data-all-chat="signal now"
+      >
+        Signal now
+      </button>
+
+      <button
+        type="button"
+        data-all-chat="all indicators"
+      >
+        All indicators
+      </button>
+
+      <button
+        type="button"
+        data-all-chat="why no trade"
+      >
+        Why?
+      </button>
+
+      <button
+        type="button"
+        data-all-chat="trend 5m 15m 1h"
+      >
+        Trend
+      </button>
+
+      <button
+        type="button"
+        data-all-chat="trade plan entry stop targets"
+      >
+        Trade plan
+      </button>
+
+      <button
+        type="button"
+        data-all-chat="support resistance"
+      >
+        S/R
+      </button>
+    </div>
+
+    <div
+      id="all-indicators-chat-messages"
+      class="all-chat-messages"
+      aria-live="polite"
+    ></div>
+
+    <form
+      id="all-indicators-chat-form"
+      class="all-chat-form"
+    >
+      <input
+        id="all-indicators-chat-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Ask: all indicators status, buy/sell signal, why, levels..."
+      >
+
+      <button
+        type="submit"
+        class="primary"
+      >
+        Ask
+      </button>
+    </form>
+
+    <p class="disclaimer">
+      Uses the current indicator state in this app. Decision-support only;
+      signals can be wrong or delayed and no automatic orders are placed.
+    </p>
+
+  </section>
+
+
+  <section
     class="panel"
     id="global-watch-panel"
     style="margin-top:0"
@@ -2146,7 +2245,7 @@
 
 <script
   type="module"
-  src="app.js?v=72"
+  src="app.js?v=73"
 ></script>
 
 </body>
