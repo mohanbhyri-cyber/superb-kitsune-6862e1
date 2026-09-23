@@ -1365,6 +1365,314 @@ async function futuresVWAP(url, token) {
   }
 }
 
+async function externalNiftySources() {
+  const sources = [];
+  const errors = [];
+
+  const yahooTask = (async () => {
+    const endpoint =
+      "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI" +
+      "?interval=5m&range=1d&includePrePost=false";
+
+    const response =
+      await fetch(endpoint, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0",
+          Accept:
+            "application/json",
+        },
+      });
+
+    if (!response.ok) {
+      throw new Error(
+        "Yahoo Finance HTTP " +
+        response.status
+      );
+    }
+
+    const body =
+      await response.json();
+
+    const result =
+      body?.chart?.result?.[0];
+
+    const meta =
+      result?.meta || {};
+
+    const timestamps =
+      Array.isArray(
+        result?.timestamp
+      )
+        ? result.timestamp
+        : [];
+
+    const closes =
+      Array.isArray(
+        result
+          ?.indicators
+          ?.quote
+          ?.[0]
+          ?.close
+      )
+        ? result.indicators.quote[0].close
+        : [];
+
+    const validCloses =
+      closes
+        .map(Number)
+        .filter(
+          Number.isFinite
+        );
+
+    const price =
+      Number(
+        meta.regularMarketPrice
+      );
+
+    const previousClose =
+      Number(
+        meta.chartPreviousClose ??
+        meta.previousClose
+      );
+
+    const changePercent =
+      Number.isFinite(price) &&
+      Number.isFinite(previousClose) &&
+      previousClose !== 0
+        ? (
+            (
+              price -
+              previousClose
+            ) /
+            previousClose
+          ) * 100
+        : null;
+
+    let momentum =
+      0;
+
+    if (
+      validCloses.length >= 4
+    ) {
+      const latest =
+        validCloses.at(-1);
+
+      const prior =
+        validCloses.at(-4);
+
+      if (
+        Number.isFinite(latest) &&
+        Number.isFinite(prior) &&
+        prior !== 0
+      ) {
+        momentum =
+          (
+            (
+              latest -
+              prior
+            ) /
+            prior
+          ) * 100;
+      }
+    }
+
+    return {
+      name:
+        "Yahoo Finance",
+      live:
+        Number.isFinite(price),
+      price:
+        Number.isFinite(price)
+          ? price
+          : null,
+      previousClose:
+        Number.isFinite(previousClose)
+          ? previousClose
+          : null,
+      changePercent:
+        Number.isFinite(changePercent)
+          ? changePercent
+          : null,
+      momentum:
+        Number.isFinite(momentum)
+          ? momentum
+          : 0,
+      timestamp:
+        Number(
+          meta.regularMarketTime
+        ) ||
+        timestamps.at(-1) ||
+        null,
+    };
+  })();
+
+  const tradingViewTask =
+    (async () => {
+      const response =
+        await fetch(
+          "https://scanner.tradingview.com/india/scan",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Accept:
+                "application/json",
+              "User-Agent":
+                "Mozilla/5.0",
+            },
+            body:
+              JSON.stringify({
+                symbols: {
+                  tickers: [
+                    "NSE:NIFTY"
+                  ],
+                  query: {
+                    types: []
+                  }
+                },
+                columns: [
+                  "close",
+                  "change",
+                  "Recommend.All",
+                  "RSI",
+                  "MACD.macd",
+                  "MACD.signal",
+                  "EMA20",
+                  "EMA50"
+                ]
+              }),
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          "TradingView HTTP " +
+          response.status
+        );
+      }
+
+      const body =
+        await response.json();
+
+      const row =
+        body?.data?.[0]?.d;
+
+      if (
+        !Array.isArray(row)
+      ) {
+        throw new Error(
+          "TradingView returned no NIFTY row"
+        );
+      }
+
+      const [
+        close,
+        change,
+        recommendAll,
+        rsi,
+        macd,
+        macdSignal,
+        ema20,
+        ema50
+      ] = row.map(
+        value =>
+          value == null
+            ? null
+            : Number(value)
+      );
+
+      return {
+        name:
+          "TradingView",
+        live:
+          Number.isFinite(close),
+        price:
+          Number.isFinite(close)
+            ? close
+            : null,
+        changePercent:
+          Number.isFinite(change)
+            ? change
+            : null,
+        recommendAll:
+          Number.isFinite(
+            recommendAll
+          )
+            ? recommendAll
+            : null,
+        rsi:
+          Number.isFinite(rsi)
+            ? rsi
+            : null,
+        macd:
+          Number.isFinite(macd)
+            ? macd
+            : null,
+        macdSignal:
+          Number.isFinite(
+            macdSignal
+          )
+            ? macdSignal
+            : null,
+        ema20:
+          Number.isFinite(ema20)
+            ? ema20
+            : null,
+        ema50:
+          Number.isFinite(ema50)
+            ? ema50
+            : null,
+      };
+    })();
+
+  const results =
+    await Promise.allSettled([
+      yahooTask,
+      tradingViewTask
+    ]);
+
+  for (
+    const result of results
+  ) {
+    if (
+      result.status ===
+      "fulfilled"
+    ) {
+      sources.push(
+        result.value
+      );
+    } else {
+      errors.push(
+        result.reason
+          ?.message ||
+        String(
+          result.reason
+        )
+      );
+    }
+  }
+
+  return json({
+    live:
+      sources.some(
+        source =>
+          source.live
+      ),
+    symbol:
+      "NIFTY 50",
+    sourceCount:
+      sources.length,
+    sources,
+    errors,
+    timestamp:
+      new Date()
+        .toISOString(),
+  });
+}
+
+
 // ----------------------------------------------------
 // WORKER ROUTER
 // ----------------------------------------------------
@@ -1394,6 +1702,12 @@ export default {
       env.UPSTOX_ANALYTICS_TOKEN ||
       env.UPSTOX_ACCESS_TOKEN ||
       env.UPSTOX_TOKEN;
+
+    if (
+      url.pathname === "/api/external-nifty"
+    ) {
+      return externalNiftySources();
+    }
 
     if (
       url.pathname === "/api/health"
