@@ -498,20 +498,8 @@ async function intradayHistory(url, token) {
         .filter(Boolean)
         .sort((a, b) => a.time - b.time);
 
-    const previous =
-      await previousTradingSession(
-        instrumentKey,
-        interval,
-        token
-      );
-
-    let candles = [
-      ...previous.candles,
-      ...todayCandles,
-    ].sort(
-      (a, b) =>
-        a.time - b.time
-    );
+    let candles =
+      todayCandles.slice();
 
     const unique = [];
 
@@ -555,10 +543,6 @@ async function intradayHistory(url, token) {
       sessionStart: "09:15",
       timezone: IST,
       count: candles.length,
-      previousSessionDate:
-        previous.date,
-      previousSessionCount:
-        previous.candles.length,
       currentSessionDate:
         todayIST(),
       currentSessionCount:
@@ -580,6 +564,48 @@ async function intradayHistory(url, token) {
     });
   }
 }
+
+async function previousSessionHistory(url, token) {
+  const symbol =
+    (url.searchParams.get("symbol") || "NIFTY")
+      .toUpperCase();
+
+  const timeframe =
+    url.searchParams.get("timeframe") || "5m";
+
+  const instrumentKey =
+    SYMBOLS[symbol];
+
+  const interval =
+    TIMEFRAMES[timeframe];
+
+  if (!instrumentKey || !interval) {
+    return json({
+      live: false,
+      source: "UPSTOX",
+      reason: "Unsupported instrument or timeframe.",
+      candles: [],
+    });
+  }
+
+  const previous =
+    await previousTradingSession(
+      instrumentKey,
+      interval,
+      token
+    );
+
+  return json({
+    live: previous.candles.length > 0,
+    source: "UPSTOX",
+    symbol,
+    timeframe,
+    sessionDate: previous.date,
+    count: previous.candles.length,
+    candles: previous.candles,
+  });
+}
+
 
 // ----------------------------------------------------
 // NIFTY FUTURES CONTRACT DISCOVERY
@@ -1090,6 +1116,15 @@ export default {
       url.pathname === "/api/upstox-history"
     ) {
       return intradayHistory(
+        url,
+        token
+      );
+    }
+
+    if (
+      url.pathname === "/api/upstox-previous-history"
+    ) {
+      return previousSessionHistory(
         url,
         token
       );
