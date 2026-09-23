@@ -534,3 +534,71 @@ body.light .tv-shell-mode .chart-footer{
     height:520px !important;
   }
 }
+
+
+/* SMRT All Indicators Chat */
+.all-indicators-chat-panel{
+  grid-column:1 / -1;
+}
+
+.all-chat-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:10px 0 12px;
+}
+
+.all-chat-actions button{
+  min-height:36px;
+}
+
+.all-chat-messages{
+  min-height:170px;
+  max-height:340px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(0,0,0,.14);
+}
+
+.all-chat-message{
+  max-width:min(820px,92%);
+  padding:10px 12px;
+  border-radius:10px;
+  line-height:1.45;
+  white-space:pre-wrap;
+}
+
+.all-chat-message.assistant{
+  align-self:flex-start;
+  border:1px solid rgba(114,228,189,.20);
+  background:rgba(114,228,189,.07);
+}
+
+.all-chat-message.user{
+  align-self:flex-end;
+  border:1px solid rgba(127,168,245,.22);
+  background:rgba(127,168,245,.08);
+}
+
+.all-chat-form{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 96px;
+  gap:8px;
+  margin-top:10px;
+}
+
+.all-chat-form input{
+  width:100%;
+  min-width:0;
+}
+
+@media(max-width:700px){
+  .all-chat-form{
+    grid-template-columns:1fr;
+  }
+}
