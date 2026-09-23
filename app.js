@@ -56,8 +56,8 @@ setTimeout(
       !window.TradingView?.widget
     ) {
       setTradingViewDatafeedStatus?.(
-        'TradingView Datafeed API · READY · Advanced runtime pending',
-        'muted'
+        'TradingView Lightweight · Upstox LIVE',
+        'up'
       );
     }
   },
@@ -1601,7 +1601,7 @@ async function initTradingViewAdvancedChart() {
 
     setTradingViewDatafeedStatus(
       'TradingView Lightweight · Upstox LIVE',
-      'muted'
+      'up'
     );
 
     return false;
