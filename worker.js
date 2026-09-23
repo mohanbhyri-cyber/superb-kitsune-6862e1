@@ -124,6 +124,94 @@ function normalizeCandle(row) {
   return candle;
 }
 
+function normalizeCandleForISTDate(row, dateText) {
+  if (!Array.isArray(row) || row.length < 6) {
+    return null;
+  }
+
+  const [
+    timestamp,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    openInterest,
+  ] = row;
+
+  const ms = new Date(timestamp).getTime();
+
+  if (!Number.isFinite(ms)) return null;
+
+  const p = getISTParts(ms);
+  const candleDate =
+    `${p.year}-${p.month}-${p.day}`;
+
+  if (candleDate !== dateText) {
+    return null;
+  }
+
+  const minutes =
+    Number(p.hour) * 60 +
+    Number(p.minute);
+
+  if (minutes < 9 * 60 + 15) {
+    return null;
+  }
+
+  const candle = {
+    time: Math.floor(ms / 1000),
+    open: Number(open),
+    high: Number(high),
+    low: Number(low),
+    close: Number(close),
+    volume: Number(volume) || 0,
+    openInterest: Number(openInterest) || 0,
+  };
+
+  if (
+    !Number.isFinite(candle.open) ||
+    !Number.isFinite(candle.high) ||
+    !Number.isFinite(candle.low) ||
+    !Number.isFinite(candle.close)
+  ) {
+    return null;
+  }
+
+  if (
+    candle.open <= 0 ||
+    candle.high <= 0 ||
+    candle.low <= 0 ||
+    candle.close <= 0
+  ) {
+    return null;
+  }
+
+  return candle;
+}
+
+
+function istDateMinusDays(days) {
+  const base =
+    new Date(
+      todayIST() +
+      "T12:00:00+05:30"
+    );
+
+  const target =
+    new Date(
+      base.getTime() -
+      days * 86400000
+    );
+
+  const p =
+    getISTParts(
+      target.getTime()
+    );
+
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
 async function upstoxFetch(endpoint, token) {
   const response = await fetch(endpoint, {
     method: "GET",
@@ -269,6 +357,82 @@ async function liveQuote(url, token) {
   }
 }
 
+async function previousTradingSession(
+  instrumentKey,
+  interval,
+  token
+) {
+  for (
+    let daysBack = 1;
+    daysBack <= 7;
+    daysBack += 1
+  ) {
+    const date =
+      istDateMinusDays(
+        daysBack
+      );
+
+    const endpoint =
+      "https://api.upstox.com/v3/historical-candle/" +
+      encodeURIComponent(instrumentKey) +
+      "/minutes/" +
+      interval +
+      "/" +
+      date +
+      "/" +
+      date;
+
+    try {
+      const body =
+        await upstoxFetch(
+          endpoint,
+          token
+        );
+
+      const rows =
+        body?.data?.candles;
+
+      if (!Array.isArray(rows)) {
+        continue;
+      }
+
+      const candles =
+        rows
+          .map(
+            row =>
+              normalizeCandleForISTDate(
+                row,
+                date
+              )
+          )
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              a.time - b.time
+          );
+
+      if (candles.length) {
+        return {
+          date,
+          candles,
+        };
+      }
+    } catch (error) {
+      console.warn(
+        "Previous-session candle fetch failed",
+        date,
+        error?.message || error
+      );
+    }
+  }
+
+  return {
+    date: null,
+    candles: [],
+  };
+}
+
+
 // ----------------------------------------------------
 // INTRADAY HISTORY
 // ----------------------------------------------------
@@ -328,11 +492,26 @@ async function intradayHistory(url, token) {
       });
     }
 
-    let candles =
+    const todayCandles =
       rows
         .map(normalizeCandle)
         .filter(Boolean)
         .sort((a, b) => a.time - b.time);
+
+    const previous =
+      await previousTradingSession(
+        instrumentKey,
+        interval,
+        token
+      );
+
+    let candles = [
+      ...previous.candles,
+      ...todayCandles,
+    ].sort(
+      (a, b) =>
+        a.time - b.time
+    );
 
     const unique = [];
 
@@ -362,7 +541,7 @@ async function intradayHistory(url, token) {
         sessionStart: "09:15",
         timezone: IST,
         reason:
-          "No candles available for today from 09:15 IST.",
+          "No current or previous-session candles available from 09:15 IST.",
         candles: [],
       });
     }
@@ -376,6 +555,14 @@ async function intradayHistory(url, token) {
       sessionStart: "09:15",
       timezone: IST,
       count: candles.length,
+      previousSessionDate:
+        previous.date,
+      previousSessionCount:
+        previous.candles.length,
+      currentSessionDate:
+        todayIST(),
+      currentSessionCount:
+        todayCandles.length,
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
