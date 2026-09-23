@@ -5472,6 +5472,9 @@ let checkAlerts =
 
 loadData();
 
+setupMarketChat(
+  marketChatSnapshot
+);
 
 
 const externalNiftyTimer =
