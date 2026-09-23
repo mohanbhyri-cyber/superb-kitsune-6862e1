@@ -4638,6 +4638,80 @@ async function loadData() {
 
     summary();
 
+    // Load previous trading session in the background so it never
+    // blocks today's live chart or quote.
+    market.previousHistory(
+      state.symbol,
+      state.tf
+    ).then(
+      previousCandles => {
+
+        if (
+          id !== request ||
+          !Array.isArray(
+            previousCandles
+          ) ||
+          !previousCandles.length
+        ) {
+          return;
+        }
+
+        const merged =
+          [
+            ...previousCandles,
+            ...state.data
+          ]
+            .sort(
+              (x, y) =>
+                x.time - y.time
+            );
+
+        const unique = [];
+
+        for (
+          const candle of merged
+        ) {
+          const last =
+            unique.at(-1);
+
+          if (
+            last &&
+            last.time ===
+              candle.time
+          ) {
+            unique[
+              unique.length - 1
+            ] =
+              candle;
+          } else {
+            unique.push(
+              candle
+            );
+          }
+        }
+
+        state.data =
+          unique.slice(
+            -500
+          );
+
+        lastAnalysisKey =
+          null;
+
+        updateTradingDate();
+
+        scheduleLiveRender(
+          true
+        );
+
+        refreshMTF().catch(
+          () => {}
+        );
+      }
+    ).catch(
+      () => {}
+    );
+
     // The optional futures VWAP request must not hold up the first chart.
     refreshFuturesVWAP().then(() => {
       if (id === request) {
