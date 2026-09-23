@@ -472,6 +472,68 @@ function formatISTTime(
 }
 
 
+function isNseCashMarketOpen(
+  timestamp = Date.now()
+) {
+
+  const parts =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'Asia/Kolkata',
+        weekday:
+          'short',
+        hour:
+          '2-digit',
+        minute:
+          '2-digit',
+        hour12:
+          false
+      }
+    ).formatToParts(
+      new Date(timestamp)
+    );
+
+  const values =
+    Object.fromEntries(
+      parts
+        .filter(
+          part =>
+            part.type !==
+            'literal'
+        )
+        .map(
+          part => [
+            part.type,
+            part.value
+          ]
+        )
+    );
+
+  if (
+    ['Sat', 'Sun']
+      .includes(
+        values.weekday
+      )
+  ) {
+    return false;
+  }
+
+  const minutes =
+    Number(values.hour) *
+      60 +
+    Number(values.minute);
+
+  return (
+    minutes >=
+      9 * 60 + 15 &&
+    minutes <=
+      15 * 60 + 30
+  );
+}
+
+
 function formatTradingDate(
   unixSeconds
 ) {
@@ -617,6 +679,17 @@ function setFeedStatus(
       '● LIVE · UPSTOX · ' +
       formatISTTime() +
       ' IST';
+
+    return;
+  }
+
+
+  if (
+    status === 'CLOSED'
+  ) {
+
+    el.textContent =
+      '● MARKET CLOSED · LAST SESSION DATA';
 
     return;
   }
@@ -4876,7 +4949,9 @@ async function loadData() {
 
 
     setFeedStatus(
-      'LIVE'
+      isNseCashMarketOpen()
+        ? 'LIVE'
+        : 'CLOSED'
     );
 
 
@@ -5121,9 +5196,11 @@ async function loadData() {
 
 
           setFeedStatus(
-            tick.fallback
-              ? 'FALLBACK'
-              : 'LIVE'
+            !isNseCashMarketOpen()
+              ? 'CLOSED'
+              : tick.fallback
+                ? 'FALLBACK'
+                : 'LIVE'
           );
         },
 
@@ -5136,8 +5213,12 @@ async function loadData() {
 
 
           setFeedStatus(
-            'RECONNECTING',
-            'Live quote retrying · chart preserved'
+            isNseCashMarketOpen()
+              ? 'RECONNECTING'
+              : 'CLOSED',
+            isNseCashMarketOpen()
+              ? 'Live quote retrying · chart preserved'
+              : ''
           );
         }
       );
