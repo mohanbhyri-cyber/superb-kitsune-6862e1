@@ -31,6 +31,9 @@ import {
 import {
   analyseAllIndicators
 } from './smrt-all-indicators.js';
+import {
+  analyseChartConsensus
+} from './smrt-chart-consensus.js';
 
 import {
   API_BASE,
@@ -172,6 +175,8 @@ const state = {
   notebookDailyUpdated: 0,
 
   allIndicatorsConsensus: null,
+
+  chartConsensus: null,
 
   gainzSSL: null,
 
@@ -1624,6 +1629,21 @@ function draw() {
     );
 
 
+  state.chartConsensus =
+    analyseChartConsensus({
+      candles:
+        state.data,
+      calc:
+        state.calc,
+      trend:
+        state.trend,
+      edge:
+        state.niftyEdge,
+      gainz:
+        state.gainzSSL
+    });
+
+
   refreshProSuite();
   }
 
@@ -2533,6 +2553,22 @@ function draw() {
 
 
   renderGainzSSL(
+    ctx,
+    {
+      start,
+      end,
+      plot,
+      top,
+      bottom,
+      x,
+      y,
+      up,
+      down
+    }
+  );
+
+
+  renderChartConsensus(
     ctx,
     {
       start,
@@ -10181,6 +10217,207 @@ function updateMarketMapPanel() {
     map.confluence +
     ' / 10'
   );
+}
+
+
+function renderChartConsensus(
+  ctx,
+  g
+) {
+
+  const analysis =
+    state.chartConsensus;
+
+  if (!analysis) {
+    return;
+  }
+
+  const {
+    start,
+    end,
+    plot,
+    top,
+    bottom,
+    x,
+    y,
+    up,
+    down
+  } = g;
+
+  const rows =
+    analysis.rows
+      .slice(
+        start,
+        end
+      );
+
+  ctx.save();
+
+  ctx.beginPath();
+  ctx.rect(
+    0,
+    top,
+    plot,
+    bottom - top
+  );
+  ctx.clip();
+
+  ctx.font =
+    'bold 10px system-ui';
+
+  rows.forEach(
+    (
+      row,
+      i
+    ) => {
+
+      if (
+        !row?.signal
+      ) {
+        return;
+      }
+
+      const candle =
+        state.data[
+          start + i
+        ];
+
+      if (!candle) {
+        return;
+      }
+
+      const buy =
+        row.side === 1;
+
+      const strong =
+        row.signal.includes(
+          'STRONG'
+        );
+
+      const label =
+        buy
+          ? (
+              strong
+                ? 'BUY+'
+                : 'BUY'
+            )
+          : (
+              strong
+                ? 'SELL+'
+                : 'SELL'
+            );
+
+      const width =
+        strong
+          ? 52
+          : 44;
+
+      const height =
+        20;
+
+      const px =
+        Math.max(
+          0,
+          Math.min(
+            plot - width,
+            x(i) -
+            width / 2
+          )
+        );
+
+      const anchor =
+        buy
+          ? candle.low
+          : candle.high;
+
+      const py =
+        Math.max(
+          top + 2,
+          Math.min(
+            bottom -
+              height -
+              2,
+            y(anchor) +
+              (
+                buy
+                  ? 24
+                  : -34
+              )
+          )
+        );
+
+      ctx.globalAlpha =
+        strong
+          ? 1
+          : 0.88;
+
+      ctx.fillStyle =
+        buy
+          ? up
+          : down;
+
+      ctx.fillRect(
+        px,
+        py,
+        width,
+        height
+      );
+
+      ctx.globalAlpha =
+        1;
+
+      ctx.fillStyle =
+        '#ffffff';
+
+      ctx.fillText(
+        label,
+        px + 7,
+        py + 14
+      );
+
+      // Small triangle pointer, like a chart indicator marker.
+      ctx.beginPath();
+
+      if (buy) {
+        ctx.moveTo(
+          x(i) - 4,
+          py
+        );
+        ctx.lineTo(
+          x(i) + 4,
+          py
+        );
+        ctx.lineTo(
+          x(i),
+          py - 6
+        );
+      } else {
+        ctx.moveTo(
+          x(i) - 4,
+          py + height
+        );
+        ctx.lineTo(
+          x(i) + 4,
+          py + height
+        );
+        ctx.lineTo(
+          x(i),
+          py + height + 6
+        );
+      }
+
+      ctx.closePath();
+
+      ctx.fillStyle =
+        buy
+          ? up
+          : down;
+
+      ctx.fill();
+    }
+  );
+
+  ctx.restore();
 }
 
 
