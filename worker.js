@@ -417,6 +417,82 @@ async function liveQuote(url, token) {
         Date.now(),
     });
   } catch (error) {
+    console.warn(
+      "Primary live quote failed, using intraday fallback",
+      error?.message || error
+    );
+
+    try {
+      const fallbackEndpoint =
+        "https://api.upstox.com/v3/historical-candle/intraday/" +
+        encodeURIComponent(instrumentKey) +
+        "/minutes/1";
+
+      const fallbackBody =
+        await upstoxFetch(
+          fallbackEndpoint,
+          token
+        );
+
+      const rows =
+        Array.isArray(
+          fallbackBody?.data?.candles
+        )
+          ? fallbackBody.data.candles
+          : [];
+
+      const candles =
+        rows
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .sort(
+            (x, y) =>
+              x.time - y.time
+          );
+
+      const latest =
+        candles.at(-1);
+
+      if (latest) {
+        return json({
+          live: true,
+          source:
+            "UPSTOX_INTRADAY_FALLBACK",
+          symbol,
+          instrumentKey,
+          price:
+            latest.close,
+          netChange:
+            null,
+          previousClose:
+            null,
+          changePercent:
+            null,
+          sessionOpen:
+            candles[0]?.open ?? null,
+          volume:
+            latest.volume || 0,
+          time:
+            latest.time,
+          timestamp:
+            latest.time * 1000,
+          fallback:
+            true,
+          primaryError:
+            error?.message ||
+            "Primary quote unavailable.",
+        });
+      }
+    } catch (
+      fallbackError
+    ) {
+      console.warn(
+        "Intraday live quote fallback failed",
+        fallbackError?.message ||
+        fallbackError
+      );
+    }
+
     return json({
       live: false,
       source: "UPSTOX",
