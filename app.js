@@ -16,6 +16,9 @@ import { analyseGainzSSL } from './smrt-gainz-ssl-combo.js';
 import {
   analyseProSuite
 } from './pro-suite.js';
+import {
+  analyseSmrtAiNifty
+} from './smrt-ai-nifty.js';
 
 import {
   API_BASE,
@@ -141,6 +144,12 @@ const state = {
   tradeFinalizer: null,
 
   liveTradeFinalizer: null,
+
+  aiNifty: null,
+
+  externalNifty: null,
+
+  externalNiftyUpdated: 0,
 
   gainzSSL: null,
 
@@ -3694,6 +3703,8 @@ function summary() {
     );
 
 
+  renderAiNifty();
+
   renderProSuiteSummary();
 
   updateMarketMapPanel();
@@ -4104,6 +4115,22 @@ function exitReplay(
   ) {
 
     loadData();
+
+
+const externalNiftyTimer =
+  setInterval(
+    () => {
+      if (
+        !document.hidden
+      ) {
+        refreshExternalNifty()
+          .catch(
+            () => {}
+          );
+      }
+    },
+    30000
+  );
 
   } else {
 
@@ -4959,6 +4986,10 @@ async function loadData() {
       () => {}
     );
 
+    refreshExternalNifty().catch(
+      () => {}
+    );
+
 
     unsubscribe =
       market.subscribe(
@@ -5159,6 +5190,8 @@ async function loadData() {
 
 
           refreshLiveTradeFinalizer();
+
+          recomputeAiNifty();
 
 
           if (
@@ -6727,6 +6760,10 @@ window.addEventListener(
   () => {
 
     unsubscribe?.();
+
+    clearInterval(
+      externalNiftyTimer
+    );
 
 
     watchSubscriptions
@@ -8413,6 +8450,254 @@ function refreshLiveTradeFinalizer() {
       futuresVWAP:
         state.futuresVWAP
     });
+}
+
+
+function renderAiNifty() {
+
+  const ai =
+    state.aiNifty;
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !==
+        undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+
+  if (!ai) {
+    set(
+      '#ai-nifty-signal',
+      'WAIT',
+      'muted'
+    );
+
+    set(
+      '#ai-nifty-confidence',
+      '0 / 100'
+    );
+
+    set(
+      '#ai-nifty-sources',
+      '0 sources'
+    );
+
+    return;
+  }
+
+
+  set(
+    '#ai-nifty-signal',
+    ai.signal,
+    ai.signal === 'BUY'
+      ? 'up'
+      : ai.signal === 'SELL'
+        ? 'down'
+        : 'muted'
+  );
+
+
+  set(
+    '#ai-nifty-confidence',
+    ai.confidence +
+    ' / 100'
+  );
+
+
+  set(
+    '#ai-nifty-sources',
+    ai.sourceCount +
+    ' external source' +
+    (
+      ai.sourceCount === 1
+        ? ''
+        : 's'
+    )
+  );
+
+
+  set(
+    '#ai-nifty-alignment',
+    ai.externalBull +
+    ' bullish · ' +
+    ai.externalBear +
+    ' bearish' +
+    (
+      ai.externalNeutral
+        ? ' · ' +
+          ai.externalNeutral +
+          ' neutral'
+        : ''
+    )
+  );
+
+
+  set(
+    '#ai-nifty-price-agreement',
+    Number.isFinite(
+      Number(
+        ai.priceAgreement
+      )
+    )
+      ? Number(
+          ai.priceAgreement
+        ).toFixed(
+          3
+        ) +
+        '% price gap'
+      : 'Price cross-check —'
+  );
+
+
+  set(
+    '#ai-nifty-entry',
+    ai.plan
+      ? '₹' +
+        fmt(
+          ai.plan.entry
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ai-nifty-stop',
+    ai.plan
+      ? '₹' +
+        fmt(
+          ai.plan.stop
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ai-nifty-tp1',
+    ai.plan
+      ? '₹' +
+        fmt(
+          ai.plan.target1
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ai-nifty-tp2',
+    ai.plan
+      ? '₹' +
+        fmt(
+          ai.plan.target2
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ai-nifty-tp3',
+    ai.plan
+      ? '₹' +
+        fmt(
+          ai.plan.target3
+        )
+      : '—'
+  );
+
+
+  set(
+    '#ai-nifty-reasons',
+    ai.reasons?.length
+      ? ai.reasons.join(
+          ' · '
+        )
+      : 'Waiting for external market confirmation'
+  );
+}
+
+
+function recomputeAiNifty() {
+
+  state.aiNifty =
+    analyseSmrtAiNifty({
+      upstoxPrice:
+        quote(),
+      finalizer:
+        state.liveTradeFinalizer ??
+        state.tradeFinalizer,
+      mtf:
+        state.mtf,
+      external:
+        state.externalNifty
+    });
+
+  renderAiNifty();
+}
+
+
+async function refreshExternalNifty() {
+
+  try {
+    const response =
+      await fetch(
+        API_BASE +
+        '/api/external-nifty',
+        {
+          cache:
+            'no-store'
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        'External market source request failed'
+      );
+    }
+
+    const data =
+      await response.json();
+
+    state.externalNifty =
+      data;
+
+    state.externalNiftyUpdated =
+      Date.now();
+
+    recomputeAiNifty();
+
+  } catch (error) {
+    console.warn(
+      'External NIFTY sources unavailable:',
+      error
+    );
+
+    state.externalNifty =
+      {
+        live: false,
+        sources: []
+      };
+
+    recomputeAiNifty();
+  }
 }
 
 
