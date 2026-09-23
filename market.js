@@ -510,6 +510,55 @@ export class UpstoxMarketAdapter {
   }
 
 
+  async previousHistory(symbol, timeframe) {
+
+    if (!intervals[timeframe]) {
+      return [];
+    }
+
+    try {
+      const response =
+        await fetch(
+          API_BASE + '/api/upstox-previous-history' +
+          '?symbol=' +
+          encodeURIComponent(symbol) +
+          '&timeframe=' +
+          encodeURIComponent(timeframe),
+          {
+            cache: 'no-store'
+          }
+        );
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data =
+        await response.json();
+
+      if (!Array.isArray(data?.candles)) {
+        return [];
+      }
+
+      return data.candles
+        .map(normalizeCandle)
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            a.time - b.time
+        );
+
+    } catch (error) {
+      console.warn(
+        'Previous-session history unavailable:',
+        error
+      );
+
+      return [];
+    }
+  }
+
+
   // ----------------------------------------------------------
   // LIVE QUOTE SUBSCRIPTION
   //
