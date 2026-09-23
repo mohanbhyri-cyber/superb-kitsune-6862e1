@@ -124,6 +124,76 @@ function normalizeCandle(row) {
   return candle;
 }
 
+function normalizeRegularSessionCandle(row) {
+  if (!Array.isArray(row) || row.length < 6) {
+    return null;
+  }
+
+  const [
+    timestamp,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    openInterest,
+  ] = row;
+
+  const ms =
+    new Date(timestamp).getTime();
+
+  if (!Number.isFinite(ms)) {
+    return null;
+  }
+
+  const p =
+    getISTParts(ms);
+
+  const minutes =
+    Number(p.hour) * 60 +
+    Number(p.minute);
+
+  if (
+    minutes < 9 * 60 + 15 ||
+    minutes > 15 * 60 + 30
+  ) {
+    return null;
+  }
+
+  const candle = {
+    time:
+      Math.floor(ms / 1000),
+    open:
+      Number(open),
+    high:
+      Number(high),
+    low:
+      Number(low),
+    close:
+      Number(close),
+    volume:
+      Number(volume) || 0,
+    openInterest:
+      Number(openInterest) || 0,
+  };
+
+  if (
+    !Number.isFinite(candle.open) ||
+    !Number.isFinite(candle.high) ||
+    !Number.isFinite(candle.low) ||
+    !Number.isFinite(candle.close) ||
+    candle.open <= 0 ||
+    candle.high <= 0 ||
+    candle.low <= 0 ||
+    candle.close <= 0
+  ) {
+    return null;
+  }
+
+  return candle;
+}
+
+
 function normalizeCandleForISTDate(row, dateText) {
   if (!Array.isArray(row) || row.length < 6) {
     return null;
@@ -666,6 +736,168 @@ async function previousSessionHistory(url, token) {
 }
 
 
+async function mtfHistory(url, token) {
+  const symbol =
+    (url.searchParams.get("symbol") || "NIFTY")
+      .toUpperCase();
+
+  const timeframe =
+    url.searchParams.get("timeframe") || "5m";
+
+  const instrumentKey =
+    SYMBOLS[symbol];
+
+  const config = {
+    "5m": {
+      unit: "minutes",
+      interval: 5,
+      lookbackDays: 7,
+    },
+    "15m": {
+      unit: "minutes",
+      interval: 15,
+      lookbackDays: 10,
+    },
+    "1h": {
+      unit: "hours",
+      interval: 1,
+      lookbackDays: 45,
+    },
+  }[timeframe];
+
+  if (!instrumentKey || !config) {
+    return json({
+      live: false,
+      source: "UPSTOX",
+      symbol,
+      timeframe,
+      reason:
+        "Unsupported MTF instrument or timeframe.",
+      candles: [],
+    });
+  }
+
+  const today =
+    todayIST();
+
+  const fromDate =
+    istDateMinusDays(
+      config.lookbackDays
+    );
+
+  const historicalEndpoint =
+    "https://api.upstox.com/v3/historical-candle/" +
+    encodeURIComponent(instrumentKey) +
+    "/" +
+    config.unit +
+    "/" +
+    config.interval +
+    "/" +
+    today +
+    "/" +
+    fromDate;
+
+  const intradayEndpoint =
+    "https://api.upstox.com/v3/historical-candle/intraday/" +
+    encodeURIComponent(instrumentKey) +
+    "/" +
+    config.unit +
+    "/" +
+    config.interval;
+
+  try {
+    const results =
+      await Promise.allSettled([
+        upstoxFetch(
+          historicalEndpoint,
+          token
+        ),
+        upstoxFetch(
+          intradayEndpoint,
+          token
+        ),
+      ]);
+
+    const rows = [];
+
+    for (const result of results) {
+      if (
+        result.status === "fulfilled" &&
+        Array.isArray(
+          result.value?.data?.candles
+        )
+      ) {
+        rows.push(
+          ...result.value.data.candles
+        );
+      }
+    }
+
+    const candles =
+      rows
+        .map(
+          normalizeRegularSessionCandle
+        )
+        .filter(Boolean)
+        .sort(
+          (x, y) =>
+            x.time - y.time
+        );
+
+    const unique = [];
+
+    for (const candle of candles) {
+      const last =
+        unique[unique.length - 1];
+
+      if (
+        last &&
+        last.time === candle.time
+      ) {
+        unique[
+          unique.length - 1
+        ] = candle;
+      } else {
+        unique.push(candle);
+      }
+    }
+
+    const trimmed =
+      unique.slice(-500);
+
+    return json({
+      live:
+        trimmed.length > 0,
+      source: "UPSTOX",
+      symbol,
+      timeframe,
+      unit:
+        config.unit,
+      interval:
+        config.interval,
+      fromDate,
+      toDate:
+        today,
+      count:
+        trimmed.length,
+      candles:
+        trimmed,
+    });
+  } catch (error) {
+    return json({
+      live: false,
+      source: "UPSTOX",
+      symbol,
+      timeframe,
+      reason:
+        error?.message ||
+        "Unable to load multi-timeframe history.",
+      candles: [],
+    });
+  }
+}
+
+
 // ----------------------------------------------------
 // NIFTY FUTURES CONTRACT DISCOVERY
 // ----------------------------------------------------
@@ -1184,6 +1416,15 @@ export default {
       url.pathname === "/api/upstox-previous-history"
     ) {
       return previousSessionHistory(
+        url,
+        token
+      );
+    }
+
+    if (
+      url.pathname === "/api/upstox-mtf-history"
+    ) {
+      return mtfHistory(
         url,
         token
       );
