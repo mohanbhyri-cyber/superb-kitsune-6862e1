@@ -196,12 +196,19 @@ const state = {
     ),
 
   overlays: new Set([
+    'Momentum',
+    'Stride Signals',
     'Supertrend (10, 3)',
     'ADX/DMI (14)',
     'EMA 9',
     'EMA 21',
     'EMA 50',
+    'EMA 200',
+    'SMA 50',
+    'SMA 200',
+    'Bollinger',
     'VWAP',
+    'Volume',
     'S/R'
   ]),
 
@@ -4409,6 +4416,9 @@ function scheduleReconnect() {
 
 async function loadData() {
 
+  activateAllIndicators();
+
+
   clearTimeout(
     reconnectTimer
   );
@@ -4941,6 +4951,32 @@ async function loadData() {
 
     scheduleReconnect();
   }
+}
+
+
+function activateAllIndicators() {
+
+  state.overlays =
+    new Set(
+      Object.keys(
+        colors
+      )
+    );
+
+  $('#indicators [data-indicator]')
+    .forEach(
+      button => {
+
+        button.classList.add(
+          'on'
+        );
+
+        button.setAttribute(
+          'aria-pressed',
+          'true'
+        );
+      }
+    );
 }
 
 
