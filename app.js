@@ -4116,22 +4116,6 @@ function exitReplay(
 
     loadData();
 
-
-const externalNiftyTimer =
-  setInterval(
-    () => {
-      if (
-        !document.hidden
-      ) {
-        refreshExternalNifty()
-          .catch(
-            () => {}
-          );
-      }
-    },
-    30000
-  );
-
   } else {
 
     setFeedStatus(
@@ -5366,6 +5350,24 @@ let checkAlerts =
 
 
 loadData();
+
+setupAiAnalysisChat();
+
+
+const externalNiftyTimer =
+  setInterval(
+    () => {
+      if (
+        !document.hidden
+      ) {
+        refreshExternalNifty()
+          .catch(
+            () => {}
+          );
+      }
+    },
+    30000
+  );
 
 
 if (
@@ -8651,6 +8653,24 @@ function recomputeAiNifty() {
     });
 
   renderAiNifty();
+
+  const chatSignal =
+    $('#ai-chat-live-signal');
+
+  if (
+    chatSignal
+  ) {
+    chatSignal.textContent =
+      state.aiNifty?.signal ||
+      'WAIT';
+
+    chatSignal.className =
+      state.aiNifty?.signal === 'BUY'
+        ? 'up'
+        : state.aiNifty?.signal === 'SELL'
+          ? 'down'
+          : 'muted';
+  }
 }
 
 
@@ -8697,6 +8717,295 @@ async function refreshExternalNifty() {
       };
 
     recomputeAiNifty();
+  }
+}
+
+
+function aiAnalysisSnapshot() {
+
+  return {
+    ai:
+      state.aiNifty,
+    finalizer:
+      state.liveTradeFinalizer ??
+      state.tradeFinalizer,
+    mtf:
+      state.mtf,
+    price:
+      quote(),
+    timeframe:
+      state.tf,
+    external:
+      state.externalNifty
+  };
+}
+
+
+function answerAiAnalysisChat(
+  question = ''
+) {
+
+  const q =
+    String(question)
+      .trim()
+      .toLowerCase();
+
+  const snap =
+    aiAnalysisSnapshot();
+
+  const ai =
+    snap.ai;
+
+  if (!ai) {
+    return (
+      'AI analysis is still loading. ' +
+      'Wait for Upstox and external source data.'
+    );
+  }
+
+  const signal =
+    ai.signal ||
+    'NO TRADE';
+
+  const confidence =
+    Number.isFinite(
+      Number(
+        ai.confidence
+      )
+    )
+      ? ai.confidence +
+        '/100'
+      : '—';
+
+  const mtfText =
+    [
+      ['5m', snap.mtf?.['5m']?.state],
+      ['15m', snap.mtf?.['15m']?.state],
+      ['1h', snap.mtf?.['1h']?.state]
+    ]
+      .map(
+        ([tf, value]) =>
+          tf +
+          ': ' +
+          (
+            value ||
+            '—'
+          )
+      )
+      .join(
+        ' · '
+      );
+
+  const reasons =
+    ai.reasons?.length
+      ? ai.reasons.join(
+          ' · '
+        )
+      : 'No strong directional confluence yet.';
+
+  const plan =
+    ai.plan;
+
+  if (
+    q.includes('plan') ||
+    q.includes('entry') ||
+    q.includes('stop') ||
+    q.includes('target') ||
+    q.includes('tp')
+  ) {
+    return plan
+      ? (
+          signal +
+          ' setup · Entry ₹' +
+          fmt(plan.entry) +
+          ' · Stop ₹' +
+          fmt(plan.stop) +
+          ' · TP1 ₹' +
+          fmt(plan.target1) +
+          ' · TP2 ₹' +
+          fmt(plan.target2) +
+          ' · TP3 ₹' +
+          fmt(plan.target3) +
+          '.'
+        )
+      : (
+          'No active trade plan because the current AI signal is ' +
+          signal +
+          '.'
+        );
+  }
+
+  if (
+    q.includes('trend') ||
+    q.includes('5m') ||
+    q.includes('15m') ||
+    q.includes('1h') ||
+    q.includes('timeframe')
+  ) {
+    return (
+      'Multi-timeframe view · ' +
+      mtfText +
+      '. Current AI signal: ' +
+      signal +
+      ' (' +
+      confidence +
+      ').'
+    );
+  }
+
+  if (
+    q.includes('why') ||
+    q.includes('reason') ||
+    q.includes('analysis')
+  ) {
+    return (
+      signal +
+      ' · Confidence ' +
+      confidence +
+      '. ' +
+      reasons
+    );
+  }
+
+  if (
+    q.includes('buy') ||
+    q.includes('sell') ||
+    q.includes('signal') ||
+    !q
+  ) {
+    return (
+      'Current decision-support signal: ' +
+      signal +
+      ' · Confidence ' +
+      confidence +
+      ' · External alignment: ' +
+      ai.externalBull +
+      ' bullish / ' +
+      ai.externalBear +
+      ' bearish. ' +
+      (
+        signal === 'NO TRADE'
+          ? 'No entry is suggested until confluence improves.'
+          : 'Use the displayed risk levels and confirm before acting.'
+      )
+    );
+  }
+
+  return (
+    'Current AI signal: ' +
+    signal +
+    ' (' +
+    confidence +
+    '). ' +
+    reasons
+  );
+}
+
+
+function appendAiChatMessage(
+  text,
+  role = 'assistant'
+) {
+
+  const box =
+    $('#ai-chat-messages');
+
+  if (!box) {
+    return;
+  }
+
+  const item =
+    document.createElement(
+      'div'
+    );
+
+  item.className =
+    'ai-chat-message ' +
+    role;
+
+  item.textContent =
+    text;
+
+  box.appendChild(
+    item
+  );
+
+  box.scrollTop =
+    box.scrollHeight;
+}
+
+
+function askAiAnalysisChat(
+  question
+) {
+
+  const text =
+    String(question || '')
+      .trim();
+
+  if (text) {
+    appendAiChatMessage(
+      text,
+      'user'
+    );
+  }
+
+  appendAiChatMessage(
+    answerAiAnalysisChat(
+      text
+    ),
+    'assistant'
+  );
+}
+
+
+function setupAiAnalysisChat() {
+
+  const form =
+    $('#ai-chat-form');
+
+  const input =
+    $('#ai-chat-input');
+
+  if (
+    form &&
+    input
+  ) {
+    form.onsubmit =
+      event => {
+        event.preventDefault();
+
+        const value =
+          input.value;
+
+        input.value =
+          '';
+
+        askAiAnalysisChat(
+          value
+        );
+      };
+  }
+
+  $('[data-ai-chat]')
+    .forEach(
+      button => {
+        button.onclick =
+          () =>
+            askAiAnalysisChat(
+              button.dataset.aiChat
+            );
+      }
+    );
+
+  if (
+    $('#ai-chat-messages') &&
+    !$('#ai-chat-messages')
+      .children.length
+  ) {
+    appendAiChatMessage(
+      'Ask for the current BUY/SELL/NO TRADE signal, reasons, trend, or trade plan.'
+    );
   }
 }
 
