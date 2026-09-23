@@ -1425,6 +1425,91 @@
   </section>
 
 
+  <section
+    class="panel"
+    id="all-indicators-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT All Indicators Consensus
+      </h2>
+
+      <span class="muted">
+        Final confirmation from all active indicator groups
+      </span>
+    </div>
+
+    <div class="pro-suite-grid">
+
+      <div class="pro-suite-card">
+        <small>Final Signal</small>
+
+        <strong
+          id="all-indicators-signal"
+          class="muted"
+        >
+          LOADING…
+        </strong>
+
+        <span>
+          Confidence:
+          <b id="all-indicators-confidence">
+            0 / 100
+          </b>
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Directional Weight</small>
+
+        <strong id="all-indicators-bull">
+          Bull weight 0
+        </strong>
+
+        <span id="all-indicators-bear">
+          Bear weight 0
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Alignment</small>
+
+        <strong id="all-indicators-alignment">
+          Waiting for indicators
+        </strong>
+
+        <span class="muted">
+          Strong signal requires broad agreement
+        </span>
+      </div>
+
+    </div>
+
+    <div
+      id="all-indicators-votes"
+      class="all-indicators-votes"
+    ></div>
+
+    <p
+      id="all-indicators-reason"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Waiting for indicator alignment…
+    </p>
+
+    <p class="disclaimer">
+      This consensus combines Trade Finalizer, NIFTY EDGE, Market Map,
+      multi-timeframe confirmation, SSL + QQE, AI NIFTY, the 7-day
+      predictor and global watch. It deliberately returns NO TRADE when
+      agreement is weak. No indicator can guarantee a perfect BUY or SELL.
+    </p>
+
+  </section>
+
+
   <section class="panel" id="notebook-predictor-panel" style="margin-top:0">
     <div class="panel-heading">
       <h2>NIFTY 7-Day Predictor</h2>
@@ -2054,7 +2139,7 @@
 
 <script
   type="module"
-  src="app.js?v=64"
+  src="app.js?v=65"
 ></script>
 
 </body>
