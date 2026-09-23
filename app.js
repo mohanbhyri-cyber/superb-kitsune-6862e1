@@ -177,7 +177,7 @@ const state = {
 
   filter: 'all',
 
-  count: 90,
+  count: 180,
 
   offset: 0,
 
