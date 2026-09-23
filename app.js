@@ -6558,29 +6558,22 @@ if (
    SERVICE WORKER
 ====================================================== */
 
-
+// Live trading data must always use the newest frontend.
+// Remove any older service worker/cache that could hold stale JS.
 if (
-  'serviceWorker' in navigator &&
-  !window.Capacitor
-    ?.isNativePlatform()
+  'serviceWorker' in navigator
 ) {
-
   navigator.serviceWorker
-    .register(
-      './sw.js?v=54',
-      {
-        updateViaCache: 'none'
-      }
-    )
+    .getRegistrations()
     .then(
-      registration =>
-        registration.update()
+      registrations =>
+        registrations.forEach(
+          registration =>
+            registration.unregister()
+        )
     )
     .catch(
-      () =>
-        toast(
-          'Offline mode is unavailable in this browser.'
-        )
+      () => {}
     );
 }
 
