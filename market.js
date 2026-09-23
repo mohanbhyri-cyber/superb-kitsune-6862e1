@@ -758,7 +758,13 @@ export class UpstoxMarketAdapter {
               ? Number(q.previousClose)
               : null,
 
-          live: true
+          live: true,
+
+          fallback:
+            q.fallback === true,
+
+          source:
+            q.source || 'UPSTOX'
         });
 
 
