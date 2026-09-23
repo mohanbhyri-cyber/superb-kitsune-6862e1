@@ -510,6 +510,67 @@ export class UpstoxMarketAdapter {
   }
 
 
+  async mtfHistory(symbol, timeframe) {
+
+    if (
+      ![
+        '5m',
+        '15m',
+        '1h'
+      ].includes(timeframe)
+    ) {
+      return [];
+    }
+
+    try {
+      const response =
+        await fetch(
+          API_BASE + '/api/upstox-mtf-history' +
+          '?symbol=' +
+          encodeURIComponent(symbol) +
+          '&timeframe=' +
+          encodeURIComponent(timeframe),
+          {
+            cache: 'no-store'
+          }
+        );
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data =
+        await response.json();
+
+      if (
+        data?.live !== true ||
+        !Array.isArray(
+          data?.candles
+        )
+      ) {
+        return [];
+      }
+
+      return data.candles
+        .map(normalizeCandle)
+        .filter(Boolean)
+        .sort(
+          (x, y) =>
+            x.time - y.time
+        );
+
+    } catch (error) {
+      console.warn(
+        'MTF history unavailable:',
+        timeframe,
+        error
+      );
+
+      return [];
+    }
+  }
+
+
   async previousHistory(symbol, timeframe) {
 
     if (!intervals[timeframe]) {
