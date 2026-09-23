@@ -367,7 +367,7 @@ export class UpstoxMarketAdapter {
 
 
   // ----------------------------------------------------------
-  // TODAY'S REAL HISTORY
+  // CURRENT + PREVIOUS TRADING SESSION HISTORY
   //
   // Backend should return:
   //
