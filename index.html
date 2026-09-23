@@ -1425,6 +1425,38 @@
   </section>
 
 
+  <section class="panel" id="notebook-predictor-panel" style="margin-top:0">
+    <div class="panel-heading">
+      <h2>NIFTY 7-Day Predictor</h2>
+      <span class="muted">Adapted from uploaded notebook · 30-day window · 7-day horizon</span>
+    </div>
+    <div class="pro-suite-grid">
+      <div class="pro-suite-card">
+        <small>Model Signal</small>
+        <strong id="notebook-model-signal" class="muted">LOADING…</strong>
+        <span>Strength: <b id="notebook-model-score">0 / 100</b></span>
+      </div>
+      <div class="pro-suite-card">
+        <small>Directional Probability Proxy</small>
+        <strong>Up: <span id="notebook-model-buy">—</span></strong>
+        <span>Down: <b id="notebook-model-sell">—</b></span>
+      </div>
+      <div class="pro-suite-card">
+        <small>Notebook Settings</small>
+        <strong>Window: <span id="notebook-model-window">30 days</span></strong>
+        <span>Horizon: <b id="notebook-model-horizon">7 days</b></span>
+      </div>
+    </div>
+    <p id="notebook-model-reason" class="pa-note" style="margin-top:10px">
+      Loading daily NIFTY history…
+    </p>
+    <p class="disclaimer">
+      The uploaded notebook defines 30-day sequences, a 7-day target, standard scaling,
+      and a three-layer LSTM. Trained weights were not included, so this panel uses an
+      adapted transparent proxy instead of claiming to run the original trained model.
+    </p>
+  </section>
+
   <section
     class="panel"
     id="global-watch-panel"
@@ -2022,7 +2054,7 @@
 
 <script
   type="module"
-  src="app.js?v=63"
+  src="app.js?v=64"
 ></script>
 
 </body>
