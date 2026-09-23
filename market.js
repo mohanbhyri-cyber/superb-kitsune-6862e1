@@ -580,6 +580,7 @@ export class UpstoxMarketAdapter {
     let inFlight = false;
 
     let last = null;
+    let consecutiveFailures = 0;
 
     this.status = 'CONNECTING';
 
@@ -652,6 +653,8 @@ export class UpstoxMarketAdapter {
         this.quotes[symbol] =
           price;
 
+        consecutiveFailures = 0;
+
         this.status = 'LIVE';
 
         this.lastUpdate =
@@ -700,10 +703,18 @@ export class UpstoxMarketAdapter {
 
       } catch (error) {
 
-        this.status =
-          'RECONNECTING';
+        consecutiveFailures +=
+          1;
 
-        onError?.(error);
+        if (
+          consecutiveFailures >= 3
+        ) {
+
+          this.status =
+            'RECONNECTING';
+
+          onError?.(error);
+        }
 
         // IMPORTANT:
         // NO fake tick.
@@ -712,7 +723,12 @@ export class UpstoxMarketAdapter {
       } finally {
         inFlight = false;
         if (alive && !document.hidden) {
-          timer = setTimeout(tick, 3000);
+          timer = setTimeout(
+            tick,
+            consecutiveFailures
+              ? 1500
+              : 3000
+          );
         }
       }
     };
