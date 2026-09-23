@@ -621,6 +621,19 @@ function setFeedStatus(
 
 
   if (
+    status === 'FALLBACK'
+  ) {
+
+    el.textContent =
+      '● FALLBACK · UPSTOX 1m · ' +
+      formatISTTime() +
+      ' IST';
+
+    return;
+  }
+
+
+  if (
     status === 'STALE'
   ) {
 
@@ -5098,11 +5111,8 @@ async function loadData() {
 
           setFeedStatus(
             tick.fallback
-              ? 'STALE'
-              : 'LIVE',
-            tick.fallback
-              ? 'UPSTOX FALLBACK · 1m candle feed'
-              : ''
+              ? 'FALLBACK'
+              : 'LIVE'
           );
         },
 
@@ -6557,7 +6567,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=53',
+      './sw.js?v=54',
       {
         updateViaCache: 'none'
       }
