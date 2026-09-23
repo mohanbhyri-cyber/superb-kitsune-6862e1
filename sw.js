@@ -1,4 +1,4 @@
-const CACHE='stride-v52';
+const CACHE='stride-v53';
 const ASSETS=[
   './',
   './index.html',
