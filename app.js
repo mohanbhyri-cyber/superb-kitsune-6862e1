@@ -6446,7 +6446,14 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js'
+      './sw.js?v=46',
+      {
+        updateViaCache: 'none'
+      }
+    )
+    .then(
+      registration =>
+        registration.update()
     )
     .catch(
       () =>
