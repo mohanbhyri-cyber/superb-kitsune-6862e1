@@ -344,3 +344,193 @@
   letter-spacing:.02em;
   backdrop-filter:blur(6px);
 }
+
+
+/* TradingView-style chart shell */
+.tv-pro-toolbar{
+  min-height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 10px 6px 12px;
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  background:#0f1114;
+}
+
+.tv-pro-left,
+.tv-pro-right,
+.tv-pro-timeframes{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.tv-pro-left{
+  min-width:0;
+}
+
+.tv-pro-symbol{
+  font-size:14px;
+  white-space:nowrap;
+}
+
+.tv-pro-sep{
+  width:1px;
+  height:24px;
+  background:var(--line);
+  margin:0 4px;
+}
+
+.tv-pro-button,
+.tv-pro-timeframes button{
+  min-height:32px;
+  padding:5px 9px;
+  border:1px solid transparent;
+  border-radius:6px;
+  font-size:12px;
+  color:var(--text);
+}
+
+.tv-pro-timeframes button.active,
+.tv-pro-button:hover{
+  background:#1c2026;
+  border-color:#2f333a;
+}
+
+.tv-pro-status{
+  color:#72e4bd;
+  font-size:10px;
+  letter-spacing:.05em;
+  white-space:nowrap;
+}
+
+.tv-shell-mode .chart-wrap{
+  height:620px;
+  background:#0f1114;
+}
+
+.tv-shell-mode .canvas-area{
+  height:620px;
+}
+
+.tv-shell-mode #chart,
+.tv-shell-mode .tv-lightweight-chart,
+.tv-shell-mode .tv-advanced-chart{
+  height:620px !important;
+}
+
+.tv-shell-mode .draw-tools{
+  width:50px;
+  background:#0f1114;
+  border-right:1px solid #2a2e34;
+  padding-top:10px;
+  z-index:8;
+}
+
+.tv-shell-mode .draw-tools button{
+  width:38px;
+  height:38px;
+  border-radius:6px;
+  color:#c7cbd1;
+}
+
+.tv-shell-mode .draw-tools button:hover,
+.tv-shell-mode .draw-tools button.active{
+  background:#252a31;
+  color:#fff;
+}
+
+.tv-shell-mode .tv-datafeed-status{
+  top:12px;
+  left:12px;
+  border:0;
+  background:transparent;
+  padding:0;
+  color:#a9b1b9;
+  font-size:11px;
+}
+
+.tv-shell-mode .chart-view-toggle{
+  top:10px;
+  right:12px;
+  background:#121519;
+  border-color:#2e333a;
+}
+
+.tv-shell-mode .ohlc{
+  top:38px;
+  left:14px;
+  z-index:5;
+  color:#c5c9cf;
+}
+
+.tv-shell-mode .chart-tip{
+  display:none;
+}
+
+.tv-range-bar{
+  min-height:40px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px 4px 58px;
+  border-top:1px solid #2a2e34;
+  border-bottom:1px solid var(--line);
+  background:#0f1114;
+}
+
+.tv-range-bar button{
+  min-height:28px;
+  padding:4px 8px;
+  font-size:11px;
+  border-radius:5px;
+}
+
+.tv-range-bar button:hover{
+  background:#20252b;
+}
+
+.tv-range-spacer{
+  flex:1;
+}
+
+#tv-range-clock{
+  font-size:10px;
+  color:var(--muted);
+}
+
+.tv-shell-mode .lower-chart{
+  display:none;
+}
+
+.tv-shell-mode .chart-footer{
+  background:#0f1114;
+}
+
+body.light .tv-pro-toolbar,
+body.light .tv-shell-mode .chart-wrap,
+body.light .tv-shell-mode .draw-tools,
+body.light .tv-range-bar,
+body.light .tv-shell-mode .chart-footer{
+  background:#ffffff;
+}
+
+@media(max-width:900px){
+  .tv-pro-toolbar{
+    overflow-x:auto;
+  }
+
+  .tv-pro-right{
+    display:none;
+  }
+
+  .tv-shell-mode .chart-wrap,
+  .tv-shell-mode .canvas-area,
+  .tv-shell-mode #chart,
+  .tv-shell-mode .tv-lightweight-chart,
+  .tv-shell-mode .tv-advanced-chart{
+    height:520px !important;
+  }
+}
