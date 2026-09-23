@@ -5008,7 +5008,7 @@ async function loadData() {
 
           setFeedStatus(
             'RECONNECTING',
-            'Keeping last chart while retrying live quote'
+            'Live quote retrying · chart preserved'
           );
         }
       );
@@ -6449,7 +6449,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=48',
+      './sw.js?v=49',
       {
         updateViaCache: 'none'
       }
