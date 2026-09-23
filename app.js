@@ -5023,6 +5023,8 @@ function exitReplay(
 
     loadData();
 
+setupAllIndicatorsChat();
+
   } else {
 
     setFeedStatus(
@@ -9642,6 +9644,28 @@ function renderAllIndicatorsConsensus() {
     '#all-indicators-reason',
     result.reason
   );
+
+
+  const chatSignal =
+    $('#all-chat-live-signal');
+
+  if (
+    chatSignal
+  ) {
+    chatSignal.textContent =
+      result.signal;
+
+    chatSignal.className =
+      result.signal.includes(
+        'BUY'
+      )
+        ? 'up'
+        : result.signal.includes(
+            'SELL'
+          )
+          ? 'down'
+          : 'muted';
+  }
 }
 
 
@@ -10116,6 +10140,505 @@ async function refreshExternalNifty() {
       };
 
     recomputeAiNifty();
+  }
+}
+
+
+function allIndicatorsChatSnapshot() {
+
+  const consensus =
+    state.allIndicatorsConsensus;
+
+  const finalizer =
+    state.liveTradeFinalizer ??
+    state.tradeFinalizer;
+
+  const edge =
+    state.niftyEdge?.latest;
+
+  const map =
+    state.marketMap;
+
+  const gainz =
+    state.gainzSSL?.latest;
+
+  const ai =
+    state.aiNifty;
+
+  const global =
+    state.globalWatch;
+
+  const scanner =
+    state.candleSetup;
+
+  return {
+    ready:
+      Boolean(
+        state.data?.length
+      ),
+
+    price:
+      quote(),
+
+    timeframe:
+      state.tf,
+
+    consensus,
+
+    finalizer,
+
+    edge,
+
+    marketMap:
+      map,
+
+    mtf:
+      state.mtf,
+
+    gainz,
+
+    ai,
+
+    global,
+
+    candleSetup:
+      scanner
+  };
+}
+
+
+function allIndicatorsChatAnswer(
+  question = ''
+) {
+
+  const q =
+    String(question)
+      .trim()
+      .toLowerCase();
+
+  const snap =
+    allIndicatorsChatSnapshot();
+
+  if (!snap.ready) {
+    return (
+      'Market data is still loading. Wait for the Upstox feed and ask again.'
+    );
+  }
+
+  const c =
+    snap.consensus;
+
+  const signal =
+    c?.signal ||
+    'NO TRADE';
+
+  const confidence =
+    Number.isFinite(
+      Number(
+        c?.confidence
+      )
+    )
+      ? c.confidence +
+        '/100'
+      : '—';
+
+  const finalizer =
+    snap.finalizer;
+
+  const plan =
+    finalizer?.plan;
+
+  const support =
+    snap.marketMap
+      ?.nearestSupport
+      ?.price;
+
+  const resistance =
+    snap.marketMap
+      ?.nearestResistance
+      ?.price;
+
+  const voteText =
+    Array.isArray(
+      c?.votes
+    ) &&
+    c.votes.length
+      ? c.votes
+          .map(
+            vote =>
+              vote.name +
+              ': ' +
+              (
+                vote.side === 1
+                  ? 'bullish'
+                  : 'bearish'
+              )
+          )
+          .join(
+            ' · '
+          )
+      : 'Indicator votes are still forming.';
+
+  const mtfText =
+    [
+      ['5m', snap.mtf?.['5m']?.state],
+      ['15m', snap.mtf?.['15m']?.state],
+      ['1h', snap.mtf?.['1h']?.state]
+    ]
+      .map(
+        ([tf, value]) =>
+          tf +
+          ': ' +
+          (
+            value ||
+            '—'
+          )
+      )
+      .join(
+        ' · '
+      );
+
+  const money =
+    value =>
+      Number.isFinite(
+        Number(value)
+      )
+        ? '₹' +
+          Number(value)
+            .toLocaleString(
+              'en-IN',
+              {
+                minimumFractionDigits:
+                  2,
+                maximumFractionDigits:
+                  2
+              }
+            )
+        : '—';
+
+  if (
+    /all indicators|indicator status|all status|votes|consensus/.test(
+      q
+    )
+  ) {
+    return (
+      'All-indicator consensus: ' +
+      signal +
+      ' · Confidence ' +
+      confidence +
+      '. ' +
+      voteText
+    );
+  }
+
+  if (
+    /signal|buy|sell|trade now|what now/.test(
+      q
+    )
+  ) {
+    return (
+      'Current consensus signal: ' +
+      signal +
+      ' · Confidence ' +
+      confidence +
+      '. Bull weight ' +
+      (
+        c?.bullWeight ??
+        '—'
+      ) +
+      ' vs bear weight ' +
+      (
+        c?.bearWeight ??
+        '—'
+      ) +
+      '. ' +
+      (
+        signal ===
+        'NO TRADE'
+          ? 'The indicators are not aligned strongly enough for a confirmed setup.'
+          : 'This is a decision-support signal; confirm the risk levels before acting.'
+      )
+    );
+  }
+
+  if (
+    /why|reason|no trade/.test(
+      q
+    )
+  ) {
+    return (
+      signal +
+      ' · ' +
+      (
+        c?.reason ||
+        'No consensus reason available.'
+      ) +
+      ' Finalizer: ' +
+      (
+        finalizer?.state ||
+        '—'
+      ) +
+      '. NIFTY EDGE: ' +
+      (
+        snap.edge?.signal ||
+        '—'
+      ) +
+      '. Market Map: ' +
+      (
+        snap.marketMap?.action ||
+        snap.marketMap?.trend ||
+        '—'
+      ) +
+      '. SSL+QQE: ' +
+      (
+        snap.gainz?.signal ||
+        '—'
+      ) +
+      '.'
+    );
+  }
+
+  if (
+    /trend|mtf|5m|15m|1h/.test(
+      q
+    )
+  ) {
+    return (
+      'Multi-timeframe confirmation · ' +
+      mtfText +
+      '. Market Map: ' +
+      (
+        snap.marketMap?.trend ||
+        '—'
+      ) +
+      '. Global Watch: ' +
+      (
+        snap.global?.bias ||
+        '—'
+      ) +
+      '.'
+    );
+  }
+
+  if (
+    /entry|stop|target|tp|plan/.test(
+      q
+    )
+  ) {
+    if (!plan) {
+      return (
+        'No active trade plan. Current final consensus is ' +
+        signal +
+        ' and Finalizer is ' +
+        (
+          finalizer?.state ||
+          'NO TRADE'
+        ) +
+        '.'
+      );
+    }
+
+    return (
+      'Trade plan · Entry ' +
+      money(
+        plan.entry
+      ) +
+      ' · Stop ' +
+      money(
+        plan.stop
+      ) +
+      ' · TP1 ' +
+      money(
+        plan.target1
+      ) +
+      ' · TP2 ' +
+      money(
+        plan.target2
+      ) +
+      ' · TP3 ' +
+      money(
+        plan.target3
+      ) +
+      '.'
+    );
+  }
+
+  if (
+    /support|resistance|level/.test(
+      q
+    )
+  ) {
+    return (
+      'Market Map levels · Support ' +
+      money(
+        support
+      ) +
+      ' · Resistance ' +
+      money(
+        resistance
+      ) +
+      ' · Structure ' +
+      (
+        snap.marketMap?.trend ||
+        '—'
+      ) +
+      '.'
+    );
+  }
+
+  if (
+    /ai|external|global/.test(
+      q
+    )
+  ) {
+    return (
+      'AI NIFTY: ' +
+      (
+        snap.ai?.signal ||
+        '—'
+      ) +
+      ' · Global Watch: ' +
+      (
+        snap.global?.bias ||
+        '—'
+      ) +
+      ' · External sources are used as confirmation, not as a standalone trade trigger.'
+    );
+  }
+
+  return (
+    'NIFTY 50 · ' +
+    snap.timeframe +
+    ' · Price ' +
+    money(
+      snap.price
+    ) +
+    '. Consensus: ' +
+    signal +
+    ' (' +
+    confidence +
+    '). Ask: Signal now, All indicators, Why no trade, Trend, Trade plan, or Support/Resistance.'
+  );
+}
+
+
+function appendAllIndicatorsChat(
+  role,
+  text
+) {
+
+  const box =
+    $('#all-indicators-chat-messages');
+
+  if (!box) {
+    return;
+  }
+
+  const item =
+    document.createElement(
+      'div'
+    );
+
+  item.className =
+    'all-chat-message ' +
+    role;
+
+  item.textContent =
+    text;
+
+  box.appendChild(
+    item
+  );
+
+  box.scrollTop =
+    box.scrollHeight;
+}
+
+
+function askAllIndicatorsChat(
+  question
+) {
+
+  const value =
+    String(question || '')
+      .trim()
+      .slice(
+        0,
+        240
+      );
+
+  if (!value) {
+    return;
+  }
+
+  appendAllIndicatorsChat(
+    'user',
+    value
+  );
+
+  appendAllIndicatorsChat(
+    'assistant',
+    allIndicatorsChatAnswer(
+      value
+    )
+  );
+}
+
+
+function setupAllIndicatorsChat() {
+
+  const form =
+    $('#all-indicators-chat-form');
+
+  const input =
+    $('#all-indicators-chat-input');
+
+  if (
+    form &&
+    input
+  ) {
+    form.onsubmit =
+      event => {
+        event.preventDefault();
+
+        const value =
+          input.value;
+
+        input.value =
+          '';
+
+        askAllIndicatorsChat(
+          value
+        );
+
+        input.focus();
+      };
+  }
+
+
+  $('[data-all-chat]')
+    .forEach(
+      button => {
+        button.onclick =
+          () =>
+            askAllIndicatorsChat(
+              button.dataset.allChat
+            );
+      }
+    );
+
+
+  const box =
+    $('#all-indicators-chat-messages');
+
+  if (
+    box &&
+    !box.children.length
+  ) {
+    appendAllIndicatorsChat(
+      'assistant',
+      'All indicators are connected. Ask for the current signal, indicator votes, trend, levels, or trade plan.'
+    );
   }
 }
 
