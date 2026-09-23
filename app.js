@@ -5054,7 +5054,7 @@ function activateAllIndicators() {
       )
     );
 
-  $('#indicators [data-indicator]')
+  $$('#indicators [data-indicator]')
     .forEach(
       button => {
 
