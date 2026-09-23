@@ -3252,21 +3252,26 @@ function summary() {
   }
 
 
-  const r =
-    calc.rsi?.at(-1);
+  // Technical Outlook must use one consistent CLOSED candle.
+  // Mixing the live candle with closed-candle trend filters caused
+  // Neutral / directional counts to disagree.
+  const closed =
+    Math.max(
+      0,
+      state.data.length - 2
+    );
 
+  const r =
+    calc.rsi?.[closed];
 
   const e9 =
-    calc.e9?.at(-1);
-
+    calc.e9?.[closed];
 
   const e21 =
-    calc.e21?.at(-1);
-
+    calc.e21?.[closed];
 
   const hist =
-    calc.hist?.at(-1);
-
+    calc.hist?.[closed];
 
   if (
     !Number.isFinite(r) ||
@@ -3281,44 +3286,123 @@ function summary() {
   const e =
     e9 > e21
       ? 1
-      : -1;
+      : e9 < e21
+        ? -1
+        : 0;
 
 
   const m =
     hist > 0
       ? 1
-      : -1;
-
-
-  const rs =
-    r > 55
-      ? 1
-      : r < 45
+      : hist < 0
         ? -1
         : 0;
 
 
-  const score =
-    e + m + rs;
+  const rs =
+    r >= 55
+      ? 1
+      : r <= 45
+        ? -1
+        : 0;
+
+
+  const directions =
+    [e, rs, m];
+
+  const bullishCount =
+    directions.filter(
+      value =>
+        value === 1
+    ).length;
+
+  const bearishCount =
+    directions.filter(
+      value =>
+        value === -1
+    ).length;
+
+  const neutralCount =
+    directions.filter(
+      value =>
+        value === 0
+    ).length;
 
 
   const candidate =
-    score >= 2 ? 'Buy' : score <= -2 ? 'Sell' : 'Neutral';
-  // Use the latest closed Upstox candle for confirmation.
-  const closed = Math.max(0, state.data.length - 2);
-  const trend = state.trend;
-  const stOn = state.overlays.has('Supertrend (10, 3)');
-  const dmiOn = state.overlays.has('ADX/DMI (14)');
-  const stDirection = trend?.direction[closed] || 0;
-  const adxValue = trend?.adx[closed];
-  const plusValue = trend?.plusDI[closed];
-  const minusValue = trend?.minusDI[closed];
-  const side = candidate === 'Buy' ? 1 : candidate === 'Sell' ? -1 : 0;
-  const stPass = !stOn || (side !== 0 && stDirection === side);
-  const dmiPass = !dmiOn || (Number.isFinite(adxValue) &&
-    adxValue >= 20 && (side === 1 ? plusValue > minusValue :
-      side === -1 ? minusValue > plusValue : false));
-  const label = side && stPass && dmiPass ? candidate : 'Neutral';
+    bullishCount >= 2
+      ? 'Buy'
+      : bearishCount >= 2
+        ? 'Sell'
+        : 'Neutral';
+
+
+  const trend =
+    state.trend;
+
+  const stOn =
+    state.overlays.has(
+      'Supertrend (10, 3)'
+    );
+
+  const dmiOn =
+    state.overlays.has(
+      'ADX/DMI (14)'
+    );
+
+  const stDirection =
+    trend?.direction?.[closed] ||
+    0;
+
+  const adxValue =
+    trend?.adx?.[closed];
+
+  const plusValue =
+    trend?.plusDI?.[closed];
+
+  const minusValue =
+    trend?.minusDI?.[closed];
+
+  const side =
+    candidate === 'Buy'
+      ? 1
+      : candidate === 'Sell'
+        ? -1
+        : 0;
+
+  const stPass =
+    !stOn ||
+    (
+      side !== 0 &&
+      stDirection === side
+    );
+
+  const dmiPass =
+    !dmiOn ||
+    (
+      Number.isFinite(
+        adxValue
+      ) &&
+      adxValue >= 20 &&
+      (
+        side === 1
+          ? plusValue > minusValue
+          : side === -1
+            ? minusValue > plusValue
+            : false
+      )
+    );
+
+  const label =
+    side !== 0 &&
+    stPass &&
+    dmiPass
+      ? candidate
+      : 'Neutral';
+
+  const score =
+    bullishCount -
+    bearishCount;
 
   const closedClose = Number(state.data[closed]?.close);
   const closedEMA9 = calc.e9?.[closed];
@@ -3393,9 +3477,24 @@ function summary() {
   ) {
 
     $('#signal-summary').textContent =
-      Math.abs(score) + ' of 3 net directional signals' +
-      (candidate === 'Neutral' ? '' : label === 'Neutral'
-        ? ' · awaiting trend confirmation' : ' · confirmed');
+      bullishCount +
+      ' bullish · ' +
+      bearishCount +
+      ' bearish' +
+      (
+        neutralCount
+          ? ' · ' +
+            neutralCount +
+            ' neutral'
+          : ''
+      ) +
+      (
+        candidate === 'Neutral'
+          ? ' · no 2-of-3 direction'
+          : label === 'Neutral'
+            ? ' · blocked by Supertrend / ADX-DMI confirmation'
+            : ' · confirmed'
+      );
   }
 
 
@@ -3415,7 +3514,9 @@ function summary() {
           ${
             e > 0
               ? 'Bullish'
-              : 'Bearish'
+              : e < 0
+                ? 'Bearish'
+                : 'Neutral'
           }
         </b>
 
@@ -3452,7 +3553,9 @@ function summary() {
           ${
             m > 0
               ? 'Bullish'
-              : 'Bearish'
+              : m < 0
+                ? 'Bearish'
+                : 'Neutral'
           }
         </b>
 
@@ -6454,7 +6557,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=52',
+      './sw.js?v=53',
       {
         updateViaCache: 'none'
       }
