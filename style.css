@@ -305,3 +305,31 @@
     grid-template-columns:1fr 1fr!important;
   }
 }
+
+
+/* =========================================================
+   HIDE EMPTY CHART WHEN DATA IS UNAVAILABLE
+========================================================= */
+
+body.data-unavailable .chart-card{
+  display:none;
+}
+
+body.data-unavailable .workspace{
+  grid-template-columns:1fr;
+}
+
+body.data-unavailable .workspace>aside{
+  grid-column:1;
+  width:100%;
+}
+
+body.data-unavailable .workspace>aside .sidebar-analysis-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+@media(max-width:760px){
+  body.data-unavailable .workspace>aside .sidebar-analysis-grid{
+    grid-template-columns:1fr;
+  }
+}
