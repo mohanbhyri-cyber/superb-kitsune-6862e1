@@ -26,9 +26,6 @@ import {
   analyseGlobalWatch
 } from './smrt-global-watch.js';
 import {
-  analyseNotebookPredictor
-} from './smrt-notebook-predictor.js';
-import {
   analyseAllIndicators
 } from './smrt-all-indicators.js';
 import {
@@ -170,9 +167,6 @@ const state = {
 
   globalWatchUpdated: 0,
 
-  notebookPredictor: null,
-
-  notebookDailyUpdated: 0,
 
   allIndicatorsConsensus: null,
 
@@ -5537,25 +5531,6 @@ refreshGlobalWatch().catch(
   () => {}
 );
 
-refreshNotebookPredictor().catch(
-  () => {}
-);
-
-
-const notebookPredictorTimer =
-  setInterval(
-    () => {
-      if (
-        !document.hidden
-      ) {
-        refreshNotebookPredictor()
-          .catch(
-            () => {}
-          );
-      }
-    },
-    300000
-  );
 
 
 const globalWatchTimer =
@@ -6991,9 +6966,6 @@ window.addEventListener(
       globalWatchTimer
     );
 
-    clearInterval(
-      notebookPredictorTimer
-    );
 
 
     watchSubscriptions
@@ -8700,8 +8672,6 @@ function recomputeAllIndicatorsConsensus() {
         state.gainzSSL,
       aiNifty:
         state.aiNifty,
-      notebook:
-        state.notebookPredictor,
       globalWatch:
         state.globalWatch
     });
@@ -8838,186 +8808,6 @@ function renderAllIndicatorsConsensus() {
     '#all-indicators-reason',
     result.reason
   );
-}
-
-
-function renderNotebookPredictor() {
-
-  const model =
-    state.notebookPredictor;
-
-  const set =
-    (
-      selector,
-      value,
-      className
-    ) => {
-      const el =
-        $(selector);
-
-      if (!el) {
-        return;
-      }
-
-      el.textContent =
-        value;
-
-      if (
-        className !==
-        undefined
-      ) {
-        el.className =
-          className;
-      }
-    };
-
-
-  if (!model) {
-    set(
-      '#notebook-model-signal',
-      'LOADING…',
-      'muted'
-    );
-
-    return;
-  }
-
-
-  set(
-    '#notebook-model-signal',
-    model.signal,
-    model.signal === 'BUY'
-      ? 'up'
-      : model.signal === 'SELL'
-        ? 'down'
-        : 'muted'
-  );
-
-
-  set(
-    '#notebook-model-score',
-    model.score +
-    ' / 100'
-  );
-
-
-  set(
-    '#notebook-model-buy',
-    Number.isFinite(
-      Number(
-        model.buyProbability
-      )
-    )
-      ? (
-          Number(
-            model.buyProbability
-          ) * 100
-        ).toFixed(
-          1
-        ) +
-        '%'
-      : '—'
-  );
-
-
-  set(
-    '#notebook-model-sell',
-    Number.isFinite(
-      Number(
-        model.sellProbability
-      )
-    )
-      ? (
-          Number(
-            model.sellProbability
-          ) * 100
-        ).toFixed(
-          1
-        ) +
-        '%'
-      : '—'
-  );
-
-
-  set(
-    '#notebook-model-window',
-    model.seriesLength +
-    ' days'
-  );
-
-
-  set(
-    '#notebook-model-horizon',
-    model.horizonDays +
-    ' days'
-  );
-
-
-  set(
-    '#notebook-model-reason',
-    model.reason ||
-    'Waiting for model data'
-  );
-}
-
-
-async function refreshNotebookPredictor() {
-
-  try {
-    const response =
-      await fetch(
-        API_BASE +
-        '/api/nifty-daily-history?days=90',
-        {
-          cache:
-            'no-store'
-        }
-      );
-
-    if (!response.ok) {
-      throw new Error(
-        'Daily NIFTY history request failed'
-      );
-    }
-
-    const payload =
-      await response.json();
-
-    state.notebookPredictor =
-      analyseNotebookPredictor(
-        payload.candles
-      );
-
-    state.notebookDailyUpdated =
-      Date.now();
-
-    renderNotebookPredictor();
-
-    recomputeAllIndicatorsConsensus();
-
-  } catch (error) {
-    console.warn(
-      'Notebook predictor unavailable:',
-      error
-    );
-
-    state.notebookPredictor =
-      {
-        ready: false,
-        signal:
-          'DATA UNAVAILABLE',
-        score: 0,
-        seriesLength: 30,
-        horizonDays: 7,
-        reason:
-          error?.message ||
-          'Daily model data unavailable'
-      };
-
-    renderNotebookPredictor();
-
-    recomputeAllIndicatorsConsensus();
-  }
 }
 
 
