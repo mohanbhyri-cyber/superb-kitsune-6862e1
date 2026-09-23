@@ -2672,29 +2672,6 @@ function draw() {
 
 
   /*
-    RSI
-  */
-
-  drawPane(
-    '#rsi',
-    [
-      state.calc.rsi
-    ],
-    [
-      '#a996ec'
-    ],
-    start,
-    end,
-    0,
-    100,
-    [
-      30,
-      70
-    ]
-  );
-
-
-  /*
     MACD
   */
 
@@ -2766,25 +2743,8 @@ function draw() {
   );
 
 
-  const lastRSI =
-    state.calc.rsi.at(-1);
-
-
   const lastMACD =
     state.calc.macd.at(-1);
-
-
-  if (
-    $('#rsi-value')
-  ) {
-
-    $('#rsi-value').textContent =
-      Number.isFinite(
-        lastRSI
-      )
-        ? lastRSI.toFixed(2)
-        : '—';
-  }
 
 
   if (
