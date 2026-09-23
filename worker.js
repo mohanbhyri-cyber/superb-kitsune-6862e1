@@ -997,6 +997,7 @@ export default {
     }
 
     const token =
+      env.UPSTOX_EXTENDED_TOKEN ||
       env.UPSTOX_ANALYTICS_TOKEN ||
       env.UPSTOX_ACCESS_TOKEN ||
       env.UPSTOX_TOKEN;
@@ -1004,13 +1005,67 @@ export default {
     if (
       url.pathname === "/api/health"
     ) {
-      return json({
-        live: Boolean(token),
-        source: "UPSTOX",
-        tokenConfigured: Boolean(token),
-        service: "Stride Trading Desk",
-        timestamp: new Date().toISOString(),
-      });
+      if (!token) {
+        return json({
+          live: false,
+          source: "UPSTOX",
+          tokenConfigured: false,
+          tokenValid: false,
+          service: "Stride Trading Desk",
+          reason:
+            "Upstox token is not configured.",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      try {
+        const endpoint =
+          "https://api.upstox.com/v3/market-quote/quotes" +
+          "?instrument_key=" +
+          encodeURIComponent(SYMBOLS.NIFTY);
+
+        const body =
+          await upstoxFetch(
+            endpoint,
+            token
+          );
+
+        const quote =
+          Object.values(
+            body?.data ?? {}
+          )[0];
+
+        const price =
+          Number(
+            quote?.last_price
+          );
+
+        return json({
+          live:
+            Number.isFinite(price),
+          source: "UPSTOX",
+          tokenConfigured: true,
+          tokenValid:
+            Number.isFinite(price),
+          price:
+            Number.isFinite(price)
+              ? price
+              : null,
+          service: "Stride Trading Desk",
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        return json({
+          live: false,
+          source: "UPSTOX",
+          tokenConfigured: true,
+          tokenValid: false,
+          service: "Stride Trading Desk",
+          reason:
+            "Upstox token expired or is invalid. Generate today's token or configure UPSTOX_EXTENDED_TOKEN.",
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     if (!token) {
@@ -1018,7 +1073,7 @@ export default {
         live: false,
         source: "UPSTOX",
         reason:
-          "Upstox access token is not configured. Add the Cloudflare secret UPSTOX_ANALYTICS_TOKEN.",
+          "Upstox token is not configured. Add UPSTOX_EXTENDED_TOKEN or today's UPSTOX_ANALYTICS_TOKEN in Cloudflare secrets.",
       }, 503);
     }
 
