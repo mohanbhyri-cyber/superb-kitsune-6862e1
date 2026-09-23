@@ -1520,7 +1520,46 @@ export default {
      * ASSETS is supplied by the Wrangler assets binding.
      */
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      const response =
+        await env.ASSETS.fetch(request);
+
+      const headers =
+        new Headers(
+          response.headers
+        );
+
+      if (
+        url.pathname === "/" ||
+        url.pathname.endsWith(".html") ||
+        url.pathname.endsWith(".js") ||
+        url.pathname.endsWith(".css")
+      ) {
+        headers.set(
+          "cache-control",
+          "no-store, no-cache, must-revalidate, max-age=0"
+        );
+
+        headers.set(
+          "pragma",
+          "no-cache"
+        );
+
+        headers.set(
+          "expires",
+          "0"
+        );
+      }
+
+      return new Response(
+        response.body,
+        {
+          status:
+            response.status,
+          statusText:
+            response.statusText,
+          headers,
+        }
+      );
     }
 
     return new Response(
