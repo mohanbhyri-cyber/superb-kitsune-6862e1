@@ -1613,6 +1613,8 @@ let tvLiteChart = null;
 let tvLiteSeries = null;
 let tvLiteVolumeSeries = null;
 let tvLiteMarkers = null;
+const tvLiteIndicatorSeries = new Map();
+let tvLitePriceLines = [];
 let tvLiteLastLength = 0;
 let tvLiteLastFirstTime = null;
 let tvLiteLastMarkerKey = '';
@@ -1812,81 +1814,818 @@ function initTradingViewLiteChart() {
 }
 
 
+function getTvLiteLineSeries(
+  key,
+  color,
+  lineWidth = 1.4,
+  lineStyle = 0
+) {
+
+  if (
+    tvLiteIndicatorSeries.has(
+      key
+    )
+  ) {
+    return tvLiteIndicatorSeries.get(
+      key
+    );
+  }
+
+  const L =
+    window.LightweightCharts;
+
+  if (
+    !tvLiteChart ||
+    !L
+  ) {
+    return null;
+  }
+
+  let series = null;
+
+  try {
+    if (
+      L.LineSeries &&
+      tvLiteChart.addSeries
+    ) {
+      series =
+        tvLiteChart.addSeries(
+          L.LineSeries,
+          {
+            color,
+            lineWidth,
+            lineStyle,
+            priceLineVisible:
+              false,
+            lastValueVisible:
+              false,
+            crosshairMarkerVisible:
+              false
+          }
+        );
+    } else if (
+      tvLiteChart.addLineSeries
+    ) {
+      series =
+        tvLiteChart.addLineSeries({
+          color,
+          lineWidth,
+          lineStyle,
+          priceLineVisible:
+            false,
+          lastValueVisible:
+            false,
+          crosshairMarkerVisible:
+            false
+        });
+    }
+  } catch (
+    error
+  ) {
+    console.warn(
+      'Unable to create TradingView indicator series:',
+      key,
+      error
+    );
+  }
+
+  if (series) {
+    tvLiteIndicatorSeries.set(
+      key,
+      series
+    );
+  }
+
+  return series;
+}
+
+
+function setTvLiteLine(
+  key,
+  values,
+  color,
+  enabled,
+  lineWidth = 1.4,
+  lineStyle = 0
+) {
+
+  const existing =
+    tvLiteIndicatorSeries.get(
+      key
+    );
+
+  if (!enabled) {
+    existing?.setData?.(
+      []
+    );
+
+    return;
+  }
+
+  if (
+    !Array.isArray(
+      values
+    )
+  ) {
+    return;
+  }
+
+  const series =
+    getTvLiteLineSeries(
+      key,
+      color,
+      lineWidth,
+      lineStyle
+    );
+
+  if (!series) {
+    return;
+  }
+
+  const data =
+    values
+      .map(
+        (
+          value,
+          index
+        ) => {
+          const candle =
+            state.data[
+              index
+            ];
+
+          if (
+            !candle ||
+            !Number.isFinite(
+              Number(value)
+            )
+          ) {
+            return null;
+          }
+
+          return {
+            time:
+              Number(
+                candle.time
+              ),
+            value:
+              Number(value)
+          };
+        }
+      )
+      .filter(Boolean);
+
+  series.setData(
+    data
+  );
+}
+
+
+function ensureTvLiteVolumeSeries() {
+
+  if (
+    tvLiteVolumeSeries ||
+    !tvLiteChart
+  ) {
+    return;
+  }
+
+  const L =
+    window.LightweightCharts;
+
+  try {
+    if (
+      L?.HistogramSeries &&
+      tvLiteChart.addSeries
+    ) {
+      tvLiteVolumeSeries =
+        tvLiteChart.addSeries(
+          L.HistogramSeries,
+          {
+            priceFormat: {
+              type: 'volume'
+            },
+            priceScaleId:
+              'volume',
+            lastValueVisible:
+              false,
+            priceLineVisible:
+              false
+          }
+        );
+    } else if (
+      tvLiteChart.addHistogramSeries
+    ) {
+      tvLiteVolumeSeries =
+        tvLiteChart.addHistogramSeries({
+          priceFormat: {
+            type: 'volume'
+          },
+          priceScaleId:
+            'volume',
+          lastValueVisible:
+            false,
+          priceLineVisible:
+            false
+        });
+    }
+
+    tvLiteChart
+      .priceScale?.(
+        'volume'
+      )
+      ?.applyOptions?.({
+        scaleMargins: {
+          top: 0.78,
+          bottom: 0
+        }
+      });
+
+  } catch (
+    error
+  ) {
+    console.warn(
+      'Unable to create TradingView volume series:',
+      error
+    );
+  }
+}
+
+
+function syncTradingViewIndicators() {
+
+  if (
+    !tvLiteChart ||
+    !state.calc
+  ) {
+    return;
+  }
+
+  const isOn =
+    name =>
+      state.overlays.has(
+        name
+      );
+
+
+  const lines = [
+    [
+      'EMA 9',
+      'e9'
+    ],
+    [
+      'EMA 21',
+      'e21'
+    ],
+    [
+      'EMA 50',
+      'e50'
+    ],
+    [
+      'EMA 200',
+      'e200'
+    ],
+    [
+      'SMA 50',
+      's50'
+    ],
+    [
+      'SMA 200',
+      's200'
+    ]
+  ];
+
+  for (
+    const [
+      name,
+      key
+    ] of lines
+  ) {
+    setTvLiteLine(
+      name,
+      state.calc?.[
+        key
+      ],
+      colors[
+        name
+      ],
+      isOn(
+        name
+      )
+    );
+  }
+
+
+  const vwapValues =
+    Array.isArray(
+      state.calc?.vwap
+    ) &&
+    state.calc.vwap.some(
+      value =>
+        Number.isFinite(
+          Number(value)
+        )
+    )
+      ? state.calc.vwap
+      : (
+          Number.isFinite(
+            state.futuresVWAP
+          )
+            ? Array(
+                state.data.length
+              ).fill(
+                state.futuresVWAP
+              )
+            : []
+        );
+
+  setTvLiteLine(
+    'VWAP',
+    vwapValues,
+    colors.VWAP,
+    isOn(
+      'VWAP'
+    ),
+    1.4,
+    2
+  );
+
+
+  const supertrend =
+    state.trend?.supertrend;
+
+  const direction =
+    state.trend?.direction;
+
+  const superUp =
+    Array.isArray(
+      supertrend
+    )
+      ? supertrend.map(
+          (
+            value,
+            index
+          ) =>
+            direction?.[
+              index
+            ] === 1
+              ? value
+              : null
+        )
+      : [];
+
+  const superDown =
+    Array.isArray(
+      supertrend
+    )
+      ? supertrend.map(
+          (
+            value,
+            index
+          ) =>
+            direction?.[
+              index
+            ] === -1
+              ? value
+              : null
+        )
+      : [];
+
+  setTvLiteLine(
+    'Supertrend Up',
+    superUp,
+    '#56d6a0',
+    isOn(
+      'Supertrend (10, 3)'
+    ),
+    1.6
+  );
+
+  setTvLiteLine(
+    'Supertrend Down',
+    superDown,
+    '#f17c86',
+    isOn(
+      'Supertrend (10, 3)'
+    ),
+    1.6
+  );
+
+
+  const strideUp =
+    state.signals?.map(
+      row =>
+        row?.direction === 1
+          ? row.stop
+          : null
+    ) || [];
+
+  const strideDown =
+    state.signals?.map(
+      row =>
+        row?.direction === -1
+          ? row.stop
+          : null
+    ) || [];
+
+  setTvLiteLine(
+    'Stride Up',
+    strideUp,
+    '#72e4bd',
+    isOn(
+      'Stride Signals'
+    ),
+    1.2,
+    2
+  );
+
+  setTvLiteLine(
+    'Stride Down',
+    strideDown,
+    '#f17c86',
+    isOn(
+      'Stride Signals'
+    ),
+    1.2,
+    2
+  );
+
+
+  const bb =
+    state.calc?.bb;
+
+  setTvLiteLine(
+    'BB Upper',
+    Array.isArray(bb)
+      ? bb.map(
+          row =>
+            row?.upper
+        )
+      : [],
+    colors.Bollinger,
+    isOn(
+      'Bollinger'
+    ),
+    1.1
+  );
+
+  setTvLiteLine(
+    'BB Mid',
+    Array.isArray(bb)
+      ? bb.map(
+          row =>
+            row?.mid
+        )
+      : [],
+    colors.Bollinger,
+    isOn(
+      'Bollinger'
+    ),
+    1,
+    2
+  );
+
+  setTvLiteLine(
+    'BB Lower',
+    Array.isArray(bb)
+      ? bb.map(
+          row =>
+            row?.lower
+        )
+      : [],
+    colors.Bollinger,
+    isOn(
+      'Bollinger'
+    ),
+    1.1
+  );
+
+
+  ensureTvLiteVolumeSeries();
+
+  if (
+    tvLiteVolumeSeries
+  ) {
+    const volumeData =
+      isOn(
+        'Volume'
+      )
+        ? state.data.map(
+            candle => ({
+              time:
+                Number(
+                  candle.time
+                ),
+              value:
+                Number(
+                  candle.volume
+                ) || 0,
+              color:
+                Number(
+                  candle.close
+                ) >=
+                Number(
+                  candle.open
+                )
+                  ? 'rgba(114,228,189,0.35)'
+                  : 'rgba(241,124,134,0.35)'
+            })
+          )
+        : [];
+
+    tvLiteVolumeSeries.setData(
+      volumeData
+    );
+  }
+
+
+  for (
+    const priceLine of
+    tvLitePriceLines
+  ) {
+    try {
+      tvLiteSeries
+        ?.removePriceLine?.(
+          priceLine
+        );
+    } catch {}
+  }
+
+  tvLitePriceLines =
+    [];
+
+  if (
+    isOn(
+      'S/R'
+    ) &&
+    tvLiteSeries
+  ) {
+    const levels = [
+      {
+        title: 'S',
+        price:
+          state.marketMap
+            ?.nearestSupport
+            ?.price,
+        color:
+          '#72e4bd'
+      },
+      {
+        title: 'R',
+        price:
+          state.marketMap
+            ?.nearestResistance
+            ?.price,
+        color:
+          '#f17c86'
+      }
+    ];
+
+    for (
+      const level of
+      levels
+    ) {
+      if (
+        !Number.isFinite(
+          Number(
+            level.price
+          )
+        )
+      ) {
+        continue;
+      }
+
+      try {
+        const line =
+          tvLiteSeries
+            .createPriceLine({
+              price:
+                Number(
+                  level.price
+                ),
+              color:
+                level.color,
+              lineWidth:
+                1,
+              lineStyle:
+                2,
+              axisLabelVisible:
+                true,
+              title:
+                level.title
+            });
+
+        tvLitePriceLines.push(
+          line
+        );
+      } catch {}
+    }
+  }
+}
+
+
 function buildTradingViewMarkers() {
 
-  const rows =
+  const markers = [];
+
+  const consensusRows =
     state.chartConsensus?.rows ||
     [];
 
-  return rows
-    .map(
-      (
-        row,
-        index
-      ) => {
-
-        if (
-          !row?.signal
-        ) {
-          return null;
-        }
-
-        const candle =
-          state.data[
-            index
-          ];
-
-        if (!candle) {
-          return null;
-        }
-
-        const buy =
-          row.side === 1;
-
-        const strong =
-          row.signal.includes(
-            'STRONG'
-          );
-
-        return {
-          time:
-            Number(
-              candle.time
-            ),
-          position:
-            buy
-              ? 'belowBar'
-              : 'aboveBar',
-          color:
-            buy
-              ? '#72e4bd'
-              : '#f17c86',
-          shape:
-            buy
-              ? 'arrowUp'
-              : 'arrowDown',
-          text:
-            buy
-              ? (
-                  strong
-                    ? 'BUY+'
-                    : 'BUY'
-                )
-              : (
-                  strong
-                    ? 'SELL+'
-                    : 'SELL'
-                ),
-          size:
-            strong
-              ? 2
-              : 1
-        };
+  consensusRows.forEach(
+    (
+      row,
+      index
+    ) => {
+      if (
+        !row?.signal
+      ) {
+        return;
       }
-    )
-    .filter(Boolean);
-}
 
+      const candle =
+        state.data[
+          index
+        ];
+
+      if (!candle) {
+        return;
+      }
+
+      const buy =
+        row.side === 1;
+
+      const strong =
+        row.signal.includes(
+          'STRONG'
+        );
+
+      markers.push({
+        time:
+          Number(
+            candle.time
+          ),
+        position:
+          buy
+            ? 'belowBar'
+            : 'aboveBar',
+        color:
+          buy
+            ? '#72e4bd'
+            : '#f17c86',
+        shape:
+          buy
+            ? 'arrowUp'
+            : 'arrowDown',
+        text:
+          buy
+            ? (
+                strong
+                  ? 'BUY+'
+                  : 'BUY'
+              )
+            : (
+                strong
+                  ? 'SELL+'
+                  : 'SELL'
+              ),
+        size:
+          strong
+            ? 2
+            : 1
+      });
+    }
+  );
+
+
+  if (
+    state.overlays.has(
+      'Momentum'
+    )
+  ) {
+    state.momentum
+      ?.forEach(
+        (
+          row,
+          index
+        ) => {
+          if (
+            !row?.signal
+          ) {
+            return;
+          }
+
+          const candle =
+            state.data[
+              index
+            ];
+
+          if (!candle) {
+            return;
+          }
+
+          const buy =
+            String(
+              row.signal
+            ).toLowerCase() ===
+            'buy';
+
+          markers.push({
+            time:
+              Number(
+                candle.time
+              ),
+            position:
+              buy
+                ? 'belowBar'
+                : 'aboveBar',
+            color:
+              '#58c8dc',
+            shape:
+              buy
+                ? 'arrowUp'
+                : 'arrowDown',
+            text:
+              buy
+                ? 'M BUY'
+                : 'M SELL',
+            size: 1
+          });
+        }
+      );
+  }
+
+
+  if (
+    state.overlays.has(
+      'Stride Signals'
+    )
+  ) {
+    state.signals
+      ?.forEach(
+        (
+          row,
+          index
+        ) => {
+          if (
+            !row?.signal
+          ) {
+            return;
+          }
+
+          const candle =
+            state.data[
+              index
+            ];
+
+          if (!candle) {
+            return;
+          }
+
+          const buy =
+            String(
+              row.signal
+            ).toLowerCase() ===
+            'buy';
+
+          markers.push({
+            time:
+              Number(
+                candle.time
+              ),
+            position:
+              buy
+                ? 'belowBar'
+                : 'aboveBar',
+            color:
+              buy
+                ? '#72e4bd'
+                : '#f17c86',
+            shape:
+              buy
+                ? 'arrowUp'
+                : 'arrowDown',
+            text:
+              buy
+                ? 'S BUY'
+                : 'S SELL',
+            size: 1
+          });
+        }
+      );
+  }
+
+
+  return markers
+    .sort(
+      (
+        x,
+        y
+      ) =>
+        x.time -
+        y.time
+    );
+}
 
 function syncTradingViewLiteChart(
   force = false
@@ -2012,6 +2751,8 @@ function syncTradingViewLiteChart(
       }
     }
 
+
+    syncTradingViewIndicators();
 
     const markers =
       buildTradingViewMarkers();
@@ -6734,6 +7475,11 @@ if (
 
 
       draw();
+
+      syncTradingViewLiteChart(
+        true
+      );
+
       summary();
     };
 }
