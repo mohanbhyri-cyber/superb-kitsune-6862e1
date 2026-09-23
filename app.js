@@ -8309,12 +8309,171 @@ function renderTradeFinalizer() {
   );
 
 
+  const livePrice =
+    quote();
+
+  const isBuySetup =
+    f.state.includes(
+      'BUY'
+    );
+
+  const isSellSetup =
+    f.state.includes(
+      'SELL'
+    );
+
+  const activeSetup =
+    isBuySetup ||
+    isSellSetup;
+
+  const atr =
+    Number(
+      state.marketMap?.atr
+    );
+
+  const support =
+    Number(
+      state.marketMap
+        ?.nearestSupport
+        ?.price
+    );
+
+  const resistance =
+    Number(
+      state.marketMap
+        ?.nearestResistance
+        ?.price
+    );
+
+  let liveFinalizerPlan =
+    null;
+
+  if (
+    activeSetup &&
+    Number.isFinite(
+      livePrice
+    )
+  ) {
+
+    const side =
+      isBuySetup
+        ? 1
+        : -1;
+
+    let risk =
+      f.plan &&
+      Number.isFinite(
+        Number(
+          f.plan.entry
+        )
+      ) &&
+      Number.isFinite(
+        Number(
+          f.plan.stop
+        )
+      )
+        ? Math.abs(
+            Number(
+              f.plan.entry
+            ) -
+            Number(
+              f.plan.stop
+            )
+          )
+        : null;
+
+    if (
+      !Number.isFinite(risk) ||
+      risk <= 0
+    ) {
+
+      if (
+        Number.isFinite(atr) &&
+        atr > 0
+      ) {
+
+        let liveStop =
+          side === 1
+            ? livePrice -
+              atr * 1.2
+            : livePrice +
+              atr * 1.2;
+
+        if (
+          side === 1 &&
+          Number.isFinite(
+            support
+          ) &&
+          support <
+            livePrice
+        ) {
+
+          liveStop =
+            Math.min(
+              liveStop,
+              support -
+              atr * 0.15
+            );
+        }
+
+        if (
+          side === -1 &&
+          Number.isFinite(
+            resistance
+          ) &&
+          resistance >
+            livePrice
+        ) {
+
+          liveStop =
+            Math.max(
+              liveStop,
+              resistance +
+              atr * 0.15
+            );
+        }
+
+        risk =
+          Math.abs(
+            livePrice -
+            liveStop
+          );
+      }
+    }
+
+    if (
+      Number.isFinite(risk) &&
+      risk > 0
+    ) {
+
+      const stop =
+        livePrice -
+        side * risk;
+
+      liveFinalizerPlan = {
+        entry:
+          livePrice,
+        stop,
+        target1:
+          livePrice +
+          side * risk,
+        target2:
+          livePrice +
+          side * risk * 1.5,
+        target3:
+          livePrice +
+          side * risk * 2
+      };
+    }
+  }
+
+
   set(
     '#finalizer-entry',
-    f.plan
+    liveFinalizerPlan
       ? '₹' +
         fmt(
-          f.plan.entry
+          liveFinalizerPlan.entry
         )
       : '—'
   );
@@ -8322,10 +8481,10 @@ function renderTradeFinalizer() {
 
   set(
     '#finalizer-stop',
-    f.plan
+    liveFinalizerPlan
       ? '₹' +
         fmt(
-          f.plan.stop
+          liveFinalizerPlan.stop
         )
       : '—'
   );
@@ -8333,10 +8492,10 @@ function renderTradeFinalizer() {
 
   set(
     '#finalizer-tp1',
-    f.plan
+    liveFinalizerPlan
       ? '₹' +
         fmt(
-          f.plan.target1
+          liveFinalizerPlan.target1
         )
       : '—'
   );
@@ -8344,10 +8503,10 @@ function renderTradeFinalizer() {
 
   set(
     '#finalizer-tp2',
-    f.plan
+    liveFinalizerPlan
       ? '₹' +
         fmt(
-          f.plan.target2
+          liveFinalizerPlan.target2
         )
       : '—'
   );
@@ -8355,10 +8514,10 @@ function renderTradeFinalizer() {
 
   set(
     '#finalizer-tp3',
-    f.plan
+    liveFinalizerPlan
       ? '₹' +
         fmt(
-          f.plan.target3
+          liveFinalizerPlan.target3
         )
       : '—'
   );
