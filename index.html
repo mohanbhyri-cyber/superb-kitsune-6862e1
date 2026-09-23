@@ -1427,6 +1427,93 @@
 
   <section
     class="panel"
+    id="global-watch-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT 24/7 Global Watch
+      </h2>
+
+      <span
+        id="global-watch-session"
+        class="muted"
+      >
+        NEXT SESSION BIAS
+      </span>
+    </div>
+
+    <div class="pro-suite-grid">
+
+      <div class="pro-suite-card">
+        <small>Global Bias</small>
+
+        <strong
+          id="global-watch-bias"
+          class="muted"
+        >
+          LOADING…
+        </strong>
+
+        <span>
+          Confidence:
+          <b id="global-watch-confidence">
+            0 / 100
+          </b>
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Coverage</small>
+
+        <strong id="global-watch-sources">
+          0 global cues
+        </strong>
+
+        <span class="muted">
+          US futures · VIX · USD/INR · Asia
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>NIFTY Status</small>
+
+        <strong>
+          No after-hours NIFTY orders
+        </strong>
+
+        <span class="muted">
+          Bias only outside NSE hours
+        </span>
+      </div>
+
+    </div>
+
+    <div
+      id="global-watch-rows"
+      class="global-watch-rows"
+    ></div>
+
+    <p
+      id="global-watch-reasons"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Loading global cues…
+    </p>
+
+    <p class="disclaimer">
+      Global markets are used only for next-session context when NSE is
+      closed. Data availability varies by market and weekend. This panel
+      does not imply NIFTY 50 is tradable 24/7 and does not place orders.
+    </p>
+
+  </section>
+
+
+  <section
+    class="panel"
     id="ai-nifty-panel"
     style="margin-top:0"
   >
@@ -1935,7 +2022,7 @@
 
 <script
   type="module"
-  src="app.js?v=62"
+  src="app.js?v=63"
 ></script>
 
 </body>
