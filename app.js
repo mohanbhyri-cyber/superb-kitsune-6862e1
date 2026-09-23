@@ -19,6 +19,9 @@ import {
 import {
   analyseSmrtAiNifty
 } from './smrt-ai-nifty.js';
+import {
+  setupMarketChat
+} from './market-chat.js';
 
 import {
   API_BASE,
@@ -5345,13 +5348,130 @@ if (
 }
 
 
+function marketChatSnapshot() {
+
+  const last =
+    state.data.at(-1);
+
+  const closed =
+    Math.max(
+      0,
+      state.data.length - 2
+    );
+
+  const edge =
+    state.niftyEdge?.latest;
+
+  const finalizer =
+    state.liveTradeFinalizer ??
+    state.tradeFinalizer;
+
+  const gainz =
+    state.gainzSSL;
+
+  const map =
+    state.marketMap;
+
+  return {
+    ready:
+      Boolean(
+        last &&
+        state.calc
+      ),
+    timeframe:
+      state.tf,
+    candleTime:
+      last?.time
+        ? new Date(
+            last.time * 1000
+          ).toLocaleTimeString(
+            'en-IN',
+            {
+              timeZone:
+                'Asia/Kolkata',
+              hour:
+                '2-digit',
+              minute:
+                '2-digit',
+              hour12:
+                false
+            }
+          )
+        : '—',
+    price:
+      quote(),
+    high:
+      last?.high,
+    low:
+      last?.low,
+    rsi:
+      state.calc?.rsi?.[closed],
+    ema9:
+      state.calc?.e9?.[closed],
+    ema21:
+      state.calc?.e21?.[closed],
+    ema50:
+      state.calc?.e50?.[closed],
+    macdHist:
+      state.calc?.hist?.[closed],
+    trend:
+      state.trend?.direction?.[closed] || 0,
+    adx:
+      state.trend?.adx?.[closed],
+    futuresVWAP:
+      state.futuresVWAP,
+    signal:
+      finalizer?.state ??
+      edge?.signal ??
+      'NO TRADE',
+    strength:
+      edge?.strength ??
+      '—',
+    confluence:
+      finalizer?.score ??
+      edge?.score ??
+      null,
+    bullishScore:
+      finalizer?.bullScore ??
+      edge?.bullScore ??
+      null,
+    bearishScore:
+      finalizer?.bearScore ??
+      edge?.bearScore ??
+      null,
+    marketState:
+      map?.trend ??
+      edge?.structure ??
+      'WAIT',
+    structure:
+      edge?.structure ??
+      map?.structure ??
+      '—',
+    support:
+      map?.nearestSupport?.price,
+    resistance:
+      map?.nearestResistance?.price,
+    sslSide:
+      gainz?.sslSide ?? 0,
+    qqeSide:
+      gainz?.qqeSide ?? 0,
+    qqeValue:
+      gainz?.qqeValue,
+    mtf:
+      state.mtf,
+    plan:
+      finalizer?.plan ??
+      null
+  };
+}
+
+
 let checkAlerts =
   () => {};
 
 
 loadData();
 
-setupAiAnalysisChat();
 
 
 const externalNiftyTimer =
@@ -8717,295 +8837,6 @@ async function refreshExternalNifty() {
       };
 
     recomputeAiNifty();
-  }
-}
-
-
-function aiAnalysisSnapshot() {
-
-  return {
-    ai:
-      state.aiNifty,
-    finalizer:
-      state.liveTradeFinalizer ??
-      state.tradeFinalizer,
-    mtf:
-      state.mtf,
-    price:
-      quote(),
-    timeframe:
-      state.tf,
-    external:
-      state.externalNifty
-  };
-}
-
-
-function answerAiAnalysisChat(
-  question = ''
-) {
-
-  const q =
-    String(question)
-      .trim()
-      .toLowerCase();
-
-  const snap =
-    aiAnalysisSnapshot();
-
-  const ai =
-    snap.ai;
-
-  if (!ai) {
-    return (
-      'AI analysis is still loading. ' +
-      'Wait for Upstox and external source data.'
-    );
-  }
-
-  const signal =
-    ai.signal ||
-    'NO TRADE';
-
-  const confidence =
-    Number.isFinite(
-      Number(
-        ai.confidence
-      )
-    )
-      ? ai.confidence +
-        '/100'
-      : '—';
-
-  const mtfText =
-    [
-      ['5m', snap.mtf?.['5m']?.state],
-      ['15m', snap.mtf?.['15m']?.state],
-      ['1h', snap.mtf?.['1h']?.state]
-    ]
-      .map(
-        ([tf, value]) =>
-          tf +
-          ': ' +
-          (
-            value ||
-            '—'
-          )
-      )
-      .join(
-        ' · '
-      );
-
-  const reasons =
-    ai.reasons?.length
-      ? ai.reasons.join(
-          ' · '
-        )
-      : 'No strong directional confluence yet.';
-
-  const plan =
-    ai.plan;
-
-  if (
-    q.includes('plan') ||
-    q.includes('entry') ||
-    q.includes('stop') ||
-    q.includes('target') ||
-    q.includes('tp')
-  ) {
-    return plan
-      ? (
-          signal +
-          ' setup · Entry ₹' +
-          fmt(plan.entry) +
-          ' · Stop ₹' +
-          fmt(plan.stop) +
-          ' · TP1 ₹' +
-          fmt(plan.target1) +
-          ' · TP2 ₹' +
-          fmt(plan.target2) +
-          ' · TP3 ₹' +
-          fmt(plan.target3) +
-          '.'
-        )
-      : (
-          'No active trade plan because the current AI signal is ' +
-          signal +
-          '.'
-        );
-  }
-
-  if (
-    q.includes('trend') ||
-    q.includes('5m') ||
-    q.includes('15m') ||
-    q.includes('1h') ||
-    q.includes('timeframe')
-  ) {
-    return (
-      'Multi-timeframe view · ' +
-      mtfText +
-      '. Current AI signal: ' +
-      signal +
-      ' (' +
-      confidence +
-      ').'
-    );
-  }
-
-  if (
-    q.includes('why') ||
-    q.includes('reason') ||
-    q.includes('analysis')
-  ) {
-    return (
-      signal +
-      ' · Confidence ' +
-      confidence +
-      '. ' +
-      reasons
-    );
-  }
-
-  if (
-    q.includes('buy') ||
-    q.includes('sell') ||
-    q.includes('signal') ||
-    !q
-  ) {
-    return (
-      'Current decision-support signal: ' +
-      signal +
-      ' · Confidence ' +
-      confidence +
-      ' · External alignment: ' +
-      ai.externalBull +
-      ' bullish / ' +
-      ai.externalBear +
-      ' bearish. ' +
-      (
-        signal === 'NO TRADE'
-          ? 'No entry is suggested until confluence improves.'
-          : 'Use the displayed risk levels and confirm before acting.'
-      )
-    );
-  }
-
-  return (
-    'Current AI signal: ' +
-    signal +
-    ' (' +
-    confidence +
-    '). ' +
-    reasons
-  );
-}
-
-
-function appendAiChatMessage(
-  text,
-  role = 'assistant'
-) {
-
-  const box =
-    $('#ai-chat-messages');
-
-  if (!box) {
-    return;
-  }
-
-  const item =
-    document.createElement(
-      'div'
-    );
-
-  item.className =
-    'ai-chat-message ' +
-    role;
-
-  item.textContent =
-    text;
-
-  box.appendChild(
-    item
-  );
-
-  box.scrollTop =
-    box.scrollHeight;
-}
-
-
-function askAiAnalysisChat(
-  question
-) {
-
-  const text =
-    String(question || '')
-      .trim();
-
-  if (text) {
-    appendAiChatMessage(
-      text,
-      'user'
-    );
-  }
-
-  appendAiChatMessage(
-    answerAiAnalysisChat(
-      text
-    ),
-    'assistant'
-  );
-}
-
-
-function setupAiAnalysisChat() {
-
-  const form =
-    $('#ai-chat-form');
-
-  const input =
-    $('#ai-chat-input');
-
-  if (
-    form &&
-    input
-  ) {
-    form.onsubmit =
-      event => {
-        event.preventDefault();
-
-        const value =
-          input.value;
-
-        input.value =
-          '';
-
-        askAiAnalysisChat(
-          value
-        );
-      };
-  }
-
-  $('[data-ai-chat]')
-    .forEach(
-      button => {
-        button.onclick =
-          () =>
-            askAiAnalysisChat(
-              button.dataset.aiChat
-            );
-      }
-    );
-
-  if (
-    $('#ai-chat-messages') &&
-    !$('#ai-chat-messages')
-      .children.length
-  ) {
-    appendAiChatMessage(
-      'Ask for the current BUY/SELL/NO TRADE signal, reasons, trend, or trade plan.'
-    );
   }
 }
 
