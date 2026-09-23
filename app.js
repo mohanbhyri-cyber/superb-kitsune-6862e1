@@ -3932,7 +3932,11 @@ function timeframeTrend(
   ) {
 
     return {
-      state: 'WARMING UP',
+      state:
+        !Array.isArray(candles) ||
+        !candles.length
+          ? 'DATA UNAVAILABLE'
+          : 'WARMING UP',
       side: 0
     };
   }
@@ -4231,25 +4235,17 @@ async function refreshMTF() {
       h1
     ] =
       await Promise.all([
-        state.tf === '5m'
-          ? Promise.resolve(
-              state.data
-            )
-          : market.history(
-              state.symbol,
-              '5m'
-            ),
+        market.mtfHistory(
+          state.symbol,
+          '5m'
+        ),
 
-        state.tf === '15m'
-          ? Promise.resolve(
-              state.data
-            )
-          : market.history(
-              state.symbol,
-              '15m'
-            ),
+        market.mtfHistory(
+          state.symbol,
+          '15m'
+        ),
 
-        market.history(
+        market.mtfHistory(
           state.symbol,
           '1h'
         )
@@ -6449,7 +6445,7 @@ if (
 
   navigator.serviceWorker
     .register(
-      './sw.js?v=49',
+      './sw.js?v=50',
       {
         updateViaCache: 'none'
       }
