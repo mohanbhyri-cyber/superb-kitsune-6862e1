@@ -55,10 +55,15 @@ setTimeout(
     if (
       !window.TradingView?.widget
     ) {
-      setTradingViewDatafeedStatus?.(
-        'TradingView Lightweight · Upstox LIVE',
-        'up'
-      );
+      const statusEl =
+        document.querySelector(
+          '#tradingview-datafeed-status'
+        );
+
+      if (statusEl) {
+        statusEl.textContent =
+          'TradingView Lightweight · Upstox';
+      }
     }
   },
   0
@@ -6085,22 +6090,16 @@ async function refreshMTF() {
 
   try {
 
-    const [
-      m5,
-      m15,
-      h1
-    ] =
-      await Promise.all([
+    const settled =
+      await Promise.allSettled([
         market.mtfHistory(
           state.symbol,
           '5m'
         ),
-
         market.mtfHistory(
           state.symbol,
           '15m'
         ),
-
         market.mtfHistory(
           state.symbol,
           '1h'
@@ -6108,19 +6107,29 @@ async function refreshMTF() {
       ]);
 
 
+    const resultCandles =
+      settled.map(
+        result =>
+          result.status ===
+            'fulfilled'
+            ? result.value
+            : []
+      );
+
+
     state.mtf['5m'] =
       timeframeTrend(
-        m5
+        resultCandles[0]
       );
 
     state.mtf['15m'] =
       timeframeTrend(
-        m15
+        resultCandles[1]
       );
 
     state.mtf['1h'] =
       timeframeTrend(
-        h1
+        resultCandles[2]
       );
 
 
@@ -6176,6 +6185,21 @@ async function refreshMTF() {
       state.mtf.overall =
         'HIGH-CONFIDENCE SELL+';
 
+    } else if (
+      [
+        state.mtf['5m']?.state,
+        state.mtf['15m']?.state,
+        state.mtf['1h']?.state
+      ].every(
+        value =>
+          value ===
+          'DATA UNAVAILABLE'
+      )
+    ) {
+
+      state.mtf.overall =
+        'DATA UNAVAILABLE';
+
     } else {
 
       state.mtf.overall =
@@ -6195,8 +6219,32 @@ async function refreshMTF() {
       error
     );
 
+    state.mtf['5m'] =
+      state.mtf['5m'] ||
+      {
+        state:
+          'DATA UNAVAILABLE',
+        side: 0
+      };
+
+    state.mtf['15m'] =
+      state.mtf['15m'] ||
+      {
+        state:
+          'DATA UNAVAILABLE',
+        side: 0
+      };
+
+    state.mtf['1h'] =
+      state.mtf['1h'] ||
+      {
+        state:
+          'DATA UNAVAILABLE',
+        side: 0
+      };
+
     state.mtf.overall =
-      'NO TRADE';
+      'DATA UNAVAILABLE';
 
   } finally {
 
@@ -6204,6 +6252,8 @@ async function refreshMTF() {
       false;
 
     renderMTF();
+
+    recomputeAllIndicatorsConsensus?.();
   }
 }
 
@@ -6495,6 +6545,10 @@ async function loadData() {
     draw();
 
     summary();
+
+    refreshMTF().catch(
+      () => {}
+    );
 
     // Load previous trading session in the background so it never
     // blocks today's live chart or quote.
