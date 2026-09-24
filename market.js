@@ -523,6 +523,16 @@ export class UpstoxMarketAdapter {
     }
 
     try {
+      const controller =
+        new AbortController();
+
+      const timeout =
+        setTimeout(
+          () =>
+            controller.abort(),
+          8000
+        );
+
       const response =
         await fetch(
           API_BASE + '/api/upstox-mtf-history' +
@@ -531,8 +541,15 @@ export class UpstoxMarketAdapter {
           '&timeframe=' +
           encodeURIComponent(timeframe),
           {
-            cache: 'no-store'
+            cache: 'no-store',
+            signal:
+              controller.signal
           }
+        ).finally(
+          () =>
+            clearTimeout(
+              timeout
+            )
         );
 
       if (!response.ok) {
