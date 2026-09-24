@@ -36,7 +36,6 @@ export function analyseAllIndicators({
   mtf,
   gainz,
   aiNifty,
-  notebook,
   globalWatch
 } = {}) {
 
@@ -153,15 +152,6 @@ export function analyseAllIndicators({
     ),
     2,
     aiNifty?.signal
-  );
-
-  pushVote(
-    '7-Day Predictor',
-    sideFromText(
-      notebook?.signal
-    ),
-    1,
-    notebook?.signal
   );
 
   pushVote(
