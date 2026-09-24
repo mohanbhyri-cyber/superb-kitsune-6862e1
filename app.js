@@ -1045,310 +1045,197 @@ function refreshProSuite() {
     null;
 }
 
-
 function renderProSuiteSummary() {
+  const edgeLatest = state.niftyEdge?.latest || null;
+  const consensus = state.allIndicatorsConsensus || null;
+  const finalizer = state.tradeFinalizer || null;
 
-  const edgeLatest =
-    state.niftyEdge
-      ?.latest;
+  // =========================================================
+  // FINAL DISPLAY SIGNAL
+  // All Indicators Consensus is the display decision layer.
+  // Missing / WAIT / invalid values NEVER become BUY or SELL.
+  // =========================================================
+  const consensusSignal = String(
+    consensus?.signal || "NO TRADE"
+  ).toUpperCase();
 
-  const edgeActionable =
-    [
-      'BUY+',
-      'SELL+',
-      'BUY',
-      'SELL'
-    ].includes(
-      edgeLatest
-        ?.signal
-    )
-      ? edgeLatest
-      : null;
+  const actionableSignals = [
+    "STRONG BUY",
+    "BUY",
+    "SELL",
+    "STRONG SELL"
+  ];
 
-  const smart =
-    edgeLatest
-      ? {
-          signal:
-            edgeLatest.signal,
-          strength:
-            edgeLatest.strength,
-          confluence:
-            edgeLatest.score,
-          marketState:
-            edgeLatest.structure
-        }
-      : state.smartSignal;
+  const actionable =
+    actionableSignals.includes(consensusSignal);
+
+  const displaySignal =
+    actionable ? consensusSignal : "NO TRADE";
+
+  // =========================================================
+  // CONFIDENCE
+  // Use corrected All Indicators confidence.
+  // =========================================================
+  const confidenceRaw = Number(consensus?.confidence);
+
+  const confidence =
+    Number.isFinite(confidenceRaw)
+      ? Math.max(0, Math.min(100, Math.round(confidenceRaw)))
+      : 0;
+
+  // =========================================================
+  // SIGNAL DIRECTION
+  // =========================================================
+  const finalSide =
+    displaySignal.includes("BUY")
+      ? 1
+      : displaySignal.includes("SELL")
+      ? -1
+      : 0;
+
+  // =========================================================
+  // TRADE PLAN SAFETY
+  // Show Entry / SL / Targets ONLY when:
+  // 1. Consensus is actionable
+  // 2. Finalizer has a valid plan
+  // 3. Finalizer agrees with consensus direction
+  // =========================================================
+  const finalizerSide = Number(finalizer?.side);
 
   const plan =
-    edgeLatest
-      ? (
-          edgeActionable
-            ?.plan ??
-          null
-        )
-      : state.smartPlan;
+    actionable &&
+    finalizer?.plan &&
+    finalizerSide === finalSide
+      ? finalizer.plan
+      : null;
+
+  // =========================================================
+  // MARKET / STRUCTURE
+  // =========================================================
+  const marketState =
+    state.marketMap?.trend ||
+    edgeLatest?.structure ||
+    state.smartMarketState ||
+    "WAIT";
 
   const structure =
-    edgeLatest
-      ? {
-          event:
-            edgeLatest.structure
-        }
-      : state.smartStructure;
+    edgeLatest?.structure ||
+    state.smartStructure ||
+    "WAIT";
 
-  const backtest =
-    state.niftyEdgeBacktest ??
-    state.proBacktest;
+  // =========================================================
+  // STRENGTH
+  // =========================================================
+  let strength = "WAIT";
 
+  if (
+    displaySignal === "STRONG BUY" ||
+    displaySignal === "STRONG SELL"
+  ) {
+    strength = "STRONG";
+  } else if (
+    displaySignal === "BUY" ||
+    displaySignal === "SELL"
+  ) {
+    strength = "CONFIRMED";
+  }
 
-  const setText =
-    (
-      selector,
-      value
-    ) => {
+  // =========================================================
+  // TOP PANEL
+  // =========================================================
+  setText("#smart-signal", displaySignal);
+  setText("#smart-strength", strength);
+  setText("#smart-confluence", confidence);
+  setText("#smart-market-state", marketState);
+  setText("#smart-structure", structure);
 
-      const el =
-        $(selector);
-
-      if (el) {
-        el.textContent =
-          value;
-      }
-    };
-
-
+  // =========================================================
+  // TRADE PLAN
+  // Never display fake zero values.
+  // =========================================================
   setText(
-    '#smart-signal',
-    smart?.signal ??
-    'WAIT'
+    "smart-entry",
+    Number.isFinite(Number(plan?.entry))
+      ? fmt(plan.entry)
+      : "--"
   );
 
-
   setText(
-    '#smart-strength',
-    smart?.strength
-      ? 'Strength: ' +
-        smart.strength
-      : 'Strength: —'
+    "smart-stop",
+    Number.isFinite(Number(plan?.stop))
+      ? fmt(plan.stop)
+      : "--"
   );
 
-
   setText(
-    '#smart-confluence',
-    Number.isFinite(
-      Number(
-        smart?.confluence
-      )
-    )
-      ? 'Confluence: ' +
-        smart.confluence
-      : 'Confluence: —'
+    "smart-target1",
+    Number.isFinite(Number(plan?.target1))
+      ? fmt(plan.target1)
+      : "--"
   );
 
-
   setText(
-    '#smart-market-state',
-    'Market: ' +
-    (
-      smart?.marketState ??
-      state.smartMarketState ??
-      'WAIT'
-    )
+    "smart-target2",
+    Number.isFinite(Number(plan?.target2))
+      ? fmt(plan.target2)
+      : "--"
   );
 
+  // =========================================================
+  // RISK : REWARD
+  // =========================================================
+  let rrText = "--";
+
+  if (
+    plan &&
+    Number.isFinite(Number(plan.entry)) &&
+    Number.isFinite(Number(plan.stop)) &&
+    Number.isFinite(Number(plan.target1))
+  ) {
+    const entry = Number(plan.entry);
+    const stop = Number(plan.stop);
+    const target = Number(plan.target1);
+
+    const risk = Math.abs(entry - stop);
+    const reward = Math.abs(target - entry);
+
+    if (risk > 0 && reward > 0) {
+      rrText = `1:${(reward / risk).toFixed(2)}`;
+    }
+  }
+
+  setText("smart-rr", rrText);
+
+  // =========================================================
+  // BACKTEST INFORMATION
+  // Keep existing values when available.
+  // =========================================================
+  const bt =
+    state.proSuite?.backtest ||
+    state.backtest ||
+    null;
 
   setText(
-    '#smart-structure',
-    'Structure: ' +
-    (
-      structure?.event ??
-      structure?.structure ??
-      '—'
-    )
+    "smart-backtest-trades",
+    Number.isFinite(Number(bt?.trades))
+      ? bt.trades
+      : "--"
   );
 
-
   setText(
-    '#smart-entry',
-    plan
-      ? 'Entry: ₹' +
-        fmt(
-          plan.entry
-        )
-      : 'Entry: —'
+    "smart-backtest-winrate",
+    Number.isFinite(Number(bt?.winRate))
+      ? `${Number(bt.winRate).toFixed(1)}%`
+      : "--"
   );
 
-
   setText(
-    '#smart-stop',
-    plan
-      ? 'Stop: ₹' +
-        fmt(
-          plan.stop
-        )
-      : 'Stop: —'
-  );
-
-
-  setText(
-    '#smart-target1',
-    plan
-      ? 'Target 1: ₹' +
-        fmt(
-          plan.target1
-        )
-      : 'Target 1: —'
-  );
-
-
-  setText(
-    '#smart-target2',
-    plan
-      ? 'Target 2: ₹' +
-        fmt(
-          plan.target2
-        )
-      : 'Target 2: —'
-  );
-
-
-  setText(
-    '#smart-rr',
-    plan
-      ? 'R:R T1 ' +
-        Number(
-          plan.rr1
-        ).toFixed(
-          2
-        ) +
-        ' · T2 ' +
-        Number(
-          plan.rr2
-        ).toFixed(
-          2
-        )
-      : 'R:R: —'
-  );
-
-
-  setText(
-    '#backtest-trades',
-    'Trades: ' +
-    (
-      backtest
-        ?.totalTrades ??
-      0
-    )
-  );
-
-
-  setText(
-    '#backtest-wins',
-    'Wins: ' +
-    (
-      backtest
-        ?.wins ??
-      0
-    )
-  );
-
-
-  setText(
-    '#backtest-losses',
-    'Losses: ' +
-    (
-      backtest
-        ?.losses ??
-      0
-    )
-  );
-
-
-  setText(
-    '#backtest-win-rate',
-    'Win rate: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.winRate
-        )
-      )
-        ? Number(
-            backtest
-              .winRate
-          ).toFixed(
-            1
-          ) +
-          '%'
-        : '0.0%'
-    )
-  );
-
-
-  setText(
-    '#backtest-net-points',
-    'Net points: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.netPoints
-        )
-      )
-        ? Number(
-            backtest
-              .netPoints
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
-  );
-
-
-  setText(
-    '#backtest-average-rr',
-    'Avg R:R: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.averageRR
-        )
-      )
-        ? Number(
-            backtest
-              .averageRR
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
-  );
-
-
-  setText(
-    '#backtest-max-drawdown',
-    'Max drawdown: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.maxDrawdown
-        )
-      )
-        ? Number(
-            backtest
-              .maxDrawdown
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
+    "smart-backtest-pf",
+    Number.isFinite(Number(bt?.profitFactor))
+      ? Number(bt.profitFactor).toFixed(2)
+      : "--"
   );
 }
-
 
 /* ======================================================
    CANVAS
