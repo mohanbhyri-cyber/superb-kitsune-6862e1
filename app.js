@@ -7288,8 +7288,7 @@ if (
       $('#theme')?.click();
 }
 
-$('[data-tv-range]')
-  .forEach(
+$('[data-tv-range]').forEach(
     button => {
       button.onclick =
         () => {
@@ -11574,8 +11573,7 @@ function setupAllIndicatorsChat() {
   }
 
 
-  $('[data-all-chat]')
-    .forEach(
+  $('[data-all-chat]').forEach(
       button => {
         button.onclick =
           () =>
