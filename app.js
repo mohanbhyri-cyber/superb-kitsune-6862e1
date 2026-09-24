@@ -7288,7 +7288,7 @@ if (
       $('#theme')?.click();
 }
 
-$('[data-tv-range]').forEach(
+$$('[data-tv-range]').forEach(
     button => {
       button.onclick =
         () => {
@@ -11051,7 +11051,7 @@ function recomputeAiNifty() {
   renderAiNifty();
 
   recomputeAllIndicatorsConsensus();
-
+}
 
 
 async function refreshExternalNifty() {
@@ -11573,7 +11573,7 @@ function setupAllIndicatorsChat() {
   }
 
 
-  $('[data-all-chat]').forEach(
+  $$('[data-all-chat]').forEach(
       button => {
         button.onclick =
           () =>
