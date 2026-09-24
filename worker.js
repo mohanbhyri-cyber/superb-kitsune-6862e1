@@ -684,13 +684,54 @@ async function intradayHistory(url, token) {
     }
 
     if (!rows.length) {
+      const previous =
+        await previousTradingSession(
+          instrumentKey,
+          interval,
+          token
+        );
+
+      if (
+        previous.candles.length
+      ) {
+        return json({
+          live: true,
+          source: "UPSTOX",
+          symbol,
+          timeframe,
+          instrumentKey,
+          sessionStart: "09:15",
+          timezone: IST,
+          count:
+            previous.candles.length,
+          currentSessionDate:
+            today,
+          currentSessionCount:
+            0,
+          sessionDate:
+            previous.date,
+          marketOpen:
+            false,
+          historyMode:
+            "previous-session-preopen-fallback",
+          firstCandleTime:
+            previous.candles[0].time,
+          lastCandleTime:
+            previous.candles[
+              previous.candles.length - 1
+            ].time,
+          candles:
+            previous.candles,
+        });
+      }
+
       return json({
         live: false,
         source: "UPSTOX",
         symbol,
         timeframe,
         reason:
-          "No current-session candles returned by Upstox intraday or historical API.",
+          "No current or previous-session candles returned by Upstox.",
         candles: [],
       });
     }
