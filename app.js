@@ -1961,6 +1961,9 @@ function setTvLiteLine(
 
           if (
             !candle ||
+            value === null ||
+            value === undefined ||
+            value === '' ||
             !Number.isFinite(
               Number(value)
             )
@@ -2391,6 +2394,9 @@ function syncTradingViewIndicators() {
       levels
     ) {
       if (
+        level.price === null ||
+        level.price === undefined ||
+        level.price === '' ||
         !Number.isFinite(
           Number(
             level.price
@@ -2431,205 +2437,51 @@ function syncTradingViewIndicators() {
 
 function buildTradingViewMarkers() {
 
+  // The chart shows one authoritative signal stream only: chart consensus.
+  // Momentum and Stride remain available as indicators/panels, but their
+  // independent arrows are not mixed with the final BUY/SELL decision.
+  // This prevents contradictory/overlapping M BUY, S BUY, BUY and SELL
+  // markers on the same candle.
   const markers = [];
+  const rows = state.chartConsensus?.rows || [];
 
-  const consensusRows =
-    state.chartConsensus?.rows ||
-    [];
+  let previousSide = 0;
 
-  consensusRows.forEach(
-    (
-      row,
-      index
-    ) => {
-      if (
-        !row?.signal
-      ) {
-        return;
-      }
+  rows.forEach((row, index) => {
+    if (!row || !row.signal) return;
 
-      const candle =
-        state.data[
-          index
-        ];
+    const signal = String(row.signal).toUpperCase();
+    const isBuy = signal === 'BUY' || signal === 'STRONG BUY';
+    const isSell = signal === 'SELL' || signal === 'STRONG SELL';
 
-      if (!candle) {
-        return;
-      }
+    if (!isBuy && !isSell) return;
 
-      const buy =
-        row.side === 1;
+    const side = isBuy ? 1 : -1;
 
-      const strong =
-        row.signal.includes(
-          'STRONG'
-        );
+    // Only draw a new transition. Do not repeat the same-side marker.
+    if (side === previousSide) return;
 
-      markers.push({
-        time:
-          Number(
-            candle.time
-          ),
-        position:
-          buy
-            ? 'belowBar'
-            : 'aboveBar',
-        color:
-          buy
-            ? '#72e4bd'
-            : '#f17c86',
-        shape:
-          buy
-            ? 'arrowUp'
-            : 'arrowDown',
-        text:
-          buy
-            ? (
-                strong
-                  ? 'BUY+'
-                  : 'BUY'
-              )
-            : (
-                strong
-                  ? 'SELL+'
-                  : 'SELL'
-              ),
-        size:
-          strong
-            ? 2
-            : 1
-      });
-    }
-  );
+    const candle = state.data[index];
+    if (!candle || candle.time === null || candle.time === undefined) return;
 
+    const time = Number(candle.time);
+    if (!Number.isFinite(time)) return;
 
-  if (
-    state.overlays.has(
-      'Momentum'
-    )
-  ) {
-    state.momentum
-      ?.forEach(
-        (
-          row,
-          index
-        ) => {
-          if (
-            !row?.signal
-          ) {
-            return;
-          }
+    const strong = signal.startsWith('STRONG');
 
-          const candle =
-            state.data[
-              index
-            ];
+    markers.push({
+      time,
+      position: isBuy ? 'belowBar' : 'aboveBar',
+      color: isBuy ? '#72e4bd' : '#f17c86',
+      shape: isBuy ? 'arrowUp' : 'arrowDown',
+      text: isBuy ? (strong ? 'BUY+' : 'BUY') : (strong ? 'SELL+' : 'SELL'),
+      size: strong ? 2 : 1
+    });
 
-          if (!candle) {
-            return;
-          }
+    previousSide = side;
+  });
 
-          const buy =
-            String(
-              row.signal
-            ).toLowerCase() ===
-            'buy';
-
-          markers.push({
-            time:
-              Number(
-                candle.time
-              ),
-            position:
-              buy
-                ? 'belowBar'
-                : 'aboveBar',
-            color:
-              '#58c8dc',
-            shape:
-              buy
-                ? 'arrowUp'
-                : 'arrowDown',
-            text:
-              buy
-                ? 'M BUY'
-                : 'M SELL',
-            size: 1
-          });
-        }
-      );
-  }
-
-
-  if (
-    state.overlays.has(
-      'Stride Signals'
-    )
-  ) {
-    state.signals
-      ?.forEach(
-        (
-          row,
-          index
-        ) => {
-          if (
-            !row?.signal
-          ) {
-            return;
-          }
-
-          const candle =
-            state.data[
-              index
-            ];
-
-          if (!candle) {
-            return;
-          }
-
-          const buy =
-            String(
-              row.signal
-            ).toLowerCase() ===
-            'buy';
-
-          markers.push({
-            time:
-              Number(
-                candle.time
-              ),
-            position:
-              buy
-                ? 'belowBar'
-                : 'aboveBar',
-            color:
-              buy
-                ? '#72e4bd'
-                : '#f17c86',
-            shape:
-              buy
-                ? 'arrowUp'
-                : 'arrowDown',
-            text:
-              buy
-                ? 'S BUY'
-                : 'S SELL',
-            size: 1
-          });
-        }
-      );
-  }
-
-
-  return markers
-    .sort(
-      (
-        x,
-        y
-      ) =>
-        x.time -
-        y.time
-    );
+  return markers.sort((a, b) => a.time - b.time);
 }
 
 function syncTradingViewLiteChart(

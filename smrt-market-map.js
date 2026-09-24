@@ -8,7 +8,11 @@
 import { indicators } from './market.js';
 import { trendIndicators } from './trend-indicators.js';
 
-const finite = v => Number.isFinite(Number(v));
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
 function atrSeries(candles, period = 14) {
   const out = Array(candles.length).fill(null);

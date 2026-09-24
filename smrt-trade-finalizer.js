@@ -5,7 +5,11 @@
 // Uses latest closed-candle context only. No order placement.
 // ============================================================
 
-const finite = v => Number.isFinite(Number(v));
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
 function currentClosedEdge(edge) {
   const row = edge?.latest;

@@ -4,7 +4,11 @@
 // Original closed-candle candlestick scanner for NIFTY 50.
 // ============================================================
 
-const finite = v => Number.isFinite(Number(v));
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
 function shape(c) {
   const open = Number(c.open);

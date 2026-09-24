@@ -12,9 +12,10 @@
 // ============================================================
 
 const finite = value =>
-  Number.isFinite(
-    Number(value)
-  );
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  Number.isFinite(Number(value));
 
 function zscore(values) {
   const clean =

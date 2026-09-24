@@ -7,9 +7,10 @@
 // ============================================================
 
 const finite = value =>
-  Number.isFinite(
-    Number(value)
-  );
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  Number.isFinite(Number(value));
 
 const sourceSide = source => {
   if (!source) return 0;

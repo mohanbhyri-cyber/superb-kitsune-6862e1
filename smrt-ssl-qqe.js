@@ -5,7 +5,11 @@
 // No proprietary TradingView/Pine code is copied.
 // ============================================================
 
-const finite = v => Number.isFinite(Number(v));
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
 function ema(values, period) {
   const out = Array(values.length).fill(null);

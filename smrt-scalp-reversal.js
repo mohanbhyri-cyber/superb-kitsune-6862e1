@@ -5,7 +5,11 @@
 // requested visual style. Closed-candle confirmation only.
 // ============================================================
 
-const finite = v => Number.isFinite(Number(v));
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
 export function scalpReversalSignal({
   edge,
