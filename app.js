@@ -72,6 +72,308 @@ setTimeout(
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
+// PRIME MARKET ENGINE — original, deterministic price-action rules.
+// No proprietary ChartPrime code. OHLCV pressure is a proxy, not order flow.
+// Pivots become usable only after three right-hand candles have closed.
+function primeFinite(v) {
+  return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+}
+
+function primeSide(value) {
+  const s = String(value || '').toUpperCase().trim();
+  if (/NO TRADE|WAIT|MIXED|UNAVAILABLE|NOT READY/.test(s)) return 0;
+  const up = /\b(BUY|LONG|BULLISH)\b/.test(s);
+  const down = /\b(SELL|SHORT|BEARISH)\b/.test(s);
+  return up === down ? 0 : up ? 1 : -1;
+}
+
+function primeClosed(data, seconds, now) {
+  if (!Array.isArray(data) || data.length < 2 || !(seconds > 0) || !primeFinite(now)) {
+    return { candles: [], error: 'Missing candle data or timeframe' };
+  }
+  // Keep the app's penultimate-candle convention. Never duplicate a live bar.
+  const candles = data.slice(0, -1).map(c => ({ ...c }));
+  let previous = -Infinity;
+  for (const c of candles) {
+    if (!['time', 'open', 'high', 'low', 'close'].every(k => primeFinite(c[k]))) {
+      return { candles: [], error: 'Invalid OHLC or timestamp' };
+    }
+    for (const k of ['time', 'open', 'high', 'low', 'close']) c[k] = Number(c[k]);
+    if (c.time <= previous || c.time + seconds > now || c.low <= 0 ||
+        c.low > Math.min(c.open, c.close) || c.high < Math.max(c.open, c.close)) {
+      return { candles: [], error: 'Unclosed, unordered or inconsistent candles' };
+    }
+    previous = c.time;
+  }
+  return { candles, error: null };
+}
+
+function primeStructure(candles) {
+  const swings = [], events = [], blocks = [], gaps = [], sweeps = [];
+  let high = null, low = null, direction = 0, atr = null;
+  const atrs = [];
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i], previous = candles[i - 1];
+    const tr = previous ? Math.max(c.high - c.low, Math.abs(c.high - previous.close),
+      Math.abs(c.low - previous.close)) : c.high - c.low;
+    atr = atr === null ? tr : (atr * 13 + tr) / 14;
+    atrs.push(atr);
+    // Existing zones must survive the current candle before they can confirm it.
+    for (const z of [...blocks, ...gaps]) {
+      if (!z.active) continue;
+      const invalid = z.kind === 'FVG'
+        ? (z.side === 1 ? c.low <= z.low : c.high >= z.high)
+        : (z.side === 1 ? c.close < z.low : c.close > z.high);
+      if (invalid || i - z.created > 100) {
+        z.active = false;
+        z.status = invalid ? (z.kind === 'FVG' ? 'FILLED' : 'INVALIDATED') : 'EXPIRED';
+      } else if (c.low <= z.high && c.high >= z.low) {
+        z.touched = i;
+        z.status = 'MITIGATED';
+      }
+    }
+    const p = i - 3;
+    if (p >= 3) {
+      const pivot = candles[p];
+      const neighbors = candles.slice(p - 3, i + 1).filter((_, j) => j !== 3);
+      if (neighbors.every(b => pivot.high > b.high)) {
+        const label = !high ? 'H' : pivot.high > high.price ? 'HH' : pivot.high < high.price ? 'LH' : 'EH';
+        high = { price: pivot.high, index: p, time: pivot.time, confirmedAt: c.time, label, broken: false, swept: false };
+        swings.push({ ...high, type: 'HIGH' });
+      }
+      if (neighbors.every(b => pivot.low < b.low)) {
+        const label = !low ? 'L' : pivot.low > low.price ? 'HL' : pivot.low < low.price ? 'LL' : 'EL';
+        low = { price: pivot.low, index: p, time: pivot.time, confirmedAt: c.time, label, broken: false, swept: false };
+        swings.push({ ...low, type: 'LOW' });
+      }
+    }
+    for (const [level, side] of [[high, 1], [low, -1]]) {
+      if (!level || level.broken) continue;
+      const swept = side === 1 ? c.high > level.price && c.close < level.price
+        : c.low < level.price && c.close > level.price;
+      if (swept && !level.swept) {
+        sweeps.push({ side: -side, index: i, time: c.time, price: level.price });
+        level.swept = true;
+      }
+      const broken = side === 1 ? c.close > level.price : c.close < level.price;
+      if (!broken) continue;
+      level.broken = true;
+      const reversal = direction !== 0 && direction !== side;
+      const displacement = atr > 0 && Math.abs(c.close - c.open) >= 0.8 * atr &&
+        Math.sign(c.close - c.open) === side;
+      events.push({ type: reversal ? 'CHoCH' : 'BOS', side, index: i, time: c.time,
+        level: level.price, displacement });
+      // MSS is a CHoCH with a same-candle displacement close through the swing.
+      if (reversal && displacement) events.push({ type: 'MSS', side, index: i, time: c.time, level: level.price, displacement });
+      direction = side;
+      if (displacement) {
+        for (let j = i - 1; j >= Math.max(level.index, i - 12); j--) {
+          const b = candles[j];
+          if (Math.sign(b.close - b.open) === -side) {
+            blocks.push({ kind: side === 1 ? 'DEMAND / OB' : 'SUPPLY / OB', side,
+              low: b.low, high: b.high, origin: b.time, created: i, time: c.time,
+              active: true, status: 'FRESH', touched: null });
+            break;
+          }
+        }
+      }
+    }
+    if (i >= 2) {
+      const a = candles[i - 2], middle = candles[i - 1];
+      // Require displacement and contiguous bars: overnight/session gaps are not FVGs.
+      const contiguous = c.time - middle.time === middle.time - a.time;
+      const strong = Math.abs(middle.close - middle.open) >= 0.8 * atrs[i - 1];
+      const side = c.low > a.high && middle.close > middle.open ? 1
+        : c.high < a.low && middle.close < middle.open ? -1 : 0;
+      if (contiguous && strong && side && (side === 1 ? c.low - a.high : a.low - c.high) >= 0.1 * atr) {
+        gaps.push({ kind: 'FVG', side, low: side === 1 ? a.high : c.high,
+          high: side === 1 ? c.low : a.low, created: i, time: c.time,
+          active: true, status: 'FRESH', touched: null });
+      }
+    }
+  }
+  const last = candles.at(-1), span = high && low ? high.price - low.price : 0;
+  const position = span > 0 ? (last.close - low.price) / span : null;
+  const zone = position === null ? 'UNAVAILABLE' : position > 1 || position < 0 ? 'OUTSIDE RANGE'
+    : position < 0.45 ? 'DISCOUNT' : position > 0.55 ? 'PREMIUM' : 'EQUILIBRIUM';
+  return { direction, high, low, swings, events, blocks, gaps, sweeps, atr,
+    zone, position, equilibrium: span > 0 ? (high.price + low.price) / 2 : null };
+}
+
+function primeTechnical(candles) {
+  if (candles.length < 220) return { side: 0, error: 'Need 220 closed candles for EMA 200 and momentum warm-up' };
+  const calc = indicators(candles), trend = trendIndicators(candles), i = candles.length - 1;
+  const values = Object.fromEntries(['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'vwap'].map(k => [k, calc[k]?.[i]]));
+  for (const k of ['direction', 'adx', 'plusDI', 'minusDI']) values[k] = trend[k]?.[i];
+  // MTF trend can be inspected without volume, but base execution requires VWAP below.
+  const needed = ['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'direction', 'adx', 'plusDI', 'minusDI'];
+  if (!needed.every(k => primeFinite(values[k]))) return { side: 0, values, error: 'Indicator values unavailable' };
+  const v = values, close = candles[i].close;
+  const bull = close > v.e9 && v.e9 > v.e21 && v.e21 > v.e50 && v.e50 > v.e200 &&
+    v.direction === 1 && v.adx >= 22 && v.plusDI > v.minusDI && v.rsi >= 52 && v.rsi <= 68 && v.hist > 0;
+  const bear = close < v.e9 && v.e9 < v.e21 && v.e21 < v.e50 && v.e50 < v.e200 &&
+    v.direction === -1 && v.adx >= 22 && v.minusDI > v.plusDI && v.rsi <= 48 && v.rsi >= 32 && v.hist < 0;
+  return { side: bull ? 1 : bear ? -1 : 0, values, error: null };
+}
+
+function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, replay = false }) {
+  const result = { signal: 'NO TRADE', side: 0, reasons: [], checks: [], structure: null,
+    volume: null, mtf: {}, time: null };
+  const check = (name, ok, reason) => {
+    result.checks.push({ name, ok: !!ok });
+    if (!ok) result.reasons.push(reason || name + ' incomplete or conflicting');
+  };
+  const closed = primeClosed(data, seconds, now);
+  if (closed.error || closed.candles.length < 220) {
+    result.reasons.push(closed.error || 'Need 220 closed candles; no signal during warm-up');
+    return result;
+  }
+  const c = closed.candles, last = c.at(-1), index = c.length - 1;
+  result.time = last.time;
+  const s = result.structure = primeStructure(c), technical = result.technical = primeTechnical(c);
+  const side = technical.side;
+  check('Closed-candle freshness', now - (last.time + seconds) <= seconds * 2, 'Closed candle is stale');
+  check('EMA 9/21/50/200 + Supertrend + RSI + MACD + ADX/DMI', side !== 0, technical.error);
+  check('Structure', side !== 0 && s.direction === side && s.events.some(e => e.side === side && index - e.index <= 8),
+    'No recent aligned BOS / CHoCH / MSS');
+  check('Premium / discount', side === 1 ? s.zone === 'DISCOUNT' : side === -1 && s.zone === 'PREMIUM',
+    'Long requires discount; short requires premium in confirmed swing range');
+  const active = [...s.blocks, ...s.gaps].filter(z => z.active);
+  const touches = active.filter(z => z.touched !== null && index - z.touched <= 3);
+  const recentSweeps = s.sweeps.filter(e => index - e.index <= 3);
+  check('Order block / FVG / liquidity', side !== 0 &&
+    (touches.some(z => z.side === side) || recentSweeps.some(e => e.side === side)) &&
+    !touches.some(z => z.side === -side) && !recentSweeps.some(e => e.side === -side),
+    'Smart-money context absent or conflicting');
+  const sample = c.slice(-21), volumesValid = sample.every(b => primeFinite(b.volume) && Number(b.volume) > 0);
+  let pressure = null, relative = null;
+  if (volumesValid) {
+    const total = sample.slice(-5).reduce((a, b) => a + Number(b.volume), 0);
+    pressure = sample.slice(-5).reduce((a, b) => a + Number(b.volume) *
+      (b.high > b.low ? (2 * b.close - b.high - b.low) / (b.high - b.low) : 0), 0) / total;
+    relative = Number(last.volume) / (sample.slice(0, -1).reduce((a, b) => a + Number(b.volume), 0) / 20);
+  }
+  result.volume = { available: volumesValid, pressure, relative, source: 'Candle OHLCV proxy; not bid/ask delta' };
+  check('Volume pressure', volumesValid && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
+    volumesValid ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
+  const vwap = technical.values?.vwap;
+  check('Closed-candle VWAP', primeFinite(vwap) && side !== 0 && (last.close - Number(vwap)) * side > 0,
+    'Closed-candle VWAP unavailable or conflicting; live futures VWAP is not substituted');
+  for (const [tf, duration] of [['5m', 300], ['15m', 900], ['1h', 3600]]) {
+    const m = primeClosed(mtfData[tf], duration, now);
+    const t = m.error ? { side: 0 } : primeTechnical(m.candles);
+    const st = m.candles.length ? primeStructure(m.candles) : null;
+    const fresh = m.candles.length && now - (m.candles.at(-1).time + duration) <= 2 * duration;
+    result.mtf[tf] = { side: t.side, structure: st?.direction || 0, fresh: !!fresh, time: m.candles.at(-1)?.time ?? null };
+    check('MTF ' + tf, !replay && fresh && side !== 0 && t.side === side && st?.direction === side,
+      replay ? 'Replay has no independently timestamped MTF history' : tf + ' closed-candle MTF incomplete or conflicting');
+  }
+  const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
+  check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
+  check('Market Map', primeSide(legacy.marketMap?.trend) === side && side !== 0 &&
+    !(side === 1 && legacy.marketMap?.breakout === 'BREAKDOWN') &&
+    !(side === -1 && legacy.marketMap?.breakout === 'BREAKOUT UP') &&
+    (!primeSide(legacy.marketMap?.action) || primeSide(legacy.marketMap?.action) === side) &&
+    (!primeSide(legacy.marketMap?.reversal) || primeSide(legacy.marketMap?.reversal) === side));
+  const pattern = legacy.scanner?.latest;
+  check('Candle Scanner', primeSide(legacy.candleSetup?.action) === side && side !== 0 &&
+    primeFinite(pattern?.time) && pattern.time <= last.time && last.time - pattern.time <= seconds * 3);
+  check('SSL / QQE', gainz?.time === last.time && side !== 0 && gainz.sslSide === side && gainz.qqeSide === side);
+  check('Trade Finalizer', legacy.finalizer?.time === last.time && side !== 0 && primeSide(legacy.finalizer?.state) === side);
+  const plan = legacy.finalizer?.plan;
+  check('Closed-candle trade plan', plan && ['entry', 'stop', 'target1', 'target2', 'target3'].every(k => primeFinite(plan[k]) && Number(plan[k]) > 0) &&
+    side !== 0 && (Number(plan.entry) - Number(plan.stop)) * side > 0 &&
+    (Number(plan.target1) - Number(plan.entry)) * side > 0 &&
+    (Number(plan.target2) - Number(plan.target1)) * side > 0 &&
+    (Number(plan.target3) - Number(plan.target2)) * side > 0);
+  check('All Indicators Consensus', side !== 0 && primeSide(legacy.consensus?.signal) === side &&
+    legacy.consensus?.opposingCount === 0 && legacy.consensus?.votes?.length > 0 &&
+    legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting');
+  for (const [name, value] of [['AI Nifty', legacy.aiNifty?.signal], ['Global Watch', legacy.globalWatch?.bias]]) {
+    const vote = primeSide(value);
+    check(name + ' conflict veto', !vote || vote === side, name + ' conflicts with closed-candle evidence');
+  }
+  if (side && result.checks.every(x => x.ok)) {
+    result.side = side;
+    result.signal = side === 1 ? 'BUY' : 'SELL';
+    result.reasons.push('All required closed-candle confirmation layers agree');
+  }
+  return result;
+}
+
+function primeGate(candidate, prime, field = 'state') {
+  const side = primeSide(candidate?.[field]);
+  const conflict = field === 'signal' && (candidate?.opposingCount > 0 ||
+    candidate?.votes?.some(v => v.side && v.side !== side));
+  if (side && prime?.side === side && !conflict) return { ...candidate, primeConfirmed: true };
+  const reasons = conflict ? ['All Indicators Consensus contains opposing evidence']
+    : prime?.reasons?.length ? prime.reasons : ['Required confirmation is incomplete'];
+  return { ...(candidate || {}), [field]: 'NO TRADE', side: 0, plan: null, score: 0,
+    bullScore: candidate?.bullScore ?? 0, bearScore: candidate?.bearScore ?? 0,
+    confidence: 0, primeConfirmed: false, reasons, reason: reasons.join(' · '), invalidation: reasons[0] };
+}
+
+function refreshPrimeConfirmation() {
+  const now = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000;
+  try {
+    const consensus = analyseAllIndicators({ finalizer: state.rawTradeFinalizer, edge: state.niftyEdge,
+      marketMap: state.marketMap, mtf: state.mtf, gainz: state.gainzSSL,
+      aiNifty: state.aiNifty, globalWatch: state.globalWatch });
+    state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
+      replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
+      legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
+        candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
+        aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus } });
+    state.allIndicatorsConsensus = primeGate(consensus, state.primeMarket, 'signal');
+  } catch (error) {
+    console.warn('Prime confirmation failed closed:', error);
+    state.primeMarket = { signal: 'NO TRADE', side: 0, checks: [], reasons: ['Indicator calculation unavailable'] };
+    state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, 'signal');
+  }
+  state.tradeFinalizer = primeGate(state.rawTradeFinalizer, state.primeMarket);
+  state.liveTradeFinalizer = state.tradeFinalizer;
+  renderPrimeMarket();
+}
+
+function renderPrimeMarket() {
+  let panel = document.getElementById('prime-market-panel');
+  if (!panel) {
+    const anchor = document.getElementById('trade-finalizer-panel');
+    if (!anchor) return;
+    panel = document.createElement('section');
+    panel.id = 'prime-market-panel';
+    panel.className = anchor.className;
+    panel.style.cssText = 'padding:16px;margin:12px 0;border:1px solid var(--line,#445);border-radius:10px';
+    anchor.before(panel);
+  }
+  const p = state.primeMarket, s = p?.structure;
+  panel.replaceChildren();
+  const row = (tag, text) => { const el = document.createElement(tag); el.textContent = text; panel.append(el); };
+  row('h3', 'Prime Market Engine · ' + (p?.signal || 'NO TRADE'));
+  row('p', 'Original price-action rules · closed candles only · ' + (p?.time ? formatISTTime(p.time * 1000) : 'Waiting for history'));
+  if (s) {
+    row('p', 'Structure: ' + (s.direction === 1 ? 'BULLISH' : s.direction === -1 ? 'BEARISH' : 'UNCONFIRMED') +
+      ' · ' + [s.high?.label, s.low?.label].filter(Boolean).join(' / ') + ' · ' + s.zone +
+      ' · Equilibrium ' + (primeFinite(s.equilibrium) ? fmt(s.equilibrium) : '—'));
+    row('p', 'Recent events: ' + (s.events.slice(-4).map(e => e.type + ' ' + (e.side === 1 ? '↑' : '↓') + ' ' + fmt(e.level)).join(' · ') || 'None'));
+    row('p', 'Liquidity sweeps: ' + (s.sweeps.slice(-3).map(e => (e.side === 1 ? 'Low' : 'High') + ' sweep ' + fmt(e.price)).join(' · ') || 'None'));
+    for (const z of [...s.blocks, ...s.gaps].filter(z => z.active).slice(-6)) {
+      row('p', z.kind + ' ' + (z.side === 1 ? '↑' : '↓') + ' ' + fmt(z.low) + '–' + fmt(z.high) + ' · ' + z.status);
+    }
+    row('p', p.volume?.available ? 'OHLCV pressure proxy: ' + (p.volume.pressure * 100).toFixed(1) + '% · Relative volume ' + p.volume.relative.toFixed(2) + '×'
+      : 'Volume unavailable — confirmation blocked');
+    row('p', Object.entries(p.mtf).map(([tf, m]) => tf + ': ' + (!m.fresh ? 'STALE / MISSING' : m.side === 1 ? 'BULLISH' : m.side === -1 ? 'BEARISH' : 'MIXED')).join(' · '));
+  }
+  row('p', (p?.checks || []).filter(c => c.ok).length + ' / ' + (p?.checks?.length || 0) + ' checks passed (not a probability)');
+  row('p', (p?.reasons || ['Waiting for history']).join(' · '));
+}
+
+function setText(selector, value) {
+  const el = document.querySelector(selector.startsWith('#') ? selector : '#' + selector);
+  if (el) el.textContent = value ?? '—';
+}
+
+
 
 const fmt = n => {
   const value = Number(n);
@@ -86,17 +388,6 @@ const fmt = n => {
   });
 };
 
-
-// Reject missing and non-positive prices before they reach an OHLC chart.
-const isValidMarketPrice = value =>
-  (typeof value === 'number' ||
-    (typeof value === 'string' && value.trim() !== '')) &&
-  Number.isFinite(Number(value)) && Number(value) > 0;
-
-const isValidMarketCandle = candle => Boolean(candle) &&
-  Number.isFinite(candle.time) && candle.time > 0 &&
-  ['open', 'high', 'low', 'close'].every(key =>
-    Number.isFinite(candle[key]) && isValidMarketPrice(candle[key]));
 
 const read = (key, fallback) => {
   try {
@@ -1056,207 +1347,200 @@ function refreshProSuite() {
     null;
 }
 
-
 function renderProSuiteSummary() {
-  const edgeLatest = state.niftyEdge?.latest;
-  const consensus = state.allIndicatorsConsensus;
-  const finalizer = state.tradeFinalizer;
-  const normalizeSignal = value => String(value ?? '').trim().toUpperCase();
-  const signalSide = value => {
-    const signal = normalizeSignal(value);
-    if (['BUY', 'STRONG BUY', 'BUY+'].includes(signal)) return 1;
-    if (['SELL', 'STRONG SELL', 'SELL+'].includes(signal)) return -1;
-    return 0;
-  };
+  const edgeLatest = state.niftyEdge?.latest || null;
+  const consensus = state.allIndicatorsConsensus || null;
+  const finalizer = state.tradeFinalizer || null;
 
-  const consensusSignal = normalizeSignal(consensus?.signal);
-  const consensusSide = signalSide(consensusSignal);
+  // =========================================================
+  // FINAL DISPLAY SIGNAL
+  // All Indicators Consensus is the display decision layer.
+  // Missing / WAIT / invalid values NEVER become BUY or SELL.
+  // =========================================================
+  const consensusSignal = String(
+    consensus?.signal || "NO TRADE"
+  ).toUpperCase();
+
+  const actionableSignals = [
+    "STRONG BUY",
+    "BUY",
+    "SELL",
+    "STRONG SELL"
+  ];
+
+  const actionable =
+    actionableSignals.includes(consensusSignal) &&
+    state.primeMarket?.side === primeSide(consensusSignal);
+
+  const displaySignal =
+    actionable ? consensusSignal : "NO TRADE";
+
+  // =========================================================
+  // CONFIDENCE
+  // Use corrected All Indicators confidence.
+  // =========================================================
+  const confidenceRaw = Number(consensus?.confidence);
+
+  const confidence =
+    Number.isFinite(confidenceRaw)
+      ? Math.max(0, Math.min(100, Math.round(confidenceRaw)))
+      : 0;
+
+  // =========================================================
+  // SIGNAL DIRECTION
+  // =========================================================
+  const finalSide =
+    displaySignal.includes("BUY")
+      ? 1
+      : displaySignal.includes("SELL")
+      ? -1
+      : 0;
+
+  // =========================================================
+  // TRADE PLAN SAFETY
+  // Show Entry / SL / Targets ONLY when:
+  // 1. Consensus is actionable
+  // 2. Finalizer has a valid plan
+  // 3. Finalizer agrees with consensus direction
+  // =========================================================
   const finalizerSide = Number(finalizer?.side);
-  // A directional side must not override an explicit WAIT / NO TRADE state.
-  const finalizerState = finalizer?.state ?? finalizer?.signal;
-  const actionable = consensusSide !== 0 &&
-    finalizerSide === consensusSide &&
-    (finalizerState == null || signalSide(finalizerState) === consensusSide);
-  const displaySignal = actionable ? consensusSignal : 'NO TRADE';
-  const plan = actionable ? finalizer?.plan : null;
 
-  // Number(null), Number('') and Number(false) are zero, not valid prices.
-  const numericValue = value => {
-    if (typeof value !== 'number' && typeof value !== 'string') return null;
-    if (typeof value === 'string' && value.trim() === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  };
-  const priceValue = value => {
-    const number = numericValue(value);
-    return number !== null && number > 0 ? number : null;
-  };
-  const confidenceRaw = numericValue(consensus?.confidence);
-  const confidence = confidenceRaw === null
-    ? '—'
-    : Math.max(0, Math.min(100, Math.round(confidenceRaw)));
-  const strength = !actionable ? 'WAIT'
-    : consensusSignal.startsWith('STRONG ') || consensusSignal.endsWith('+')
-      ? 'STRONG' : 'CONFIRMED';
-  const marketState = state.marketMap?.trend ?? edgeLatest?.structure ??
-    state.smartSignal?.marketState ?? state.smartMarketState ?? 'WAIT';
-  const structure = edgeLatest?.structure ?? state.smartStructure?.event ??
-    state.smartStructure?.structure ?? '—';
-  const backtest = state.niftyEdgeBacktest ?? state.proBacktest;
+  const plan =
+    actionable &&
+    finalizer?.plan &&
+    finalizerSide === finalSide
+      ? finalizer.plan
+      : null;
 
-  const setText = (selector, value) => {
-    const el = $(selector);
-    if (el) el.textContent = value;
-  };
+  // =========================================================
+  // MARKET / STRUCTURE
+  // =========================================================
+  const marketState =
+    state.marketMap?.trend ||
+    edgeLatest?.structure ||
+    state.smartMarketState ||
+    "WAIT";
 
-  setText('#smart-signal', displaySignal);
-  setText('#smart-strength', 'Strength: ' + strength);
-  setText('#smart-confluence', 'Confluence: ' + confidence);
-  setText('#smart-market-state', 'Market: ' + marketState);
-  setText('#smart-structure', 'Structure: ' + structure);
+  const structure =
+    edgeLatest?.structure ||
+    state.smartStructure ||
+    "WAIT";
 
-  const entry = priceValue(plan?.entry);
-  const stop = priceValue(plan?.stop);
-  const target1 = priceValue(plan?.target1);
-  const target2 = priceValue(plan?.target2);
-  const priceText = (label, value) => label + ': ' +
-    (value === null ? '—' : '₹' + fmt(value));
-  setText('#smart-entry', priceText('Entry', entry));
-  setText('#smart-stop', priceText('Stop', stop));
-  setText('#smart-target1', priceText('Target 1', target1));
-  setText('#smart-target2', priceText('Target 2', target2));
+  // =========================================================
+  // STRENGTH
+  // =========================================================
+  let strength = "WAIT";
 
-  // Derive R:R only from valid prices on the confirmed side of the entry.
-  const risk = entry !== null && stop !== null
-    ? (entry - stop) * consensusSide : null;
-  const rewardRatio = target => {
-    if (risk === null || risk <= 0 || target === null) return '—';
-    const reward = (target - entry) * consensusSide;
-    const ratio = reward / risk;
-    return reward > 0 && Number.isFinite(ratio) ? ratio.toFixed(2) : '—';
-  };
-  setText('#smart-rr', plan
-    ? 'R:R T1 ' + rewardRatio(target1) + ' · T2 ' + rewardRatio(target2)
-    : 'R:R: —');
+  if (
+    displaySignal === "STRONG BUY" ||
+    displaySignal === "STRONG SELL"
+  ) {
+    strength = "STRONG";
+  } else if (
+    displaySignal === "BUY" ||
+    displaySignal === "SELL"
+  ) {
+    strength = "CONFIRMED";
+  }
 
+  // =========================================================
+  // TOP PANEL
+  // =========================================================
+  setText("#smart-signal", displaySignal);
+  const smartSignalEl = document.getElementById("smart-signal");
+  if (smartSignalEl) smartSignalEl.dataset.side = finalSide === 1 ? "BUY" : finalSide === -1 ? "SELL" : "WAIT";
+  setText("#smart-strength", strength);
+  setText("#smart-confluence", confidence);
+  setText("#smart-market-state", marketState);
+  setText("#smart-structure", structure);
+
+  // =========================================================
+  // TRADE PLAN
+  // Never display fake zero values.
+  // =========================================================
   setText(
-    '#backtest-trades',
-    'Trades: ' +
-    (
-      backtest
-        ?.totalTrades ??
-      0
-    )
+    "smart-entry",
+    primeFinite(plan?.entry)
+      ? fmt(plan.entry)
+      : "--"
   );
 
-
   setText(
-    '#backtest-wins',
-    'Wins: ' +
-    (
-      backtest
-        ?.wins ??
-      0
-    )
+    "smart-stop",
+    primeFinite(plan?.stop)
+      ? fmt(plan.stop)
+      : "--"
   );
 
-
   setText(
-    '#backtest-losses',
-    'Losses: ' +
-    (
-      backtest
-        ?.losses ??
-      0
-    )
+    "smart-target1",
+    primeFinite(plan?.target1)
+      ? fmt(plan.target1)
+      : "--"
   );
 
-
   setText(
-    '#backtest-win-rate',
-    'Win rate: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.winRate
-        )
-      )
-        ? Number(
-            backtest
-              .winRate
-          ).toFixed(
-            1
-          ) +
-          '%'
-        : '0.0%'
-    )
+    "smart-target2",
+    primeFinite(plan?.target2)
+      ? fmt(plan.target2)
+      : "--"
   );
 
+  // =========================================================
+  // RISK : REWARD
+  // =========================================================
+  let rrText = "--";
+
+  if (
+    plan &&
+    Number.isFinite(Number(plan.entry)) &&
+    Number.isFinite(Number(plan.stop)) &&
+    Number.isFinite(Number(plan.target1))
+  ) {
+    const entry = Number(plan.entry);
+    const stop = Number(plan.stop);
+    const target = Number(plan.target1);
+
+    const risk = Math.abs(entry - stop);
+    const reward = Math.abs(target - entry);
+
+    if (risk > 0 && reward > 0) {
+      rrText = `1:${(reward / risk).toFixed(2)}`;
+    }
+  }
+
+  setText("smart-rr", rrText);
+
+  // =========================================================
+  // BACKTEST INFORMATION
+  // Keep existing values when available.
+  // =========================================================
+  const bt =
+    state.proSuite?.backtest ||
+    state.backtest ||
+    null;
 
   setText(
-    '#backtest-net-points',
-    'Net points: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.netPoints
-        )
-      )
-        ? Number(
-            backtest
-              .netPoints
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
+    "smart-backtest-trades",
+    Number.isFinite(Number(bt?.trades))
+      ? bt.trades
+      : "--"
   );
 
-
   setText(
-    '#backtest-average-rr',
-    'Avg R:R: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.averageRR
-        )
-      )
-        ? Number(
-            backtest
-              .averageRR
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
+    "smart-backtest-winrate",
+    Number.isFinite(Number(bt?.winRate))
+      ? `${Number(bt.winRate).toFixed(1)}%`
+      : "--"
   );
 
-
   setText(
-    '#backtest-max-drawdown',
-    'Max drawdown: ' +
-    (
-      Number.isFinite(
-        Number(
-          backtest
-            ?.maxDrawdown
-        )
-      )
-        ? Number(
-            backtest
-              .maxDrawdown
-          ).toFixed(
-            2
-          )
-        : '0.00'
-    )
+    "smart-backtest-pf",
+    Number.isFinite(Number(bt?.profitFactor))
+      ? Number(bt.profitFactor).toFixed(2)
+      : "--"
   );
 }
-
 
 /* ======================================================
    CANVAS
@@ -1867,22 +2151,37 @@ function setTvLiteLine(
               index
             ];
 
+          const time =
+            candle?.time === null ||
+            candle?.time === undefined ||
+            candle?.time === ''
+              ? null
+              : Number(candle.time);
+
+          const plotValue =
+            value === null ||
+            value === undefined ||
+            value === ''
+              ? null
+              : Number(value);
+
+          /*
+            Price-overlay safety:
+            never send missing/invalid/zero values to Lightweight Charts.
+            A zero from an upstream warm-up/missing indicator would otherwise
+            collapse the NIFTY price scale and draw a vertical line to 0.
+          */
           if (
-            !candle ||
-            !Number.isFinite(
-              Number(value)
-            )
+            !Number.isFinite(time) ||
+            !Number.isFinite(plotValue) ||
+            plotValue <= 0
           ) {
             return null;
           }
 
           return {
-            time:
-              Number(
-                candle.time
-              ),
-            value:
-              Number(value)
+            time,
+            value: plotValue
           };
         }
       )
@@ -2299,6 +2598,9 @@ function syncTradingViewIndicators() {
       levels
     ) {
       if (
+        level.price === null ||
+        level.price === undefined ||
+        level.price === '' ||
         !Number.isFinite(
           Number(
             level.price
@@ -2339,205 +2641,60 @@ function syncTradingViewIndicators() {
 
 function buildTradingViewMarkers() {
 
+  // The chart shows one authoritative signal stream only: chart consensus.
+  // Momentum and Stride remain available as indicators/panels, but their
+  // independent arrows are not mixed with the final BUY/SELL decision.
+  // This prevents contradictory/overlapping M BUY, S BUY, BUY and SELL
+  // markers on the same candle.
   const markers = [];
+  const rows = state.chartConsensus?.rows || [];
 
-  const consensusRows =
-    state.chartConsensus?.rows ||
-    [];
+  let previousSide = 0;
 
-  consensusRows.forEach(
-    (
-      row,
-      index
-    ) => {
-      if (
-        !row?.signal
-      ) {
-        return;
-      }
+  rows.forEach((row, index) => {
+    if (!row || !row.signal) return;
 
-      const candle =
-        state.data[
-          index
-        ];
+    // The newest candle may still be forming. Never publish a trade marker
+    // from it; wait until that candle has closed.
+    if (index >= state.data.length - 1) return;
 
-      if (!candle) {
-        return;
-      }
+    const signal = String(row.signal).toUpperCase();
+    const isBuy = signal === 'BUY' || signal === 'STRONG BUY';
+    const isSell = signal === 'SELL' || signal === 'STRONG SELL';
 
-      const buy =
-        row.side === 1;
-
-      const strong =
-        row.signal.includes(
-          'STRONG'
-        );
-
-      markers.push({
-        time:
-          Number(
-            candle.time
-          ),
-        position:
-          buy
-            ? 'belowBar'
-            : 'aboveBar',
-        color:
-          buy
-            ? '#72e4bd'
-            : '#f17c86',
-        shape:
-          buy
-            ? 'arrowUp'
-            : 'arrowDown',
-        text:
-          buy
-            ? (
-                strong
-                  ? 'BUY+'
-                  : 'BUY'
-              )
-            : (
-                strong
-                  ? 'SELL+'
-                  : 'SELL'
-              ),
-        size:
-          strong
-            ? 2
-            : 1
-      });
+    // WAIT/NO TRADE/NOT READY breaks the previous signal run so a later
+    // confirmed re-entry can create one fresh marker.
+    if (!isBuy && !isSell) {
+      previousSide = 0;
+      return;
     }
-  );
 
+    const side = isBuy ? 1 : -1;
 
-  if (
-    state.overlays.has(
-      'Momentum'
-    )
-  ) {
-    state.momentum
-      ?.forEach(
-        (
-          row,
-          index
-        ) => {
-          if (
-            !row?.signal
-          ) {
-            return;
-          }
+    // Only draw one marker for a continuous same-side signal run.
+    if (side === previousSide) return;
 
-          const candle =
-            state.data[
-              index
-            ];
+    const candle = state.data[index];
+    if (!candle || candle.time === null || candle.time === undefined) return;
 
-          if (!candle) {
-            return;
-          }
+    const time = Number(candle.time);
+    if (!Number.isFinite(time)) return;
 
-          const buy =
-            String(
-              row.signal
-            ).toLowerCase() ===
-            'buy';
+    const strong = signal.startsWith('STRONG');
 
-          markers.push({
-            time:
-              Number(
-                candle.time
-              ),
-            position:
-              buy
-                ? 'belowBar'
-                : 'aboveBar',
-            color:
-              '#58c8dc',
-            shape:
-              buy
-                ? 'arrowUp'
-                : 'arrowDown',
-            text:
-              buy
-                ? 'M BUY'
-                : 'M SELL',
-            size: 1
-          });
-        }
-      );
-  }
+    markers.push({
+      time,
+      position: isBuy ? 'belowBar' : 'aboveBar',
+      color: isBuy ? '#72e4bd' : '#f17c86',
+      shape: isBuy ? 'arrowUp' : 'arrowDown',
+      text: isBuy ? (strong ? 'BUY+' : 'BUY') : (strong ? 'SELL+' : 'SELL'),
+      size: strong ? 2 : 1
+    });
 
+    previousSide = side;
+  });
 
-  if (
-    state.overlays.has(
-      'Stride Signals'
-    )
-  ) {
-    state.signals
-      ?.forEach(
-        (
-          row,
-          index
-        ) => {
-          if (
-            !row?.signal
-          ) {
-            return;
-          }
-
-          const candle =
-            state.data[
-              index
-            ];
-
-          if (!candle) {
-            return;
-          }
-
-          const buy =
-            String(
-              row.signal
-            ).toLowerCase() ===
-            'buy';
-
-          markers.push({
-            time:
-              Number(
-                candle.time
-              ),
-            position:
-              buy
-                ? 'belowBar'
-                : 'aboveBar',
-            color:
-              buy
-                ? '#72e4bd'
-                : '#f17c86',
-            shape:
-              buy
-                ? 'arrowUp'
-                : 'arrowDown',
-            text:
-              buy
-                ? 'S BUY'
-                : 'S SELL',
-            size: 1
-          });
-        }
-      );
-  }
-
-
-  return markers
-    .sort(
-      (
-        x,
-        y
-      ) =>
-        x.time -
-        y.time
-    );
+  return markers.sort((a, b) => a.time - b.time);
 }
 
 function syncTradingViewLiteChart(
@@ -2561,37 +2718,73 @@ function syncTradingViewLiteChart(
   }
 
 
-  const validCandles = state.data.filter(isValidMarketCandle);
-
   const data =
-    validCandles.map(
-      candle => ({
-        time:
-          Number(
-            candle.time
-          ),
-        open:
-          Number(
-            candle.open
-          ),
-        high:
-          Number(
-            candle.high
-          ),
-        low:
-          Number(
-            candle.low
-          ),
-        close:
-          Number(
-            candle.close
-          )
-      })
-    );
+    state.data
+      .map(
+        candle => {
+          const time =
+            candle?.time === null ||
+            candle?.time === undefined ||
+            candle?.time === ''
+              ? null
+              : Number(candle.time);
+
+          const open =
+            candle?.open === null ||
+            candle?.open === undefined ||
+            candle?.open === ''
+              ? null
+              : Number(candle.open);
+
+          const high =
+            candle?.high === null ||
+            candle?.high === undefined ||
+            candle?.high === ''
+              ? null
+              : Number(candle.high);
+
+          const low =
+            candle?.low === null ||
+            candle?.low === undefined ||
+            candle?.low === ''
+              ? null
+              : Number(candle.low);
+
+          const close =
+            candle?.close === null ||
+            candle?.close === undefined ||
+            candle?.close === ''
+              ? null
+              : Number(candle.close);
+
+          if (
+            !Number.isFinite(time) ||
+            !Number.isFinite(open) ||
+            !Number.isFinite(high) ||
+            !Number.isFinite(low) ||
+            !Number.isFinite(close) ||
+            open <= 0 ||
+            high <= 0 ||
+            low <= 0 ||
+            close <= 0
+          ) {
+            return null;
+          }
+
+          return {
+            time,
+            open,
+            high,
+            low,
+            close
+          };
+        }
+      )
+      .filter(Boolean);
 
 
   const volumeData =
-    validCandles.map(
+    state.data.map(
       candle => ({
         time:
           Number(
@@ -3126,7 +3319,7 @@ function draw() {
     );
 
 
-  state.tradeFinalizer =
+  state.rawTradeFinalizer =
     finalizeTrade({
       edge:
         state.niftyEdge,
@@ -3146,6 +3339,8 @@ function draw() {
         state.futuresVWAP
     });
 
+
+  state.tradeFinalizer = state.rawTradeFinalizer;
 
   state.gainzSSL =
     analyseGainzSSL(
@@ -3178,6 +3373,7 @@ function draw() {
 
   refreshProSuite();
   }
+  refreshPrimeConfirmation();
 
 
   syncTradingViewLiteChart();
@@ -4311,13 +4507,13 @@ function draw() {
 
     $('#ohlc').textContent =
       'O ' +
-      (isValidMarketPrice(c.open) ? fmt(c.open) : '—') +
+      fmt(c.open) +
       '  H ' +
-      (isValidMarketPrice(c.high) ? fmt(c.high) : '—') +
+      fmt(c.high) +
       '  L ' +
-      (isValidMarketPrice(c.low) ? fmt(c.low) : '—') +
+      fmt(c.low) +
       '  C ' +
-      (isValidMarketPrice(c.close) ? fmt(c.close) : '—') +
+      fmt(c.close) +
       '  V ' +
       (
         c.volume > 0
@@ -5324,6 +5520,8 @@ function summary() {
 
   renderAiNifty();
 
+  renderProSuiteSummary();
+
   updateMarketMapPanel();
 
   renderCandleScanner();
@@ -6037,6 +6235,7 @@ function renderMTF() {
 
 
 async function refreshMTF() {
+  const requestedSymbol = state.symbol;
 
   if (
     state.replay.active ||
@@ -6057,15 +6256,15 @@ async function refreshMTF() {
     const settled =
       await Promise.allSettled([
         market.mtfHistory(
-          state.symbol,
+          requestedSymbol,
           '5m'
         ),
         market.mtfHistory(
-          state.symbol,
+          requestedSymbol,
           '15m'
         ),
         market.mtfHistory(
-          state.symbol,
+          requestedSymbol,
           '1h'
         )
       ]);
@@ -6080,6 +6279,10 @@ async function refreshMTF() {
             : []
       );
 
+
+    if (state.symbol !== requestedSymbol || state.replay.active) return;
+    state.primeMtfSymbol = requestedSymbol;
+    state.primeMtfData = { '5m': resultCandles[0], '15m': resultCandles[1], '1h': resultCandles[2] };
 
     state.mtf['5m'] =
       timeframeTrend(
@@ -6178,6 +6381,7 @@ async function refreshMTF() {
     error
   ) {
 
+    state.primeMtfData = {};
     console.warn(
       'Multi-timeframe confirmation unavailable:',
       error
@@ -6278,6 +6482,16 @@ function scheduleReconnect() {
 
 
 async function loadData() {
+  state.rawTradeFinalizer = null;
+  state.tradeFinalizer = null;
+  state.liveTradeFinalizer = null;
+  state.allIndicatorsConsensus = null;
+  state.primeMtfData = {};
+  lastAnalysisKey = null;
+  refreshPrimeConfirmation();
+  renderTradeFinalizer();
+  renderAllIndicatorsConsensus();
+  renderProSuiteSummary();
 
   activateAllIndicators();
 
@@ -6410,7 +6624,25 @@ async function loadData() {
 
     state.data =
       data
-        .filter(isValidMarketCandle)
+        .filter(
+          c =>
+            c &&
+            Number.isFinite(
+              c.time
+            ) &&
+            Number.isFinite(
+              c.open
+            ) &&
+            Number.isFinite(
+              c.high
+            ) &&
+            Number.isFinite(
+              c.low
+            ) &&
+            Number.isFinite(
+              c.close
+            )
+        )
         .sort(
           (
             a,
@@ -6549,7 +6781,7 @@ async function loadData() {
         }
 
         state.data =
-          unique.filter(isValidMarketCandle).slice(
+          unique.slice(
             -500
           );
 
@@ -6632,7 +6864,14 @@ async function loadData() {
 
         tick => {
 
-          if (!tick || !isValidMarketPrice(tick.price)) {
+          if (
+            !tick ||
+            !Number.isFinite(
+              Number(
+                tick.price
+              )
+            )
+          ) {
             return;
           }
 
@@ -10244,112 +10483,13 @@ function renderGainzSSLPanel() {
 }
 
 function refreshLiveTradeFinalizer() {
-
-  if (
-    !Array.isArray(
-      state.data
-    ) ||
-    state.data.length < 30
-  ) {
-    state.liveTradeFinalizer =
-      null;
-
-    return;
-  }
-
-
-  const last =
-    state.data.at(-1);
-
-  const seconds =
-    Number(
-      intervals[
-        state.tf
-      ]
-    ) || 300;
-
-
-  const synthetic =
-    [
-      ...state.data.map(
-        candle => ({
-          ...candle
-        })
-      ),
-      {
-        ...last,
-        time:
-          Number(last.time) +
-          seconds
-      }
-    ];
-
-
-  const liveCalc =
-    indicators(
-      synthetic
-    );
-
-  const liveTrend =
-    trendIndicators(
-      synthetic
-    );
-
-  const liveEdge =
-    analyseNiftyEdge(
-      synthetic,
-      {
-        futuresVWAP:
-          state.futuresVWAP
-      }
-    );
-
-  const liveMap =
-    analyseMarketMap(
-      synthetic,
-      {
-        futuresVWAP:
-          state.futuresVWAP
-      }
-    );
-
-  const liveScanner =
-    scanCandles(
-      synthetic
-    );
-
-  const liveSetup =
-    candleConfluence(
-      liveScanner,
-      liveMap,
-      liveEdge,
-      state.mtf
-    );
-
-
-  state.liveTradeFinalizer =
-    finalizeTrade({
-      edge:
-        liveEdge,
-      marketMap:
-        liveMap,
-      candleSetup:
-        liveSetup,
-      mtf:
-        state.mtf,
-      calc:
-        liveCalc,
-      trend:
-        liveTrend,
-      data:
-        synthetic,
-      futuresVWAP:
-        state.futuresVWAP
-    });
+  // Quotes may refresh the display, but cannot close the current candle.
+  refreshPrimeConfirmation();
 }
 
 
 function recomputeAllIndicatorsConsensus() {
+  refreshPrimeConfirmation();
 
   state.allIndicatorsConsensus =
     analyseAllIndicators({
@@ -10370,7 +10510,9 @@ function recomputeAllIndicatorsConsensus() {
         state.globalWatch
     });
 
+  state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, 'signal');
   renderAllIndicatorsConsensus();
+  renderTradeFinalizer();
   renderProSuiteSummary();
 }
 
@@ -11575,164 +11717,7 @@ function renderTradeFinalizer() {
   );
 
 
-  const livePrice =
-    quote();
-
-  const isBuySetup =
-    f.state.includes(
-      'BUY'
-    );
-
-  const isSellSetup =
-    f.state.includes(
-      'SELL'
-    );
-
-  const activeSetup =
-    isBuySetup ||
-    isSellSetup;
-
-  const atr =
-    Number(
-      state.marketMap?.atr
-    );
-
-  const support =
-    Number(
-      state.marketMap
-        ?.nearestSupport
-        ?.price
-    );
-
-  const resistance =
-    Number(
-      state.marketMap
-        ?.nearestResistance
-        ?.price
-    );
-
-  let liveFinalizerPlan =
-    null;
-
-  if (
-    activeSetup &&
-    Number.isFinite(
-      livePrice
-    )
-  ) {
-
-    const side =
-      isBuySetup
-        ? 1
-        : -1;
-
-    let risk =
-      f.plan &&
-      Number.isFinite(
-        Number(
-          f.plan.entry
-        )
-      ) &&
-      Number.isFinite(
-        Number(
-          f.plan.stop
-        )
-      )
-        ? Math.abs(
-            Number(
-              f.plan.entry
-            ) -
-            Number(
-              f.plan.stop
-            )
-          )
-        : null;
-
-    if (
-      !Number.isFinite(risk) ||
-      risk <= 0
-    ) {
-
-      if (
-        Number.isFinite(atr) &&
-        atr > 0
-      ) {
-
-        let liveStop =
-          side === 1
-            ? livePrice -
-              atr * 1.2
-            : livePrice +
-              atr * 1.2;
-
-        if (
-          side === 1 &&
-          Number.isFinite(
-            support
-          ) &&
-          support <
-            livePrice
-        ) {
-
-          liveStop =
-            Math.min(
-              liveStop,
-              support -
-              atr * 0.15
-            );
-        }
-
-        if (
-          side === -1 &&
-          Number.isFinite(
-            resistance
-          ) &&
-          resistance >
-            livePrice
-        ) {
-
-          liveStop =
-            Math.max(
-              liveStop,
-              resistance +
-              atr * 0.15
-            );
-        }
-
-        risk =
-          Math.abs(
-            livePrice -
-            liveStop
-          );
-      }
-    }
-
-    if (
-      Number.isFinite(risk) &&
-      risk > 0
-    ) {
-
-      const stop =
-        livePrice -
-        side * risk;
-
-      liveFinalizerPlan = {
-        entry:
-          livePrice,
-        stop,
-        target1:
-          livePrice +
-          side * risk,
-        target2:
-          livePrice +
-          side * risk * 1.5,
-        target3:
-          livePrice +
-          side * risk * 2
-      };
-    }
-  }
-
+  const liveFinalizerPlan = f.primeConfirmed ? f.plan : null;
 
   set(
     '#finalizer-entry',
