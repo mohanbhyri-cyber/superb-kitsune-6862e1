@@ -2883,15 +2883,73 @@ function setChartView(
                 'hidden'
               );
 
-            lite
-              ?.classList
-              .remove(
-                'hidden'
+            initTradingViewLiteChart();
+
+            if (
+              tvLiteSeries
+            ) {
+              lite
+                ?.classList
+                .remove(
+                  'hidden'
+                );
+
+              classic
+                ?.classList
+                .add(
+                  'hidden'
+                );
+
+              syncTradingViewLiteChart(
+                true
               );
 
-            syncTradingViewLiteChart(
-              true
-            );
+              setTradingViewDatafeedStatus(
+                'TradingView Lightweight · Upstox LIVE',
+                'up'
+              );
+            } else {
+              // CDN/library unavailable: never leave a blank chart.
+              state.tvChartMode =
+                'classic';
+
+              document.body
+                .classList
+                .remove(
+                  'tv-shell-mode'
+                );
+
+              lite
+                ?.classList
+                .add(
+                  'hidden'
+                );
+
+              classic
+                ?.classList
+                .remove(
+                  'hidden'
+                );
+
+              $('#chart-view-tv')
+                ?.classList
+                .remove(
+                  'active'
+                );
+
+              $('#chart-view-classic')
+                ?.classList
+                .add(
+                  'active'
+                );
+
+              setTradingViewDatafeedStatus(
+                'Classic chart · Upstox LIVE · TradingView library unavailable',
+                'muted'
+              );
+
+              draw();
+            }
           }
         }
       );
@@ -5769,8 +5827,6 @@ function exitReplay(
 
     loadData();
 
-setupAllIndicatorsChat();
-
   } else {
 
     setFeedStatus(
@@ -7049,11 +7105,129 @@ if (
 }
 
 
+function runSmrtDiagnostics() {
+
+  const requiredIds = [
+    'chart',
+    'tv-lightweight-chart',
+    'watch-rows',
+    'signal-label',
+    'mtf-overall',
+    'market-map-panel',
+    'candle-scanner-panel',
+    'all-indicators-panel',
+    'all-indicators-chat-panel',
+    'global-watch-panel',
+    'ai-nifty-panel',
+    'trade-finalizer-panel',
+    'gainz-ssl-panel',
+    'replay-toggle',
+    'indicators-toggle'
+  ];
+
+  const missing =
+    requiredIds.filter(
+      id =>
+        !document.getElementById(
+          id
+        )
+    );
+
+  const engines = {
+    indicators:
+      typeof indicators ===
+      'function',
+    trendIndicators:
+      typeof trendIndicators ===
+      'function',
+    proScalper:
+      typeof proScalper ===
+      'function',
+    niftyEdge:
+      typeof analyseNiftyEdge ===
+      'function',
+    marketMap:
+      typeof analyseMarketMap ===
+      'function',
+    candleScanner:
+      typeof scanCandles ===
+      'function',
+    tradeFinalizer:
+      typeof finalizeTrade ===
+      'function',
+    gainzSSL:
+      typeof analyseGainzSSL ===
+      'function',
+    aiNifty:
+      typeof analyseSmrtAiNifty ===
+      'function',
+    globalWatch:
+      typeof analyseGlobalWatch ===
+      'function',
+    allIndicators:
+      typeof analyseAllIndicators ===
+      'function',
+    chartConsensus:
+      typeof analyseChartConsensus ===
+      'function',
+    tradingViewDatafeed:
+      Boolean(
+        window.SMRTTradingViewDatafeed
+      )
+  };
+
+  const failedEngines =
+    Object.entries(
+      engines
+    )
+      .filter(
+        ([, ok]) =>
+          !ok
+      )
+      .map(
+        ([name]) =>
+          name
+      );
+
+  const result = {
+    ok:
+      missing.length === 0 &&
+      failedEngines.length === 0,
+    missingElements:
+      missing,
+    failedEngines,
+    engines,
+    checkedAt:
+      new Date()
+        .toISOString()
+  };
+
+  window.SMRTDiagnostics =
+    result;
+
+  if (!result.ok) {
+    console.error(
+      'SMRT diagnostics failed',
+      result
+    );
+  } else {
+    console.info(
+      'SMRT diagnostics OK',
+      result
+    );
+  }
+
+  return result;
+}
+
+
 let checkAlerts =
   () => {};
 
 
 loadData();
+
+setupAllIndicatorsChat();
 
 
 // TradingView-style chart controls.
@@ -7156,6 +7330,8 @@ $('[data-tv-range]')
 setChartView(
   'tradingview'
 );
+
+runSmrtDiagnostics();
 
 
 refreshGlobalWatch().catch(
@@ -10877,24 +11053,6 @@ function recomputeAiNifty() {
 
   recomputeAllIndicatorsConsensus();
 
-  const chatSignal =
-    $('#ai-chat-live-signal');
-
-  if (
-    chatSignal
-  ) {
-    chatSignal.textContent =
-      state.aiNifty?.signal ||
-      'WAIT';
-
-    chatSignal.className =
-      state.aiNifty?.signal === 'BUY'
-        ? 'up'
-        : state.aiNifty?.signal === 'SELL'
-          ? 'down'
-          : 'muted';
-  }
-}
 
 
 async function refreshExternalNifty() {
