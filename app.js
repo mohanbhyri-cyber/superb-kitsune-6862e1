@@ -87,6 +87,17 @@ const fmt = n => {
 };
 
 
+// Reject missing and non-positive prices before they reach an OHLC chart.
+const isValidMarketPrice = value =>
+  (typeof value === 'number' ||
+    (typeof value === 'string' && value.trim() !== '')) &&
+  Number.isFinite(Number(value)) && Number(value) > 0;
+
+const isValidMarketCandle = candle => Boolean(candle) &&
+  Number.isFinite(candle.time) && candle.time > 0 &&
+  ['open', 'high', 'low', 'close'].every(key =>
+    Number.isFinite(candle[key]) && isValidMarketPrice(candle[key]));
+
 const read = (key, fallback) => {
   try {
     return JSON.parse(
@@ -2550,8 +2561,10 @@ function syncTradingViewLiteChart(
   }
 
 
+  const validCandles = state.data.filter(isValidMarketCandle);
+
   const data =
-    state.data.map(
+    validCandles.map(
       candle => ({
         time:
           Number(
@@ -2578,7 +2591,7 @@ function syncTradingViewLiteChart(
 
 
   const volumeData =
-    state.data.map(
+    validCandles.map(
       candle => ({
         time:
           Number(
@@ -4298,13 +4311,13 @@ function draw() {
 
     $('#ohlc').textContent =
       'O ' +
-      fmt(c.open) +
+      (isValidMarketPrice(c.open) ? fmt(c.open) : '—') +
       '  H ' +
-      fmt(c.high) +
+      (isValidMarketPrice(c.high) ? fmt(c.high) : '—') +
       '  L ' +
-      fmt(c.low) +
+      (isValidMarketPrice(c.low) ? fmt(c.low) : '—') +
       '  C ' +
-      fmt(c.close) +
+      (isValidMarketPrice(c.close) ? fmt(c.close) : '—') +
       '  V ' +
       (
         c.volume > 0
@@ -6397,25 +6410,7 @@ async function loadData() {
 
     state.data =
       data
-        .filter(
-          c =>
-            c &&
-            Number.isFinite(
-              c.time
-            ) &&
-            Number.isFinite(
-              c.open
-            ) &&
-            Number.isFinite(
-              c.high
-            ) &&
-            Number.isFinite(
-              c.low
-            ) &&
-            Number.isFinite(
-              c.close
-            )
-        )
+        .filter(isValidMarketCandle)
         .sort(
           (
             a,
@@ -6554,7 +6549,7 @@ async function loadData() {
         }
 
         state.data =
-          unique.slice(
+          unique.filter(isValidMarketCandle).slice(
             -500
           );
 
@@ -6637,14 +6632,7 @@ async function loadData() {
 
         tick => {
 
-          if (
-            !tick ||
-            !Number.isFinite(
-              Number(
-                tick.price
-              )
-            )
-          ) {
+          if (!tick || !isValidMarketPrice(tick.price)) {
             return;
           }
 
