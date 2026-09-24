@@ -1959,25 +1959,37 @@ function setTvLiteLine(
               index
             ];
 
-          if (
-            !candle ||
+          const time =
+            candle?.time === null ||
+            candle?.time === undefined ||
+            candle?.time === ''
+              ? null
+              : Number(candle.time);
+
+          const plotValue =
             value === null ||
             value === undefined ||
-            value === '' ||
-            !Number.isFinite(
-              Number(value)
-            )
+            value === ''
+              ? null
+              : Number(value);
+
+          /*
+            Price-overlay safety:
+            never send missing/invalid/zero values to Lightweight Charts.
+            A zero from an upstream warm-up/missing indicator would otherwise
+            collapse the NIFTY price scale and draw a vertical line to 0.
+          */
+          if (
+            !Number.isFinite(time) ||
+            !Number.isFinite(plotValue) ||
+            plotValue <= 0
           ) {
             return null;
           }
 
           return {
-            time:
-              Number(
-                candle.time
-              ),
-            value:
-              Number(value)
+            time,
+            value: plotValue
           };
         }
       )
@@ -2450,15 +2462,24 @@ function buildTradingViewMarkers() {
   rows.forEach((row, index) => {
     if (!row || !row.signal) return;
 
+    // The newest candle may still be forming. Never publish a trade marker
+    // from it; wait until that candle has closed.
+    if (index >= state.data.length - 1) return;
+
     const signal = String(row.signal).toUpperCase();
     const isBuy = signal === 'BUY' || signal === 'STRONG BUY';
     const isSell = signal === 'SELL' || signal === 'STRONG SELL';
 
-    if (!isBuy && !isSell) return;
+    // WAIT/NO TRADE/NOT READY breaks the previous signal run so a later
+    // confirmed re-entry can create one fresh marker.
+    if (!isBuy && !isSell) {
+      previousSide = 0;
+      return;
+    }
 
     const side = isBuy ? 1 : -1;
 
-    // Only draw a new transition. Do not repeat the same-side marker.
+    // Only draw one marker for a continuous same-side signal run.
     if (side === previousSide) return;
 
     const candle = state.data[index];
@@ -2506,30 +2527,68 @@ function syncTradingViewLiteChart(
 
 
   const data =
-    state.data.map(
-      candle => ({
-        time:
-          Number(
-            candle.time
-          ),
-        open:
-          Number(
-            candle.open
-          ),
-        high:
-          Number(
-            candle.high
-          ),
-        low:
-          Number(
-            candle.low
-          ),
-        close:
-          Number(
-            candle.close
-          )
-      })
-    );
+    state.data
+      .map(
+        candle => {
+          const time =
+            candle?.time === null ||
+            candle?.time === undefined ||
+            candle?.time === ''
+              ? null
+              : Number(candle.time);
+
+          const open =
+            candle?.open === null ||
+            candle?.open === undefined ||
+            candle?.open === ''
+              ? null
+              : Number(candle.open);
+
+          const high =
+            candle?.high === null ||
+            candle?.high === undefined ||
+            candle?.high === ''
+              ? null
+              : Number(candle.high);
+
+          const low =
+            candle?.low === null ||
+            candle?.low === undefined ||
+            candle?.low === ''
+              ? null
+              : Number(candle.low);
+
+          const close =
+            candle?.close === null ||
+            candle?.close === undefined ||
+            candle?.close === ''
+              ? null
+              : Number(candle.close);
+
+          if (
+            !Number.isFinite(time) ||
+            !Number.isFinite(open) ||
+            !Number.isFinite(high) ||
+            !Number.isFinite(low) ||
+            !Number.isFinite(close) ||
+            open <= 0 ||
+            high <= 0 ||
+            low <= 0 ||
+            close <= 0
+          ) {
+            return null;
+          }
+
+          return {
+            time,
+            open,
+            high,
+            low,
+            close
+          };
+        }
+      )
+      .filter(Boolean);
 
 
   const volumeData =
