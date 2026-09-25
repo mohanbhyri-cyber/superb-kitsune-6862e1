@@ -1,27 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { momentumSignals } from './momentum.js';
 import { trendIndicators } from './trend-indicators.js';
 import { proScalper } from './pro-scalper.js';
@@ -13390,3 +13366,4 @@ if (
 
 
 renderWatch();
+
