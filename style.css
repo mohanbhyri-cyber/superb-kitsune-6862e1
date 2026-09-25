@@ -605,55 +605,43 @@ body.light .tv-shell-mode .chart-footer{
 
 
 /* =========================================================
-   SMRT DESKTOP LAYOUT FIX
-   Restores full-width terminal + 75/25 workspace proportions.
+   SMRT ALGO PRO - COMPACT DESKTOP TERMINAL FIX
    ========================================================= */
-@media (min-width: 1051px) {
-  main#terminal {
-    width: min(96vw, 1800px);
-    max-width: 1800px;
-    margin-inline: auto;
-    padding-inline: 24px;
-  }
-
-  #terminal .workspace {
-    width: 100%;
-    grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
-    align-items: start;
-  }
-
-  #terminal .workspace > .chart-card {
-    width: 100%;
-    min-width: 0;
-  }
-
-  #terminal .workspace > aside {
-    width: 100%;
-    min-width: 0;
-  }
-
-  #terminal .chart-card,
-  #terminal .canvas-area,
-  #terminal .tv-lightweight-chart,
-  #terminal .tv-advanced-chart {
-    min-width: 0;
-  }
-
-  #terminal .page-title,
-  #terminal .bottom-grid,
-  #terminal .analysis-layout-grid,
-  #terminal .pro-suite-panel {
-    width: 100%;
-  }
+@media (min-width:1051px){
+ header{height:64px;padding:0 24px;gap:34px}
+ .brand{font-size:23px;letter-spacing:-.8px;white-space:nowrap}
+ .mark{width:28px;height:28px;font-size:23px}
+ nav{gap:22px}.ticker{padding:8px 24px;gap:28px}
+ main#terminal{width:min(97vw,1880px);max-width:1880px;margin:0 auto;padding:18px 20px 14px}
+ #terminal .page-title{margin-bottom:14px}
+ #terminal .workspace{width:100%;grid-template-columns:minmax(0,3fr) minmax(300px,1fr);gap:14px;align-items:start}
+ #terminal .workspace>.chart-card,#terminal .workspace>aside{width:100%;min-width:0}
+ #terminal aside{gap:14px}
+ #terminal .instrument{padding:14px 16px 10px}
+ #terminal .quote{margin-top:4px}#terminal .quote strong{font-size:25px}
+ #terminal .chart-controls{padding:6px 10px;gap:8px}
+ #terminal .indicator-list{padding:8px 12px 6px}
+ #terminal .stride-settings,#terminal .pa-panel,#terminal .scalp-panel{margin-left:10px;margin-right:10px;margin-bottom:8px;padding:10px}
+ #terminal .mtf-confirmation{margin:8px 10px;padding:9px}
+ #terminal .mtf-grid{gap:6px}#terminal .mtf-grid>div{padding:7px 8px}
+ #terminal .tv-pro-toolbar{min-height:40px}
+ #terminal .tv-shell-mode .chart-wrap,#terminal .tv-shell-mode .canvas-area,#terminal .tv-shell-mode #chart,
+ #terminal .tv-shell-mode .tv-lightweight-chart,#terminal .tv-shell-mode .tv-advanced-chart{height:540px!important}
+ #terminal .panel{padding:14px}#terminal .panel-heading{margin-bottom:10px}
+ #terminal .watch-row{padding-top:8px;padding-bottom:8px}
+ #terminal .signal-meter{margin:12px 0}#terminal .reason{margin:7px 0}#terminal .disclaimer{margin-top:10px}
+ #terminal .bottom-grid,#terminal .analysis-layout-grid{gap:12px;margin-top:12px}
+ #terminal .analysis-layout-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #terminal .pro-suite-panel{margin-top:12px!important}
+ #terminal .pro-suite-grid{gap:8px;margin-top:8px}
+ #terminal .pro-suite-card{padding:10px;gap:4px}
+ #terminal .pro-backtest-grid{gap:7px;margin-top:7px}
+ #terminal .pro-backtest-grid>div{padding:9px}
+ #terminal .global-watch-row,#terminal .all-indicator-vote{padding:7px 9px}
+ #terminal .all-chat-messages{min-height:130px;max-height:240px}
+ #terminal .page-footer{margin-top:14px}
 }
-
-@media (min-width: 1500px) {
-  main#terminal {
-    width: min(97vw, 1900px);
-    max-width: 1900px;
-  }
-
-  #terminal .workspace {
-    grid-template-columns: minmax(0, 3.2fr) minmax(320px, .8fr);
-  }
+@media (min-width:1500px){
+ main#terminal{width:min(98vw,1940px);max-width:1940px}
+ #terminal .workspace{grid-template-columns:minmax(0,3.25fr) minmax(320px,.75fr)}
 }
