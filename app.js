@@ -333,335 +333,75 @@ function refreshPrimeConfirmation() {
   state.tradeFinalizer = primeGate(state.rawTradeFinalizer, state.primeMarket);
   state.liveTradeFinalizer = state.tradeFinalizer;
   renderPrimeMarket();
-}function renderSmartMoneyTools() {
-  const prime = state?.primeMarket || null;
-  const structure = prime?.structure || null;
+  renderSmartMoneyTools();
+}
 
-  const set = (id, value, cls = "") => {
+function renderSmartMoneyTools() {
+  const structure = state.primeMarket?.structure;
+  const set = (id, text, side = 0) => {
     const el = document.getElementById(id);
     if (!el) return;
-
-    el.textContent = value ?? "WAIT";
-
-    el.classList.remove(
-      "smrt-bullish",
-      "smrt-bearish",
-      "smrt-neutral"
-    );
-
-    if (cls) el.classList.add(cls);
+    el.textContent = text;
+    el.classList.remove('smrt-bullish', 'smrt-bearish', 'smrt-neutral');
+    el.classList.add(side === 1 ? 'smrt-bullish' : side === -1 ? 'smrt-bearish' : 'smrt-neutral');
   };
-
-  const priceText = (value) => {
-    const n = Number(value);
-
-    return Number.isFinite(n)
-      ? n.toLocaleString("en-IN", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        })
-      : "—";
-  };
-
-  if (!prime || !structure) {
-    set("smt-status", "WAIT", "smrt-neutral");
-    set("smt-order-block", "WAIT");
-    set("smt-fvg", "WAIT");
-    set("smt-liquidity", "WAIT");
-    set("smt-supply-demand", "WAIT");
-
-    set("pd-status", "WAIT", "smrt-neutral");
-    set("pd-current-zone", "WAIT");
-
+  const price = value => primeFinite(value) ? Number(value).toLocaleString('en-IN', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }) : '—';
+  const range = zone => zone ? `${price(zone.low)} – ${price(zone.high)}` : '—';
+  const validZone = zone => zone && (zone.side === 1 || zone.side === -1) &&
+    primeFinite(zone.low) && primeFinite(zone.high) && Number(zone.high) >= Number(zone.low);
+  // Prefer surviving zones, then the newest creation. Never mutate the engine's arrays.
+  const zones = values => (Array.isArray(values) ? values : []).filter(validZone).slice().sort((a, b) =>
+    Number(b.active === true) - Number(a.active === true) || b.created - a.created);
+  const zoneText = (zone, label) => zone
+    ? `${zone.side === 1 ? 'BULLISH' : 'BEARISH'} ${label} · ${range(zone)} · ${zone.status || (zone.active ? 'ACTIVE' : 'INACTIVE')}`
+    : 'NONE';
+  if (!structure) {
+    for (const id of ['smt-status', 'smt-order-block', 'smt-fvg', 'smt-liquidity',
+      'smt-supply-demand', 'pd-status', 'pd-current-zone']) set(id, 'WAIT');
+    for (const id of ['smt-demand-value', 'smt-supply-value', 'pd-range-high',
+      'pd-range-low', 'pd-equilibrium-value', 'pd-position']) set(id, '—');
     return;
   }
-
-
-  /* =========================================
-     ORDER BLOCK
-     ========================================= */
-
-  const blocks = Array.isArray(structure.blocks)
-    ? structure.blocks
-    : [];
-
-  const latestBlock = blocks.length
-    ? blocks[blocks.length - 1]
-    : null;
-
-  let obText = "NONE";
-  let obClass = "smrt-neutral";
-
-  if (latestBlock) {
-    const side = String(
-      latestBlock.direction ||
-      latestBlock.side ||
-      latestBlock.type ||
-      ""
-    ).toUpperCase();
-
-    if (side.includes("BULL") || side.includes("DEMAND")) {
-      obText = "BULLISH OB";
-      obClass = "smrt-bullish";
-    } else if (
-      side.includes("BEAR") ||
-      side.includes("SUPPLY")
-    ) {
-      obText = "BEARISH OB";
-      obClass = "smrt-bearish";
-    } else {
-      obText = "ACTIVE";
-    }
-  }
-
-  set("smt-order-block", obText, obClass);
-
-
-  /* =========================================
-     FAIR VALUE GAP
-     ========================================= */
-
-  const gaps = Array.isArray(structure.gaps)
-    ? structure.gaps
-    : [];
-
-  const latestGap = gaps.length
-    ? gaps[gaps.length - 1]
-    : null;
-
-  let fvgText = "NONE";
-  let fvgClass = "smrt-neutral";
-
-  if (latestGap) {
-    const side = String(
-      latestGap.direction ||
-      latestGap.side ||
-      latestGap.type ||
-      ""
-    ).toUpperCase();
-
-    if (side.includes("BULL")) {
-      fvgText = "BULLISH FVG";
-      fvgClass = "smrt-bullish";
-    } else if (side.includes("BEAR")) {
-      fvgText = "BEARISH FVG";
-      fvgClass = "smrt-bearish";
-    } else {
-      fvgText = "ACTIVE FVG";
-    }
-  }
-
-  set("smt-fvg", fvgText, fvgClass);
-
-
-  /* =========================================
-     LIQUIDITY SWEEP
-     ========================================= */
-
-  const sweeps = Array.isArray(structure.sweeps)
-    ? structure.sweeps
-    : [];
-
-  const latestSweep = sweeps.length
-    ? sweeps[sweeps.length - 1]
-    : null;
-
-  let liquidityText = "NONE";
-  let liquidityClass = "smrt-neutral";
-
-  if (latestSweep) {
-    const side = String(
-      latestSweep.direction ||
-      latestSweep.side ||
-      latestSweep.type ||
-      ""
-    ).toUpperCase();
-
-    if (
-      side.includes("LOW") ||
-      side.includes("BULL") ||
-      side.includes("SELL")
-    ) {
-      liquidityText = "SELL-SIDE SWEPT";
-      liquidityClass = "smrt-bullish";
-
-    } else if (
-      side.includes("HIGH") ||
-      side.includes("BEAR") ||
-      side.includes("BUY")
-    ) {
-      liquidityText = "BUY-SIDE SWEPT";
-      liquidityClass = "smrt-bearish";
-
-    } else {
-      liquidityText = "SWEEP";
-    }
-  }
-
-  set(
-    "smt-liquidity",
-    liquidityText,
-    liquidityClass
-  );
-
-
-  /* =========================================
-     SUPPLY / DEMAND
-     ========================================= */
-
-  const currentZone = String(
-    structure.zone ||
-    structure.position ||
-    ""
-  ).toUpperCase();
-
-  let sdText = "NEUTRAL";
-  let sdClass = "smrt-neutral";
-
-  if (
-    currentZone.includes("DISCOUNT") ||
-    currentZone.includes("DEMAND")
-  ) {
-    sdText = "DEMAND";
-    sdClass = "smrt-bullish";
-
-  } else if (
-    currentZone.includes("PREMIUM") ||
-    currentZone.includes("SUPPLY")
-  ) {
-    sdText = "SUPPLY";
-    sdClass = "smrt-bearish";
-  }
-
-  set(
-    "smt-supply-demand",
-    sdText,
-    sdClass
-  );
-
-
-  /* =========================================
-     RANGE VALUES
-     ========================================= */
-
-  const rangeHigh = Number(structure.high);
-  const rangeLow = Number(structure.low);
-
-  let equilibrium = Number(structure.equilibrium);
-
-  if (
-    !Number.isFinite(equilibrium) &&
-    Number.isFinite(rangeHigh) &&
-    Number.isFinite(rangeLow)
-  ) {
-    equilibrium =
-      (rangeHigh + rangeLow) / 2;
-  }
-
-  set(
-    "pd-range-high",
-    priceText(rangeHigh)
-  );
-
-  set(
-    "pd-range-low",
-    priceText(rangeLow)
-  );
-
-  set(
-    "pd-equilibrium-value",
-    priceText(equilibrium)
-  );
-
-
-  /* =========================================
-     PREMIUM / DISCOUNT
-     ========================================= */
-
-  let pdZone = "EQUILIBRIUM";
-  let pdClass = "smrt-neutral";
-
-  if (currentZone.includes("PREMIUM")) {
-    pdZone = "PREMIUM";
-    pdClass = "smrt-bearish";
-
-  } else if (currentZone.includes("DISCOUNT")) {
-    pdZone = "DISCOUNT";
-    pdClass = "smrt-bullish";
-
-  } else if (
-    currentZone.includes("EQUILIBRIUM")
-  ) {
-    pdZone = "EQUILIBRIUM";
-  }
-
-  set(
-    "pd-current-zone",
-    pdZone,
-    pdClass
-  );
-
-  set(
-    "pd-status",
-    pdZone,
-    pdClass
-  );
-
-
-  /* =========================================
-     DEMAND / SUPPLY VALUES
-     ========================================= */
-
-  set(
-    "smt-demand-value",
-    priceText(rangeLow)
-  );
-
-  set(
-    "smt-supply-value",
-    priceText(rangeHigh)
-  );
-
-
-  /* =========================================
-     OVERALL SMART MONEY STATUS
-     ========================================= */
-
-  let bullScore = 0;
-  let bearScore = 0;
-
-  if (obClass === "smrt-bullish") bullScore++;
-  if (fvgClass === "smrt-bullish") bullScore++;
-  if (liquidityClass === "smrt-bullish") bullScore++;
-  if (sdClass === "smrt-bullish") bullScore++;
-
-  if (obClass === "smrt-bearish") bearScore++;
-  if (fvgClass === "smrt-bearish") bearScore++;
-  if (liquidityClass === "smrt-bearish") bearScore++;
-  if (sdClass === "smrt-bearish") bearScore++;
-
-  if (bullScore > bearScore) {
-    set(
-      "smt-status",
-      `BULLISH ${bullScore}/4`,
-      "smrt-bullish"
-    );
-
-  } else if (bearScore > bullScore) {
-    set(
-      "smt-status",
-      `BEARISH ${bearScore}/4`,
-      "smrt-bearish"
-    );
-
-  } else {
-    set(
-      "smt-status",
-      "MIXED",
-      "smrt-neutral"
-    );
-  }
+  const blocks = zones(structure.blocks), gaps = zones(structure.gaps);
+  const block = blocks[0], gap = gaps[0];
+  set('smt-order-block', zoneText(block, 'OB'), block?.active ? block.side : 0);
+  set('smt-fvg', zoneText(gap, 'FVG'), gap?.active ? gap.side : 0);
+  // Match Prime's closed-candle convention and three-bar sweep confirmation window.
+  const lastClosedIndex = state.data.length - 2;
+  const sweep = (Array.isArray(structure.sweeps) ? structure.sweeps : [])
+    .filter(s => (s.side === 1 || s.side === -1) && primeFinite(s.price) &&
+      Number.isInteger(s.index) && s.index <= lastClosedIndex)
+    .slice().sort((a, b) => b.index - a.index)[0];
+  const recentSweep = sweep && lastClosedIndex - sweep.index <= 3;
+  set('smt-liquidity', sweep
+    ? `${sweep.side === 1 ? 'SELL-SIDE' : 'BUY-SIDE'} SWEPT · ${price(sweep.price)} · ${recentSweep ? 'RECENT' : 'HISTORICAL'}`
+    : 'NONE', recentSweep ? sweep.side : 0);
+  const demand = blocks.find(z => z.active && z.side === 1);
+  const supply = blocks.find(z => z.active && z.side === -1);
+  set('smt-demand-value', range(demand), demand ? 1 : 0);
+  set('smt-supply-value', range(supply), supply ? -1 : 0);
+  set('smt-supply-demand', demand && supply ? 'SUPPLY + DEMAND ACTIVE'
+    : demand ? 'DEMAND ACTIVE' : supply ? 'SUPPLY ACTIVE' : 'NO ACTIVE ZONES',
+    demand && !supply ? 1 : supply && !demand ? -1 : 0);
+  set('pd-range-high', price(structure.high?.price));
+  set('pd-range-low', price(structure.low?.price));
+  set('pd-equilibrium-value', price(structure.equilibrium));
+  const zone = structure.zone || 'UNAVAILABLE';
+  const zoneSide = zone === 'DISCOUNT' ? 1 : zone === 'PREMIUM' ? -1 : 0;
+  set('pd-current-zone', zone, zoneSide);
+  set('pd-status', zone, zoneSide);
+  set('pd-position', typeof structure.position === 'number' && Number.isFinite(structure.position)
+    ? `${(structure.position * 100).toFixed(1)}%` : '—');
+  // Describe evidence without inventing a trading score or overriding Prime's gate.
+  const sides = [block?.active ? block.side : 0, gap?.active ? gap.side : 0,
+    recentSweep ? sweep.side : 0].filter(Boolean);
+  const bull = sides.includes(1), bear = sides.includes(-1);
+  set('smt-status', bull && bear ? 'MIXED' : bull ? 'BULLISH CONTEXT'
+    : bear ? 'BEARISH CONTEXT' : 'NO ACTIVE CONTEXT', bull && !bear ? 1 : bear && !bull ? -1 : 0);
 }
+
 
 function renderPrimeMarket() {
   let panel = document.getElementById('prime-market-panel');
@@ -1016,44 +756,6 @@ if (
 }
 
 
-<!-- PREMIUM / DISCOUNT -->
-<section class="panel smrt-pd-panel">
-  <div class="panel-heading">
-    <div>
-      <span class="eyebrow">DEALING RANGE</span>
-      <h3>Premium / Discount Zones</h3>
-    </div>
-    <span id="pd-status" class="badge">WAIT</span>
-  </div>
-
-  <div class="pd-meter">
-    <div class="pd-premium">PREMIUM</div>
-    <div class="pd-equilibrium">EQUILIBRIUM</div>
-    <div class="pd-discount">DISCOUNT</div>
-  </div>
-
-  <div class="smrt-indicator-grid">
-    <div class="smrt-indicator-row">
-      <span>Current Zone</span>
-      <strong id="pd-current-zone">WAIT</strong>
-    </div>
-
-    <div class="smrt-indicator-row">
-      <span>Range High</span>
-      <strong id="pd-range-high">—</strong>
-    </div>
-
-    <div class="smrt-indicator-row">
-      <span>Equilibrium 50%</span>
-      <strong id="pd-equilibrium-value">—</strong>
-    </div>
-
-    <div class="smrt-indicator-row">
-      <span>Range Low</span>
-      <strong id="pd-range-low">—</strong>
-    </div>
-  </div>
-</section>
 /* ======================================================
    BASIC HELPERS
 ====================================================== */

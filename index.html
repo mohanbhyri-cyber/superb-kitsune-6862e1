@@ -19,7 +19,7 @@
 
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=79">
 </head>
 
 <body>
@@ -2143,6 +2143,41 @@
 
   </div>
 
+  <div class="smrt-context-panels">
+    <section class="panel smrt-smart-money-panel" id="smart-money-tools-panel" aria-labelledby="smt-heading">
+      <div class="panel-heading">
+        <h2 id="smt-heading">Smart Money Tools</h2>
+        <span id="smt-status" class="tag">WAIT</span>
+      </div>
+      <p class="muted">Confirmed closed-candle context from the Prime Market engine.</p>
+      <div class="smrt-indicator-grid">
+        <div class="smrt-indicator-row"><span>Order block</span><strong id="smt-order-block">WAIT</strong></div>
+        <div class="smrt-indicator-row"><span>Fair value gap</span><strong id="smt-fvg">WAIT</strong></div>
+        <div class="smrt-indicator-row"><span>Liquidity sweep</span><strong id="smt-liquidity">WAIT</strong></div>
+        <div class="smrt-indicator-row"><span>Supply / demand</span><strong id="smt-supply-demand">WAIT</strong></div>
+        <div class="smrt-indicator-row"><span>Active demand</span><strong id="smt-demand-value">—</strong></div>
+        <div class="smrt-indicator-row"><span>Active supply</span><strong id="smt-supply-value">—</strong></div>
+      </div>
+    </section>
+    <section class="panel smrt-pd-panel" id="premium-discount-panel" aria-labelledby="pd-heading">
+      <div class="panel-heading">
+        <h2 id="pd-heading">Premium / Discount Zones</h2>
+        <span id="pd-status" class="tag">WAIT</span>
+      </div>
+      <div class="pd-meter" aria-hidden="true">
+        <div class="pd-discount">DISCOUNT</div><div class="pd-equilibrium">EQUILIBRIUM</div><div class="pd-premium">PREMIUM</div>
+      </div>
+      <div class="smrt-indicator-grid">
+        <div class="smrt-indicator-row"><span>Current zone</span><strong id="pd-current-zone">WAIT</strong></div>
+        <div class="smrt-indicator-row"><span>Range position</span><strong id="pd-position">—</strong></div>
+        <div class="smrt-indicator-row"><span>Range high</span><strong id="pd-range-high">—</strong></div>
+        <div class="smrt-indicator-row"><span>Equilibrium 50%</span><strong id="pd-equilibrium-value">—</strong></div>
+        <div class="smrt-indicator-row"><span>Range low</span><strong id="pd-range-low">—</strong></div>
+      </div>
+    </section>
+  </div>
+
+
   <div class="page-footer">
 
     <span>
@@ -2245,7 +2280,7 @@
 
 <script
   type="module"
-  src="app.js?v=78"
+  src="app.js?v=79"
 ></script>
 
 </body>
