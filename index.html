@@ -1,14 +1,14 @@
-\<!doctype html>
+<!doctype html>
 
-\<html lang="en">
+<html lang="en">
 
-\<head>
+<head>
 
-  \<meta charset="utf-8">
+  <meta charset="utf-8">
 
 
 
-  \<meta
+  <meta
 
     name="viewport"
 
@@ -18,11 +18,11 @@
 
 
 
-  \<meta name="theme-color" content="#101719">
+  <meta name="theme-color" content="#101719">
 
 
 
-  \<meta
+  <meta
 
     name="description"
 
@@ -32,177 +32,177 @@
 
 
 
-  \<title>SMRT Algo Pro · NIFTY 50 Live Trading Analysis\</title>
+  <title>SMRT Algo Pro · NIFTY 50 Live Trading Analysis</title>
 
 
 
-  \<link rel="icon" href="icon.svg">
+  <link rel="icon" href="icon.svg">
 
-  \<link rel="manifest" href="manifest.webmanifest">
+  <link rel="manifest" href="manifest.webmanifest">
 
-  \<link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css">
 
-\</head>
-
-
-
-\<body>
+</head>
 
 
 
-\<header>
-
-  \<a class="brand" href="./">
-
-    \<span class="mark">↗\</span>
-
-    SMRT Algo Pro\<span class="brand-dot">.\</span>
-
-  \</a>
+<body>
 
 
 
-  \<nav>
+<header>
 
-    \<a class="selected" href="#terminal">Terminal\</a>
+  <a class="brand" href="./">
 
-    \<a href="#watchlist">Watchlist\</a>
+    <span class="mark">↗</span>
 
-    \<a href="#alerts">
+    SMRT Algo Pro<span class="brand-dot">.</span>
 
-      Alerts \<span id="alert-count">0\</span>
-
-    \</a>
-
-  \</nav>
+  </a>
 
 
 
-  \<div class="header-right">
+  <nav>
 
-    \<span class="demo">● UPSTOX LIVE MARKET\</span>
+    <a class="selected" href="#terminal">Terminal</a>
+
+    <a href="#watchlist">Watchlist</a>
+
+    <a href="#alerts">
+
+      Alerts <span id="alert-count">0</span>
+
+    </a>
+
+  </nav>
 
 
 
-    \<button id="theme" aria-label="Toggle light and dark mode">
+  <div class="header-right">
+
+    <span class="demo">● UPSTOX LIVE MARKET</span>
+
+
+
+    <button id="theme" aria-label="Toggle light and dark mode">
 
       ☼
 
-    \</button>
+    </button>
 
 
 
-    \<button id="install">
+    <button id="install">
 
       Install app ↗
 
-    \</button>
+    </button>
 
 
 
-    \<span class="avatar">KS\</span>
+    <span class="avatar">KS</span>
 
-  \</div>
+  </div>
 
-\</header>
-
-
-
-
-
-\<div class="ticker" id="ticker">\</div>
+</header>
 
 
 
 
 
-\<main id="terminal">
+<div class="ticker" id="ticker"></div>
 
 
 
-  \<div class="page-title">
+
+
+<main id="terminal">
 
 
 
-    \<div>
+  <div class="page-title">
 
-      \<div class="eyebrow">
+
+
+    <div>
+
+      <div class="eyebrow">
 
         LIVE MARKET WORKSPACE
 
-      \</div>
+      </div>
 
 
 
-      \<h1>
+      <h1>
 
-        The trading desk\<span>.\</span>
+        The trading desk<span>.</span>
 
-      \</h1>
+      </h1>
 
-    \</div>
+    </div>
 
 
 
-    \<div class="session">
+    <div class="session">
 
       NSE · UPSTOX
 
 
 
-      \<span>
+      <span>
 
         Live market data · IST · INR
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-  \</div>
+    </div>
 
 
 
-
-
-  \<div class="workspace">
-
-
-
-    \<section class="chart-card">
+  </div>
 
 
 
-      \<div class="instrument">
+
+
+  <div class="workspace">
 
 
 
-        \<div>
+    <section class="chart-card">
 
 
 
-          \<div class="instrument-label">
+      <div class="instrument">
 
 
 
-            \<span class="instrument-icon">
+        <div>
+
+
+
+          <div class="instrument-label">
+
+
+
+            <span class="instrument-icon">
 
               N
 
-            \</span>
+            </span>
 
 
 
-            \<h2 id="symbol-name">
+            <h2 id="symbol-name">
 
               NIFTY 50
 
-            \</h2>
+            </h2>
 
 
 
-            \<span
+            <span
 
               id="instrument-kind"
 
@@ -212,19 +212,19 @@
 
               INDEX
 
-            \</span>
+            </span>
 
 
 
-            \<span class="muted">
+            <span class="muted">
 
               NSE
 
-            \</span>
+            </span>
 
 
 
-            \<span
+            <span
 
               id="trading-date"
 
@@ -234,49 +234,49 @@
 
               —
 
-            \</span>
+            </span>
 
 
 
-          \</div>
+          </div>
 
 
 
 
 
-          \<div class="quote">
+          <div class="quote">
 
 
 
-            \<strong id="price">
+            <strong id="price">
 
               —
 
-            \</strong>
+            </strong>
 
 
 
-            \<span
+            <span
 
               id="change"
 
               class="up"
 
-            >\</span>
+            ></span>
 
 
 
-          \</div>
+          </div>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<button
+        <button
 
           class="outline"
 
@@ -284,23 +284,23 @@
 
         >
 
-          ♧ \<span>Create alert\</span>
+          ♧ <span>Create alert</span>
 
-        \</button>
-
-
-
-      \</div>
+        </button>
 
 
 
+      </div>
 
 
-      \<div class="chart-controls">
 
 
 
-        \<div
+      <div class="chart-controls">
+
+
+
+        <div
 
           class="timeframes"
 
@@ -310,23 +310,23 @@
 
 
 
-          \<button data-tf="1m">
+          <button data-tf="1m">
 
             1m
 
-          \</button>
+          </button>
 
 
 
-          \<button data-tf="3m">
+          <button data-tf="3m">
 
             3m
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             data-tf="5m"
 
@@ -336,33 +336,33 @@
 
             5m
 
-          \</button>
+          </button>
 
 
 
-          \<button data-tf="15m">
+          <button data-tf="15m">
 
             15m
 
-          \</button>
+          </button>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="control-right">
+        <div class="control-right">
 
 
 
-          \<div class="replay-controls">
+          <div class="replay-controls">
 
 
 
-            \<button
+            <button
 
               id="replay-toggle"
 
@@ -372,11 +372,11 @@
 
               ↶ Replay
 
-            \</button>
+            </button>
 
 
 
-            \<button
+            <button
 
               id="replay-play"
 
@@ -388,11 +388,11 @@
 
               ▶ Play
 
-            \</button>
+            </button>
 
 
 
-            \<button
+            <button
 
               id="replay-step"
 
@@ -404,11 +404,11 @@
 
               +1 Candle
 
-            \</button>
+            </button>
 
 
 
-            \<select
+            <select
 
               id="replay-speed"
 
@@ -416,13 +416,13 @@
 
             >
 
-              \<option value="1200">
+              <option value="1200">
 
                 0.5×
 
-              \</option>
+              </option>
 
-              \<option
+              <option
 
                 value="700"
 
@@ -432,25 +432,25 @@
 
                 1×
 
-              \</option>
+              </option>
 
-              \<option value="350">
+              <option value="350">
 
                 2×
 
-              \</option>
+              </option>
 
-              \<option value="180">
+              <option value="180">
 
                 4×
 
-              \</option>
+              </option>
 
-            \</select>
+            </select>
 
 
 
-            \<button
+            <button
 
               id="replay-live"
 
@@ -462,11 +462,11 @@
 
               Live
 
-            \</button>
+            </button>
 
 
 
-            \<span
+            <span
 
               id="replay-status"
 
@@ -476,23 +476,23 @@
 
               LIVE
 
-            \</span>
+            </span>
 
 
 
-          \</div>
+          </div>
 
 
 
-          \<button id="indicators-toggle">
+          <button id="indicators-toggle">
 
             ≋ Indicators
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             id="reset-view"
 
@@ -502,21 +502,21 @@
 
             ⛶
 
-          \</button>
+          </button>
 
 
 
-        \</div>
+        </div>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<section
+      <section
 
         id="mtf-confirmation"
 
@@ -526,119 +526,119 @@
 
 
 
-        \<div class="mtf-title">
+        <div class="mtf-title">
 
 
 
-          \<strong>
+          <strong>
 
             Multi-Timeframe Confirmation
 
-          \</strong>
+          </strong>
 
 
 
-          \<span class="muted">
+          <span class="muted">
 
             5m + 15m + 1h
 
-          \</span>
+          </span>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="mtf-grid">
+        <div class="mtf-grid">
 
 
 
-          \<div>
+          <div>
 
-            \<small>5m\</small>
+            <small>5m</small>
 
-            \<strong id="mtf-5m" class="muted">
-
-              LOADING…
-
-            \</strong>
-
-          \</div>
-
-
-
-          \<div>
-
-            \<small>15m\</small>
-
-            \<strong id="mtf-15m" class="muted">
+            <strong id="mtf-5m" class="muted">
 
               LOADING…
 
-            \</strong>
+            </strong>
 
-          \</div>
+          </div>
 
 
 
-          \<div>
+          <div>
 
-            \<small>1h\</small>
+            <small>15m</small>
 
-            \<strong id="mtf-1h" class="muted">
+            <strong id="mtf-15m" class="muted">
 
               LOADING…
 
-            \</strong>
+            </strong>
 
-          \</div>
+          </div>
 
 
 
-          \<div class="mtf-overall">
+          <div>
 
-            \<small>Overall\</small>
+            <small>1h</small>
 
-            \<strong id="mtf-overall" class="muted">
+            <strong id="mtf-1h" class="muted">
+
+              LOADING…
+
+            </strong>
+
+          </div>
+
+
+
+          <div class="mtf-overall">
+
+            <small>Overall</small>
+
+            <strong id="mtf-overall" class="muted">
 
               NO TRADE
 
-            \</strong>
+            </strong>
 
-          \</div>
-
-
-
-        \</div>
+          </div>
 
 
 
-      \</section>
+        </div>
+
+
+
+      </section>
 
 
 
 
 
-      \<div
+      <div
 
         id="indicators"
 
         class="indicator-list"
 
-      >\</div>
+      ></div>
 
 
 
 
 
-      \<!-- STRIDE SIGNALS -->
+      <!-- STRIDE SIGNALS -->
 
 
 
-      \<div
+      <div
 
         id="stride-settings"
 
@@ -648,25 +648,25 @@
 
 
 
-        \<div class="stride-settings-top">
+        <div class="stride-settings-top">
 
 
 
-          \<strong>
+          <strong>
 
             Stride Signals
 
-            \<span class="tag">
+            <span class="tag">
 
               LIVE ANALYSIS
 
-            \</span>
+            </span>
 
-          \</strong>
+          </strong>
 
 
 
-          \<label for="signal-sensitivity">
+          <label for="signal-sensitivity">
 
 
 
@@ -674,19 +674,19 @@
 
 
 
-            \<select id="signal-sensitivity">
+            <select id="signal-sensitivity">
 
 
 
-              \<option value="fast">
+              <option value="fast">
 
                 Fast · 1.5× ATR
 
-              \</option>
+              </option>
 
 
 
-              \<option
+              <option
 
                 value="balanced"
 
@@ -696,111 +696,111 @@
 
                 Balanced · 2.5× ATR
 
-              \</option>
+              </option>
 
 
 
-              \<option value="slow">
+              <option value="slow">
 
                 Slow · 3.5× ATR
 
-              \</option>
+              </option>
 
 
 
-            \</select>
+            </select>
 
 
 
-          \</label>
+          </label>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="stride-readout">
+        <div class="stride-readout">
 
 
 
-          \<b id="stride-status">
+          <b id="stride-status">
 
             Loading…
 
-          \</b>
+          </b>
 
 
 
-          \<span id="stride-stop">\</span>
+          <span id="stride-stop"></span>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="stride-note">
+        <div class="stride-note">
 
 
 
-          \<span id="stride-last">\</span>
+          <span id="stride-last"></span>
 
 
 
-          \<span>
+          <span>
 
             Closed candles only · ATR 14
 
-          \</span>
+          </span>
 
 
 
-        \</div>
+        </div>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<!-- MOMENTUM -->
+      <!-- MOMENTUM -->
 
 
 
-      \<section class="scalp-panel">
+      <section class="scalp-panel">
 
 
 
-        \<div class="panel-heading">
+        <div class="panel-heading">
 
 
 
-          \<h2>
+          <h2>
 
             Stride Momentum
 
-            \<span class="tag">
+            <span class="tag">
 
               LIVE ANALYSIS
 
-            \</span>
+            </span>
 
-          \</h2>
-
-
-
-          \<label class="signal-switch">
+          </h2>
 
 
 
-            \<input
+          <label class="signal-switch">
+
+
+
+            <input
 
               type="checkbox"
 
@@ -814,41 +814,41 @@
 
 
 
-          \</label>
+          </label>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<p
+        <p
 
           id="momentum-status"
 
           class="pa-note"
 
-        >\</p>
+        ></p>
 
 
 
 
 
-        \<details class="pa-guide">
+        <details class="pa-guide">
 
 
 
-          \<summary>
+          <summary>
 
             Momentum signal rules
 
-          \</summary>
+          </summary>
 
 
 
-          \<p>
+          <p>
 
             BUY when RSI 14 crosses above 55 and price closes above EMA 50.
 
@@ -856,61 +856,61 @@
 
             Signals use closed candles after 50 bars of warm-up.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
             Rules are calculated from the Upstox market candle series.
 
             Signals are analytical outputs and are not executed orders.
 
-          \</p>
+          </p>
 
 
 
-        \</details>
+        </details>
 
 
 
-      \</section>
+      </section>
 
 
 
 
 
-      \<!-- PRO SCALPER -->
+      <!-- PRO SCALPER -->
 
 
 
-      \<section class="scalp-panel">
+      <section class="scalp-panel">
 
 
 
-        \<div class="panel-heading">
+        <div class="panel-heading">
 
 
 
-          \<h2>
+          <h2>
 
             Pro Scalper
 
-            \<span class="tag">
+            <span class="tag">
 
               LIVE
 
-            \</span>
+            </span>
 
-          \</h2>
-
-
-
-          \<label class="signal-switch">
+          </h2>
 
 
 
-            \<input
+          <label class="signal-switch">
+
+
+
+            <input
 
               type="checkbox"
 
@@ -924,59 +924,59 @@
 
 
 
-          \</label>
+          </label>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="scalp-toolbar">
+        <div class="scalp-toolbar">
 
 
 
-          \<div>
+          <div>
 
 
 
-            \<button data-scalp-tf="1m">
+            <button data-scalp-tf="1m">
 
               1m
 
-            \</button>
+            </button>
 
 
 
-            \<button data-scalp-tf="3m">
+            <button data-scalp-tf="3m">
 
               3m
 
-            \</button>
+            </button>
 
 
 
-            \<button data-scalp-tf="5m">
+            <button data-scalp-tf="5m">
 
               5m
 
-            \</button>
+            </button>
 
 
 
-          \</div>
+          </div>
 
 
 
 
 
-          \<label class="signal-switch">
+          <label class="signal-switch">
 
 
 
-            \<input
+            <input
 
               type="checkbox"
 
@@ -990,115 +990,115 @@
 
 
 
-          \</label>
+          </label>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<strong id="scalp-state">
+        <strong id="scalp-state">
 
           Loading…
 
-        \</strong>
+        </strong>
 
 
 
 
 
-        \<p
+        <p
 
           id="scalp-confirmations"
 
           class="pa-note"
 
-        >\</p>
+        ></p>
 
 
 
 
 
-        \<p
+        <p
 
           id="scalp-setup"
 
           class="pa-note"
 
-        >\</p>
+        ></p>
 
 
 
 
 
-        \<div class="scalp-levels">
+        <div class="scalp-levels">
 
 
 
-          \<div>
+          <div>
 
             Entry
 
-            \<strong id="scalp-entry">
+            <strong id="scalp-entry">
 
               —
 
-            \</strong>
+            </strong>
 
-          \</div>
+          </div>
 
 
 
-          \<div>
+          <div>
 
             Stop · 1.5× ATR
 
-            \<strong id="scalp-stop">
+            <strong id="scalp-stop">
 
               —
 
-            \</strong>
+            </strong>
 
-          \</div>
+          </div>
 
 
 
-          \<div>
+          <div>
 
             Target · 2R
 
-            \<strong id="scalp-target">
+            <strong id="scalp-target">
 
               —
 
-            \</strong>
+            </strong>
 
-          \</div>
-
-
-
-        \</div>
+          </div>
 
 
 
+        </div>
 
 
-        \<details class="pa-guide">
 
 
 
-          \<summary>
+        <details class="pa-guide">
+
+
+
+          <summary>
 
             Scalper rules and alerts
 
-          \</summary>
+          </summary>
 
 
 
-          \<p>
+          <p>
 
             BUY: EMA 9 above EMA 21 and RSI 14 between 52 and 70.
 
@@ -1106,11 +1106,11 @@
 
             be above VWAP.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
             SELL: EMA 9 below EMA 21 and RSI between 30 and 48.
 
@@ -1118,11 +1118,11 @@
 
             be below VWAP.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
             NIFTY index volume may be unavailable. The system does not
 
@@ -1130,25 +1130,25 @@
 
             analytical levels and are not automatically executed orders.
 
-          \</p>
+          </p>
 
 
 
-        \</details>
+        </details>
 
 
 
-      \</section>
+      </section>
 
 
 
 
 
-      \<!-- PRICE ACTION -->
+      <!-- PRICE ACTION -->
 
 
 
-      \<details
+      <details
 
         class="pa-panel"
 
@@ -1158,7 +1158,7 @@
 
 
 
-        \<summary>
+        <summary>
 
 
 
@@ -1166,157 +1166,157 @@
 
 
 
-          \<span class="tag">
+          <span class="tag">
 
             LIVE ANALYSIS
 
-          \</span>
+          </span>
 
 
 
-        \</summary>
+        </summary>
 
 
 
 
 
-        \<div
+        <div
 
           id="pa-toggles"
 
           class="pa-toggles"
 
-        >\</div>
+        ></div>
 
 
 
 
 
-        \<div
+        <div
 
           id="pa-summary"
 
           class="pa-summary"
 
-        >\</div>
+        ></div>
 
 
 
 
 
-        \<div
+        <div
 
           id="pa-last"
 
           class="pa-note"
 
-        >\</div>
+        ></div>
 
 
 
 
 
-        \<details class="pa-guide">
+        <details class="pa-guide">
 
 
 
-          \<summary>
+          <summary>
 
             How to read these overlays
 
-          \</summary>
+          </summary>
 
 
 
-          \<p>
+          <p>
 
-            \<b>BOS\</b>: a candle closes beyond the latest confirmed swing.
+            <b>BOS</b>: a candle closes beyond the latest confirmed swing.
 
-            \<b>CHoCH\</b>: the break opposes the previous structure direction.
+            <b>CHoCH</b>: the break opposes the previous structure direction.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
-            \<b>HH / HL / LH / LL\</b>: higher high, higher low,
+            <b>HH / HL / LH / LL</b>: higher high, higher low,
 
             lower high and lower low.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
-            \<b>OB\</b>: the last opposing candle within the configured
+            <b>OB</b>: the last opposing candle within the configured
 
             lookback before a structure break.
 
-            \<b>FVG\</b>: a gap identified between candle wick ranges.
+            <b>FVG</b>: a gap identified between candle wick ranges.
 
-          \</p>
+          </p>
 
 
 
-          \<p>
+          <p>
 
             These are rule-based price-action interpretations calculated
 
             from the loaded Upstox candles.
 
-          \</p>
+          </p>
 
 
 
-        \</details>
+        </details>
 
 
 
-      \</details>
+      </details>
 
 
 
 
 
-      \<!-- CHART -->
+      <!-- CHART -->
 
 
 
-      \<div class="tv-pro-toolbar">
+      <div class="tv-pro-toolbar">
 
 
 
-        \<div class="tv-pro-left">
+        <div class="tv-pro-left">
 
-          \<strong class="tv-pro-symbol">NIFTY 50\</strong>
-
-
-
-          \<span class="tv-pro-sep">\</span>
+          <strong class="tv-pro-symbol">NIFTY 50</strong>
 
 
 
-          \<div class="tv-pro-timeframes">
-
-            \<button data-tf="1m">1m\</button>
-
-            \<button data-tf="3m">3m\</button>
-
-            \<button data-tf="5m" class="active">5m\</button>
-
-            \<button data-tf="15m">15m\</button>
-
-          \</div>
+          <span class="tv-pro-sep"></span>
 
 
 
-          \<span class="tv-pro-sep">\</span>
+          <div class="tv-pro-timeframes">
+
+            <button data-tf="1m">1m</button>
+
+            <button data-tf="3m">3m</button>
+
+            <button data-tf="5m" class="active">5m</button>
+
+            <button data-tf="15m">15m</button>
+
+          </div>
 
 
 
-          \<button
+          <span class="tv-pro-sep"></span>
+
+
+
+          <button
 
             type="button"
 
@@ -1328,11 +1328,11 @@
 
             ƒx Indicators
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             type="button"
 
@@ -1344,15 +1344,15 @@
 
             Reset
 
-          \</button>
+          </button>
 
-        \</div>
+        </div>
 
 
 
-        \<div class="tv-pro-right">
+        <div class="tv-pro-right">
 
-          \<span
+          <span
 
             id="tv-pro-status"
 
@@ -1362,11 +1362,11 @@
 
             UPSTOX · NIFTY 50
 
-          \</span>
+          </span>
 
 
 
-          \<button
+          <button
 
             type="button"
 
@@ -1378,25 +1378,25 @@
 
             Dark Mode
 
-          \</button>
+          </button>
 
-        \</div>
-
-
-
-      \</div>
+        </div>
 
 
 
-      \<div class="chart-wrap">
+      </div>
 
 
 
-        \<div class="draw-tools">
+      <div class="chart-wrap">
 
 
 
-          \<button
+        <div class="draw-tools">
+
+
+
+          <button
 
             data-tool="cursor"
 
@@ -1410,11 +1410,11 @@
 
             ⌖
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             data-tool="trend"
 
@@ -1426,11 +1426,11 @@
 
             ╱
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             data-tool="level"
 
@@ -1442,11 +1442,11 @@
 
             ☰
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             data-tool="entry"
 
@@ -1458,11 +1458,11 @@
 
             ↗
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             data-tool="exit"
 
@@ -1474,11 +1474,11 @@
 
             ↘
 
-          \</button>
+          </button>
 
 
 
-          \<button
+          <button
 
             id="undo"
 
@@ -1490,21 +1490,21 @@
 
             ↶
 
-          \</button>
+          </button>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="canvas-area">
+        <div class="canvas-area">
 
 
 
-          \<div
+          <div
 
             id="tradingview-datafeed-status"
 
@@ -1514,13 +1514,13 @@
 
             TradingView Lightweight · Upstox LIVE
 
-          \</div>
+          </div>
 
 
 
-          \<div class="chart-view-toggle">
+          <div class="chart-view-toggle">
 
-            \<button
+            <button
 
               type="button"
 
@@ -1532,11 +1532,11 @@
 
               TradingView
 
-            \</button>
+            </button>
 
 
 
-            \<button
+            <button
 
               type="button"
 
@@ -1546,23 +1546,23 @@
 
               Classic
 
-            \</button>
+            </button>
 
-          \</div>
+          </div>
 
 
 
-          \<div
+          <div
 
             id="ohlc"
 
             class="ohlc"
 
-          >\</div>
+          ></div>
 
 
 
-          \<div
+          <div
 
             id="tv-advanced-chart"
 
@@ -1570,11 +1570,11 @@
 
             aria-label="TradingView Advanced Charts NIFTY chart"
 
-          >\</div>
+          ></div>
 
 
 
-          \<div
+          <div
 
             id="tv-lightweight-chart"
 
@@ -1582,21 +1582,21 @@
 
             aria-label="TradingView Lightweight Charts NIFTY chart"
 
-          >\</div>
+          ></div>
 
 
 
-          \<canvas
+          <canvas
 
             id="chart"
 
             aria-label="Live NIFTY candlestick chart"
 
-          >\</canvas>
+          ></canvas>
 
 
 
-          \<div
+          <div
 
             id="chart-tip"
 
@@ -1606,163 +1606,163 @@
 
             Scroll to zoom · drag to pan
 
-          \</div>
+          </div>
 
 
 
-        \</div>
+        </div>
 
 
 
-      \</div>
+      </div>
 
 
 
-      \<div class="tv-range-bar">
+      <div class="tv-range-bar">
 
-        \<button data-tv-range="40">1D\</button>
+        <button data-tv-range="40">1D</button>
 
-        \<button data-tv-range="80">2D\</button>
+        <button data-tv-range="80">2D</button>
 
-        \<button data-tv-range="120">More\</button>
+        <button data-tv-range="120">More</button>
 
-        \<button data-tv-range="fit">Fit\</button>
-
-
-
-        \<span class="tv-range-spacer">\</span>
+        <button data-tv-range="fit">Fit</button>
 
 
 
-        \<span id="tv-range-clock">
+        <span class="tv-range-spacer"></span>
+
+
+
+        <span id="tv-range-clock">
 
           IST · LIVE
 
-        \</span>
+        </span>
 
-      \</div>
-
-
+      </div>
 
 
 
-      \<!-- RSI -->
+
+
+      <!-- RSI -->
 
 
 
-      \<div class="lower-chart">
+      <div class="lower-chart">
 
 
 
-        \<div class="pane-label">
+        <div class="pane-label">
 
 
 
           RSI
 
-          \<span>14\</span>
+          <span>14</span>
 
 
 
-          \<b id="rsi-value">\</b>
+          <b id="rsi-value"></b>
 
 
 
-          \<span class="pane-note">
+          <span class="pane-note">
 
             30 oversold / 70 overbought
 
-          \</span>
+          </span>
 
 
 
-        \</div>
+        </div>
 
 
 
-        \<canvas
+        <canvas
 
           id="rsi"
 
           aria-label="Relative strength index chart"
 
-        >\</canvas>
+        ></canvas>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<!-- MACD -->
+      <!-- MACD -->
 
 
 
-      \<div class="lower-chart">
+      <div class="lower-chart">
 
 
 
-        \<div class="pane-label">
+        <div class="pane-label">
 
 
 
           MACD
 
-          \<span>12 26 9\</span>
+          <span>12 26 9</span>
 
 
 
-          \<b id="macd-value">\</b>
+          <b id="macd-value"></b>
 
 
 
-        \</div>
+        </div>
 
 
 
-        \<canvas
+        <canvas
 
           id="macd"
 
           aria-label="MACD indicator chart"
 
-        >\</canvas>
+        ></canvas>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<footer class="chart-footer">
+      <footer class="chart-footer">
 
 
 
-        \<span id="updated">
+        <span id="updated">
 
           Connecting to Upstox…
 
-        \</span>
+        </span>
 
 
 
-        \<span>
+        <span>
 
           IST · UTC+05:30
 
-          \<b>INR\</b>
+          <b>INR</b>
 
           ·
 
-          \<a
+          <a
 
-            href="https\://www\.tradingview\.com/"
+            href="https://www.tradingview.com/"
 
-            target="\_blank"
+            target="_blank"
 
             rel="noopener noreferrer"
 
@@ -1772,31 +1772,31 @@
 
             Charts by TradingView
 
-          \</a>
+          </a>
 
-        \</span>
-
-
-
-      \</footer>
+        </span>
 
 
 
-    \</section>
+      </footer>
+
+
+
+    </section>
 
 
 
 
 
-    \<!-- WATCHLIST -->
+    <!-- WATCHLIST -->
 
 
 
-    \<aside>
+    <aside>
 
 
 
-      \<section
+      <section
 
         class="panel"
 
@@ -1806,33 +1806,33 @@
 
 
 
-        \<div class="panel-heading">
+        <div class="panel-heading">
 
 
 
-          \<h2>Watchlist\</h2>
+          <h2>Watchlist</h2>
 
 
 
-          \<span class="tag">
+          <span class="tag">
 
             UPSTOX
 
-          \</span>
+          </span>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="watch-tabs">
+        <div class="watch-tabs">
 
 
 
-          \<button
+          <button
 
             class="active"
 
@@ -1842,81 +1842,81 @@
 
             All instruments
 
-          \</button>
+          </button>
 
 
 
-          \<button data-filter="fo">
+          <button data-filter="fo">
 
             F&O
 
-          \</button>
+          </button>
 
 
 
-        \</div>
-
-
-
-
-
-        \<div class="list-label">
-
-
-
-          \<span>INSTRUMENT\</span>
-
-          \<span>LAST / CHANGE\</span>
-
-
-
-        \</div>
+        </div>
 
 
 
 
 
-        \<div id="watch-rows">\</div>
+        <div class="list-label">
+
+
+
+          <span>INSTRUMENT</span>
+
+          <span>LAST / CHANGE</span>
+
+
+
+        </div>
 
 
 
 
 
-        \<div class="watch-foot">
+        <div id="watch-rows"></div>
+
+
+
+
+
+        <div class="watch-foot">
 
           Live quotes refresh automatically
 
-        \</div>
+        </div>
 
 
 
-      \</section>
+      </section>
 
 
 
 
 
-      \<!-- TECHNICAL OUTLOOK -->
+      <!-- TECHNICAL OUTLOOK -->
 
 
 
-      \<section class="panel signal">
+      <section class="panel signal">
 
 
 
-        \<div class="panel-heading">
+        <div class="panel-heading">
 
 
 
-          \<h2>
+          <h2>
 
             Technical outlook
 
-          \</h2>
+          </h2>
 
 
 
-          \<span
+          <span
 
             class="tag"
 
@@ -1926,79 +1926,79 @@
 
             5m
 
-          \</span>
+          </span>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div class="signal-main">
+        <div class="signal-main">
 
 
 
-          \<span id="signal-icon">
+          <span id="signal-icon">
 
             →
 
-          \</span>
+          </span>
 
 
 
-          \<div>
+          <div>
 
 
 
-            \<strong id="signal-label">
+            <strong id="signal-label">
 
               Neutral
 
-            \</strong>
+            </strong>
 
 
 
-            \<p id="signal-summary">\</p>
+            <p id="signal-summary"></p>
 
 
 
-          \</div>
+          </div>
 
 
 
-        \</div>
-
-
-
-
-
-        \<div class="signal-meter">
-
-          \<i>\</i>
-
-          \<i>\</i>
-
-          \<i>\</i>
-
-          \<i>\</i>
-
-          \<i>\</i>
-
-        \</div>
+        </div>
 
 
 
 
 
-        \<div id="signal-reasons">\</div>
+        <div class="signal-meter">
+
+          <i></i>
+
+          <i></i>
+
+          <i></i>
+
+          <i></i>
+
+          <i></i>
+
+        </div>
 
 
 
 
 
-        \<p class="disclaimer">
+        <div id="signal-reasons"></div>
+
+
+
+
+
+        <p class="disclaimer">
 
           Rule-based analysis from Upstox candles. Signals can lag or
 
@@ -2006,151 +2006,151 @@
 
           and no order is automatically executed.
 
-        \</p>
+        </p>
 
 
 
-        \<details class="tradeiq-toolkit">
+        <details class="tradeiq-toolkit">
 
-          \<summary>TradeIQ toolkit \<span id="tradeiq-state">Loading…\</span>\</summary>
+          <summary>TradeIQ toolkit <span id="tradeiq-state">Loading…</span></summary>
 
-          \<div class="tradeiq-body">
+          <div class="tradeiq-body">
 
-            \<div class="toolkit-row">\<span>Supertrend (10, 3)\</span>\<b id="tradeiq-trend">—\</b>\</div>
+            <div class="toolkit-row"><span>Supertrend (10, 3)</span><b id="tradeiq-trend">—</b></div>
 
-            \<div class="toolkit-row">\<span>ADX/DMI (14), ADX ≥ 20\</span>\<b id="tradeiq-strength">—\</b>\</div>
+            <div class="toolkit-row"><span>ADX/DMI (14), ADX ≥ 20</span><b id="tradeiq-strength">—</b></div>
 
-            \<div class="toolkit-row">\<span>EMA 9/21 + RSI 14\</span>\<b id="tradeiq-momentum">—\</b>\</div>
+            <div class="toolkit-row"><span>EMA 9/21 + RSI 14</span><b id="tradeiq-momentum">—</b></div>
 
-            \<p>Custom confluence check on the last closed candle. All three
+            <p>Custom confluence check on the last closed candle. All three
 
               must agree for BUY or SELL alignment. “WAIT” means mixed
 
-              conditions. This does not place orders or predict returns.\</p>
+              conditions. This does not place orders or predict returns.</p>
 
-          \</div>
+          </div>
 
-        \</details>
+        </details>
 
 
 
-        \<details class="indicator-evaluation">
+        <details class="indicator-evaluation">
 
-          \<summary>Risk disclaimer &amp; evaluation framework\</summary>
+          <summary>Risk disclaimer &amp; evaluation framework</summary>
 
-          \<div class="evaluation-body">
+          <div class="evaluation-body">
 
-            \<p>\<strong>Read the filters:\</strong> Supertrend shows trend
+            <p><strong>Read the filters:</strong> Supertrend shows trend
 
               direction. ADX measures strength, while +DI and -DI show
 
               directional movement. A directional outlook needs ADX
 
-              at least 20 and matching DI when this filter is on.\</p>
+              at least 20 and matching DI when this filter is on.</p>
 
-            \<p>\<strong>Know the limits:\</strong> Sideways markets can
+            <p><strong>Know the limits:</strong> Sideways markets can
 
               cause false signals. Rapid moves, gaps and slippage can
 
               make an actual trade differ from the chart. This view
 
-              does not measure returns or account for trading costs.\</p>
+              does not measure returns or account for trading costs.</p>
 
-            \<ol>
+            <ol>
 
-              \<li>Choose the instrument, timeframe, entry, exit and
+              <li>Choose the instrument, timeframe, entry, exit and
 
-                maximum risk before reviewing results.\</li>
+                maximum risk before reviewing results.</li>
 
-              \<li>Record every signal on a closed candle, including
+              <li>Record every signal on a closed candle, including
 
-                signals the filters reject.\</li>
+                signals the filters reject.</li>
 
-              \<li>Compare outcomes after costs across many sessions.
+              <li>Compare outcomes after costs across many sessions.
 
                 Track sample size, win rate, average gain and loss,
 
-                and largest drawdown.\</li>
+                and largest drawdown.</li>
 
-              \<li>Check later, unseen sessions before relying on any
+              <li>Check later, unseen sessions before relying on any
 
                 apparent pattern. Past results cannot guarantee future
 
-                returns.\</li>
+                returns.</li>
 
-            \</ol>
+            </ol>
 
-            \<a href="https\://investor.sebi.gov.in/investment-thingsbeforeinv.html"
+            <a href="https://investor.sebi.gov.in/investment-thingsbeforeinv.html"
 
-               target="\_blank" rel="noopener noreferrer">SEBI investor risk guidance ↗\</a>
+               target="_blank" rel="noopener noreferrer">SEBI investor risk guidance ↗</a>
 
-          \</div>
+          </div>
 
-        \</details>
-
-
-
-      \</section>
+        </details>
 
 
 
-    \</aside>
+      </section>
 
 
 
-  \</div>
+    </aside>
+
+
+
+  </div>
 
 
 
 
 
-  \<!-- BOTTOM PANELS -->
+  <!-- BOTTOM PANELS -->
 
 
 
-  \<div class="bottom-grid">
+  <div class="bottom-grid">
 
 
 
-    \<section class="panel levels">
+    <section class="panel levels">
 
 
 
-      \<div class="panel-heading">
+      <div class="panel-heading">
 
 
 
-        \<h2>
+        <h2>
 
           Key levels
 
-        \</h2>
+        </h2>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           Visible range
 
-        \</span>
+        </span>
 
 
 
-      \</div>
+      </div>
 
 
 
-      \<div id="levels">\</div>
+      <div id="levels"></div>
 
 
 
-    \</section>
+    </section>
 
 
 
 
 
-    \<section
+    <section
 
       class="panel"
 
@@ -2160,27 +2160,27 @@
 
 
 
-      \<div class="signal-alert-box">
+      <div class="signal-alert-box">
 
 
 
-        \<div class="panel-heading">
+        <div class="panel-heading">
 
 
 
-          \<h2>
+          <h2>
 
             BUY / SELL signal alerts
 
-          \</h2>
+          </h2>
 
 
 
-          \<label class="signal-switch">
+          <label class="signal-switch">
 
 
 
-            \<input
+            <input
 
               type="checkbox"
 
@@ -2194,29 +2194,29 @@
 
 
 
-          \</label>
+          </label>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div
+        <div
 
           id="signal-alert-status"
 
           class="up"
 
-        >\</div>
+        ></div>
 
 
 
 
 
-        \<p class="disclaimer">
+        <p class="disclaimer">
 
           Live Upstox BUY / SELL signals are monitored on the selected
 
@@ -2224,39 +2224,39 @@
 
           alerts while the online app is open or installed.
 
-        \</p>
+        </p>
 
 
 
 
 
-        \<div class="signal-test-buttons">
+        <div class="signal-test-buttons">
 
 
 
-          \<button data-test-signal="BUY">
+          <button data-test-signal="BUY">
 
             Test BUY alert
 
-          \</button>
+          </button>
 
 
 
-          \<button data-test-signal="SELL">
+          <button data-test-signal="SELL">
 
             Test SELL alert
 
-          \</button>
+          </button>
 
 
 
-        \</div>
+        </div>
 
 
 
 
 
-        \<div
+        <div
 
           id="signal-alert-history"
 
@@ -2264,25 +2264,25 @@
 
           aria-live="polite"
 
-        >\</div>
+        ></div>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<div class="panel-heading">
+      <div class="panel-heading">
 
 
 
-        \<h2>
+        <h2>
 
           Price alerts
 
-          \<span
+          <span
 
             id="alert-total"
 
@@ -2292,13 +2292,13 @@
 
             0
 
-          \</span>
+          </span>
 
-        \</h2>
+        </h2>
 
 
 
-        \<button
+        <button
 
           id="new-alert"
 
@@ -2308,53 +2308,53 @@
 
           + New alert
 
-        \</button>
+        </button>
 
 
 
-      \</div>
+      </div>
 
 
 
 
 
-      \<div
+      <div
 
         id="alert-list"
 
         class="alert-list"
 
-      >\</div>
+      ></div>
 
 
 
 
 
-      \<p class="disclaimer">
+      <p class="disclaimer">
 
         Stored on this device. Live price alerts run while the online
 
         app is open or installed.
 
-      \</p>
+      </p>
 
 
 
-    \</section>
+    </section>
 
 
 
-  \</div>
+  </div>
 
 
 
 
 
-  \<!-- STRIDE PRO TRADING SUITE -->
+  <!-- STRIDE PRO TRADING SUITE -->
 
 
 
-  \<style>
+  <style>
 
     .pro-suite-panel {
 
@@ -2564,147 +2564,147 @@
 
     }
 
-  \</style>
+  </style>
 
 
 
-  \<section class="panel pro-suite-panel">
+  <section class="panel pro-suite-panel">
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>SMRT NIFTY EDGE PRO\</h2>
+      <h2>SMRT NIFTY EDGE PRO</h2>
 
 
 
-      \<span class="pro-suite-badge">
+      <span class="pro-suite-badge">
 
         NIFTY 50 LIVE
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>Smart Signal\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong id="smart-signal" data-side="WAIT">
+      <div class="pro-suite-card">
+
+        <small>Smart Signal</small>
+
+
+
+        <strong id="smart-signal" data-side="WAIT">
 
           WAIT
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="smart-strength">
+        <span id="smart-strength">
 
           Strength: —
 
-        \</span>
+        </span>
 
 
 
-        \<span id="smart-confluence">
+        <span id="smart-confluence">
 
           Confluence: —
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Market Analysis\</small>
+      </div>
 
 
 
-        \<strong id="smart-market-state">
+      <div class="pro-suite-card">
+
+        <small>Market Analysis</small>
+
+
+
+        <strong id="smart-market-state">
 
           Market: WAIT
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="smart-structure">
+        <span id="smart-structure">
 
           Structure: —
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card trade-plan-card">
-
-        \<small>Trade Plan\</small>
+      </div>
 
 
 
-        \<span id="smart-entry">
+      <div class="pro-suite-card trade-plan-card">
+
+        <small>Trade Plan</small>
+
+
+
+        <span id="smart-entry">
 
           Entry: —
 
-        \</span>
+        </span>
 
 
 
-        \<span id="smart-stop">
+        <span id="smart-stop">
 
           Stop: —
 
-        \</span>
+        </span>
 
 
 
-        \<span id="smart-target1">
+        <span id="smart-target1">
 
           Target 1: —
 
-        \</span>
+        </span>
 
 
 
-        \<span id="smart-target2">
+        <span id="smart-target2">
 
           Target 2: —
 
-        \</span>
+        </span>
 
 
 
-        \<span id="smart-rr">
+        <span id="smart-rr">
 
           R:R: —
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-  \</section>
+    </div>
 
 
 
-\<script>
+  </section>
+
+
+
+<script>
 
     document.addEventListener(
 
@@ -2788,17 +2788,17 @@
 
     );
 
-  \</script>
+  </script>
 
 
 
 
 
-  \<div class="analysis-layout-grid">
+  <div class="analysis-layout-grid">
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -2810,125 +2810,125 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT Market Map
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         Support · Resistance · Trend · Reversal
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-backtest-grid">
+    </div>
 
 
 
-      \<div>
-
-        \<small>Nearest Support\</small>
-
-        \<strong id="market-map-support">—\</strong>
-
-      \</div>
+    <div class="pro-backtest-grid">
 
 
 
-      \<div>
+      <div>
 
-        \<small>Nearest Resistance\</small>
+        <small>Nearest Support</small>
 
-        \<strong id="market-map-resistance">—\</strong>
+        <strong id="market-map-support">—</strong>
 
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>Trend\</small>
+        <small>Nearest Resistance</small>
 
-        \<strong id="market-map-trend" class="muted">
+        <strong id="market-map-resistance">—</strong>
+
+      </div>
+
+
+
+      <div>
+
+        <small>Trend</small>
+
+        <strong id="market-map-trend" class="muted">
 
           WARMING UP
 
-        \</strong>
+        </strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>Reversal\</small>
-
-        \<strong id="market-map-reversal" class="muted">
-
-          NONE
-
-        \</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>Breakout\</small>
+        <small>Reversal</small>
 
-        \<strong id="market-map-breakout" class="muted">
+        <strong id="market-map-reversal" class="muted">
 
           NONE
 
-        \</strong>
+        </strong>
 
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>Trade State\</small>
+        <small>Breakout</small>
 
-        \<strong id="market-map-action" class="muted">
+        <strong id="market-map-breakout" class="muted">
+
+          NONE
+
+        </strong>
+
+      </div>
+
+
+
+      <div>
+
+        <small>Trade State</small>
+
+        <strong id="market-map-action" class="muted">
 
           NO TRADE
 
-        \</strong>
+        </strong>
 
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>Confluence\</small>
+        <small>Confluence</small>
 
-        \<strong id="market-map-score">
+        <strong id="market-map-score">
 
           0 / 10
 
-        \</strong>
+        </strong>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<p class="disclaimer">
+    </div>
+
+
+
+    <p class="disclaimer">
 
       Closed-candle technical analysis only. Support, resistance,
 
@@ -2936,17 +2936,17 @@
 
       future results.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -2958,85 +2958,85 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT Candle Scanner
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         Closed-candle pattern confirmation
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-backtest-grid">
+    </div>
 
 
 
-      \<div>
-
-        \<small>Pattern\</small>
-
-        \<strong id="candle-pattern">NONE\</strong>
-
-      \</div>
+    <div class="pro-backtest-grid">
 
 
 
-      \<div>
+      <div>
 
-        \<small>Direction\</small>
+        <small>Pattern</small>
 
-        \<strong id="candle-pattern-side" class="muted">—\</strong>
+        <strong id="candle-pattern">NONE</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>Pattern Strength\</small>
-
-        \<strong id="candle-pattern-strength">0 / 4\</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>Confluence Trade\</small>
+        <small>Direction</small>
 
-        \<strong id="candle-trade-state" class="muted">NO TRADE\</strong>
+        <strong id="candle-pattern-side" class="muted">—</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>Confluence Score\</small>
-
-        \<strong id="candle-confluence-score">0 pts\</strong>
-
-      \</div>
+      </div>
 
 
 
-    \</div>
+      <div>
+
+        <small>Pattern Strength</small>
+
+        <strong id="candle-pattern-strength">0 / 4</strong>
+
+      </div>
 
 
 
-    \<p
+      <div>
+
+        <small>Confluence Trade</small>
+
+        <strong id="candle-trade-state" class="muted">NO TRADE</strong>
+
+      </div>
+
+
+
+      <div>
+
+        <small>Confluence Score</small>
+
+        <strong id="candle-confluence-score">0 pts</strong>
+
+      </div>
+
+
+
+    </div>
+
+
+
+    <p
 
       id="candle-pattern-list"
 
@@ -3048,11 +3048,11 @@
 
       No confirmed closed-candle pattern
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       Pattern alerts are filtered with SMRT trend, support/resistance,
 
@@ -3060,17 +3060,17 @@
 
       Pattern recognition alone does not guarantee a profitable trade.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -3082,37 +3082,37 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT All Indicators Consensus
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         TradingView-style closed-candle markers + final confirmation
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>Final Signal\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Final Signal</small>
+
+
+
+        <strong
 
           id="all-indicators-signal"
 
@@ -3122,89 +3122,89 @@
 
           LOADING…
 
-        \</strong>
+        </strong>
 
 
 
-        \<span>
+        <span>
 
           Confidence:
 
-          \<b id="all-indicators-confidence">
+          <b id="all-indicators-confidence">
 
             0 / 100
 
-          \</b>
+          </b>
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Directional Weight\</small>
+      </div>
 
 
 
-        \<strong id="all-indicators-bull">
+      <div class="pro-suite-card">
+
+        <small>Directional Weight</small>
+
+
+
+        <strong id="all-indicators-bull">
 
           Bull weight 0
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="all-indicators-bear">
+        <span id="all-indicators-bear">
 
           Bear weight 0
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Alignment\</small>
+      </div>
 
 
 
-        \<strong id="all-indicators-alignment">
+      <div class="pro-suite-card">
+
+        <small>Alignment</small>
+
+
+
+        <strong id="all-indicators-alignment">
 
           Waiting for indicators
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           Strong signal requires broad agreement
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<div
+    </div>
+
+
+
+    <div
 
       id="all-indicators-votes"
 
       class="all-indicators-votes"
 
-    >\</div>
+    ></div>
 
 
 
-    \<p
+    <p
 
       id="all-indicators-reason"
 
@@ -3216,11 +3216,11 @@
 
       Waiting for indicator alignment…
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       BUY/SELL labels are plotted directly on the candle chart using only
 
@@ -3232,17 +3232,17 @@
 
       indicator can guarantee a perfect BUY or SELL.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel all-indicators-chat-panel"
 
@@ -3254,21 +3254,21 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT All Indicators Chat
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         Live consensus:
 
-        \<strong
+        <strong
 
           id="all-chat-live-signal"
 
@@ -3278,17 +3278,17 @@
 
           WAIT
 
-        \</strong>
+        </strong>
 
-      \</span>
+      </span>
 
-    \</div>
+    </div>
 
 
 
-    \<div class="all-chat-actions">
+    <div class="all-chat-actions">
 
-      \<button
+      <button
 
         type="button"
 
@@ -3298,11 +3298,11 @@
 
         Signal now
 
-      \</button>
+      </button>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -3312,11 +3312,11 @@
 
         All indicators
 
-      \</button>
+      </button>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -3326,11 +3326,11 @@
 
         Why?
 
-      \</button>
+      </button>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -3340,11 +3340,11 @@
 
         Trend
 
-      \</button>
+      </button>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -3354,11 +3354,11 @@
 
         Trade plan
 
-      \</button>
+      </button>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -3368,13 +3368,13 @@
 
         S/R
 
-      \</button>
+      </button>
 
-    \</div>
+    </div>
 
 
 
-    \<div
+    <div
 
       id="all-indicators-chat-messages"
 
@@ -3382,11 +3382,11 @@
 
       aria-live="polite"
 
-    >\</div>
+    ></div>
 
 
 
-    \<form
+    <form
 
       id="all-indicators-chat-form"
 
@@ -3394,7 +3394,7 @@
 
     >
 
-      \<input
+      <input
 
         id="all-indicators-chat-input"
 
@@ -3408,7 +3408,7 @@
 
 
 
-      \<button
+      <button
 
         type="submit"
 
@@ -3418,29 +3418,29 @@
 
         Ask
 
-      \</button>
+      </button>
 
-    \</form>
+    </form>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       Uses the current indicator state in this app. Decision-support only;
 
       signals can be wrong or delayed and no automatic orders are placed.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -3452,17 +3452,17 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT 24/7 Global Watch
 
-      \</h2>
+      </h2>
 
 
 
-      \<span
+      <span
 
         id="global-watch-session"
 
@@ -3472,23 +3472,23 @@
 
         NEXT SESSION BIAS
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>Global Bias\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Global Bias</small>
+
+
+
+        <strong
 
           id="global-watch-bias"
 
@@ -3498,89 +3498,89 @@
 
           LOADING…
 
-        \</strong>
+        </strong>
 
 
 
-        \<span>
+        <span>
 
           Confidence:
 
-          \<b id="global-watch-confidence">
+          <b id="global-watch-confidence">
 
             0 / 100
 
-          \</b>
+          </b>
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Coverage\</small>
+      </div>
 
 
 
-        \<strong id="global-watch-sources">
+      <div class="pro-suite-card">
+
+        <small>Coverage</small>
+
+
+
+        <strong id="global-watch-sources">
 
           0 global cues
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           US futures · VIX · USD/INR · Asia
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>NIFTY Status\</small>
+      </div>
 
 
 
-        \<strong>
+      <div class="pro-suite-card">
+
+        <small>NIFTY Status</small>
+
+
+
+        <strong>
 
           No after-hours NIFTY orders
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           Bias only outside NSE hours
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<div
+    </div>
+
+
+
+    <div
 
       id="global-watch-rows"
 
       class="global-watch-rows"
 
-    >\</div>
+    ></div>
 
 
 
-    \<p
+    <p
 
       id="global-watch-reasons"
 
@@ -3592,11 +3592,11 @@
 
       Loading global cues…
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       Global markets are used only for next-session context when NSE is
 
@@ -3604,17 +3604,17 @@
 
       does not imply NIFTY 50 is tradable 24/7 and does not place orders.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -3626,37 +3626,37 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT AI NIFTY 50
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         Upstox + Yahoo Finance + TradingView cross-check
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>AI Signal\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>AI Signal</small>
+
+
+
+        <strong
 
           id="ai-nifty-signal"
 
@@ -3666,73 +3666,73 @@
 
           WAIT
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="ai-nifty-confidence">
+        <span id="ai-nifty-confidence">
 
           0 / 100
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>External Sources\</small>
+      </div>
 
 
 
-        \<strong id="ai-nifty-sources">
+      <div class="pro-suite-card">
+
+        <small>External Sources</small>
+
+
+
+        <strong id="ai-nifty-sources">
 
           0 sources
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="ai-nifty-alignment">
+        <span id="ai-nifty-alignment">
 
           Waiting for data
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Price Cross-Check\</small>
+      </div>
 
 
 
-        \<strong id="ai-nifty-price-agreement">
+      <div class="pro-suite-card">
+
+        <small>Price Cross-Check</small>
+
+
+
+        <strong id="ai-nifty-price-agreement">
 
           —
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           External average vs Upstox
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<div
+    </div>
+
+
+
+    <div
 
       class="pro-backtest-grid"
 
@@ -3742,61 +3742,61 @@
 
 
 
-      \<div>
+      <div>
 
-        \<small>Entry\</small>
+        <small>Entry</small>
 
-        \<strong id="ai-nifty-entry">—\</strong>
+        <strong id="ai-nifty-entry">—</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>Stop Loss\</small>
-
-        \<strong id="ai-nifty-stop">—\</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>TP1\</small>
+        <small>Stop Loss</small>
 
-        \<strong id="ai-nifty-tp1">—\</strong>
+        <strong id="ai-nifty-stop">—</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>TP2\</small>
-
-        \<strong id="ai-nifty-tp2">—\</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>TP3\</small>
+        <small>TP1</small>
 
-        \<strong id="ai-nifty-tp3">—\</strong>
+        <strong id="ai-nifty-tp1">—</strong>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<p
+      <div>
+
+        <small>TP2</small>
+
+        <strong id="ai-nifty-tp2">—</strong>
+
+      </div>
+
+
+
+      <div>
+
+        <small>TP3</small>
+
+        <strong id="ai-nifty-tp3">—</strong>
+
+      </div>
+
+
+
+    </div>
+
+
+
+    <p
 
       id="ai-nifty-reasons"
 
@@ -3808,11 +3808,11 @@
 
       Waiting for Upstox and external market confirmation
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       Multi-source decision-support only. External websites may be delayed
 
@@ -3820,17 +3820,17 @@
 
       placed automatically.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -3842,37 +3842,37 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT Trade Finalizer
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         NIFTY 50 · LIVE setup preview · closed-candle framework
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>Final Setup\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Final Setup</small>
+
+
+
+        <strong
 
           id="finalizer-state"
 
@@ -3882,51 +3882,51 @@
 
           NO TRADE
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="finalizer-score">
+        <span id="finalizer-score">
 
           0 / 100
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Directional Evidence\</small>
+      </div>
 
 
 
-        \<strong id="finalizer-bull">
+      <div class="pro-suite-card">
+
+        <small>Directional Evidence</small>
+
+
+
+        <strong id="finalizer-bull">
 
           Bull 0
 
-        \</strong>
+        </strong>
 
 
 
-        \<span id="finalizer-bear">
+        <span id="finalizer-bear">
 
           Bear 0
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Invalidation\</small>
+      </div>
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Invalidation</small>
+
+
+
+        <strong
 
           id="finalizer-invalidation"
 
@@ -3936,17 +3936,17 @@
 
           Waiting for setup
 
-        \</strong>
+        </strong>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<div
+    </div>
+
+
+
+    <div
 
       class="pro-backtest-grid"
 
@@ -3956,61 +3956,61 @@
 
 
 
-      \<div>
+      <div>
 
-        \<small>Entry\</small>
+        <small>Entry</small>
 
-        \<strong id="finalizer-entry">—\</strong>
+        <strong id="finalizer-entry">—</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>Stop Loss\</small>
-
-        \<strong id="finalizer-stop">—\</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>TP1\</small>
+        <small>Stop Loss</small>
 
-        \<strong id="finalizer-tp1">—\</strong>
+        <strong id="finalizer-stop">—</strong>
 
-      \</div>
-
-
-
-      \<div>
-
-        \<small>TP2\</small>
-
-        \<strong id="finalizer-tp2">—\</strong>
-
-      \</div>
+      </div>
 
 
 
-      \<div>
+      <div>
 
-        \<small>TP3\</small>
+        <small>TP1</small>
 
-        \<strong id="finalizer-tp3">—\</strong>
+        <strong id="finalizer-tp1">—</strong>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<p
+      <div>
+
+        <small>TP2</small>
+
+        <strong id="finalizer-tp2">—</strong>
+
+      </div>
+
+
+
+      <div>
+
+        <small>TP3</small>
+
+        <strong id="finalizer-tp3">—</strong>
+
+      </div>
+
+
+
+    </div>
+
+
+
+    <p
 
       id="finalizer-reasons"
 
@@ -4022,27 +4022,27 @@
 
       Waiting for confirmed closed-candle confluence
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       Informational decision-support only. The finalizer does not place
 
       orders and no accuracy or profit level is guaranteed.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
 
 
-  \<section
+  <section
 
     class="panel"
 
@@ -4054,37 +4054,37 @@
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
-      \<h2>
+      <h2>
 
         SMRT Gainz + SSL + QQE Combo
 
-      \</h2>
+      </h2>
 
 
 
-      \<span class="muted">
+      <span class="muted">
 
         NIFTY 50 · SSL Hybrid + QQE momentum confirmation
 
-      \</span>
+      </span>
 
-    \</div>
-
-
-
-    \<div class="pro-suite-grid">
+    </div>
 
 
 
-      \<div class="pro-suite-card">
-
-        \<small>Trade Signal\</small>
+    <div class="pro-suite-grid">
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Trade Signal</small>
+
+
+
+        <strong
 
           id="gainz-ssl-signal"
 
@@ -4094,27 +4094,27 @@
 
           NO TRADE
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           Closed-candle confirmation
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Baseline\</small>
+      </div>
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>Baseline</small>
+
+
+
+        <strong
 
           id="gainz-baseline-state"
 
@@ -4124,27 +4124,27 @@
 
           WARMING UP
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           HMA 60 + 0.2 channel
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>SSL Direction\</small>
+      </div>
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>SSL Direction</small>
+
+
+
+        <strong
 
           id="gainz-ssl-state"
 
@@ -4154,27 +4154,27 @@
 
           WARMING UP
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           SSL trend + continuation
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>QQE Direction\</small>
+      </div>
 
 
 
-        \<strong
+      <div class="pro-suite-card">
+
+        <small>QQE Direction</small>
+
+
+
+        <strong
 
           id="gainz-qqe-state"
 
@@ -4184,75 +4184,75 @@
 
           WARMING UP
 
-        \</strong>
+        </strong>
 
 
 
-        \<span>
+        <span>
 
           QQE RSI:
 
-          \<b id="gainz-qqe-value">—\</b>
+          <b id="gainz-qqe-value">—</b>
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Risk\</small>
+      </div>
 
 
 
-        \<strong id="gainz-risk">
+      <div class="pro-suite-card">
+
+        <small>Risk</small>
+
+
+
+        <strong id="gainz-risk">
 
           —
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           ATR 14 percentile
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-      \<div class="pro-suite-card">
-
-        \<small>Entry Distance\</small>
+      </div>
 
 
 
-        \<strong id="gainz-entry-distance">
+      <div class="pro-suite-card">
+
+        <small>Entry Distance</small>
+
+
+
+        <strong id="gainz-entry-distance">
 
           —
 
-        \</strong>
+        </strong>
 
 
 
-        \<span class="muted">
+        <span class="muted">
 
           Near / Extended / Far
 
-        \</span>
+        </span>
 
-      \</div>
-
-
-
-    \</div>
+      </div>
 
 
 
-    \<p
+    </div>
+
+
+
+    <p
 
       id="gainz-reasons"
 
@@ -4264,11 +4264,11 @@
 
       Waiting for SSL + QQE + baseline confirmation alignment
 
-    \</p>
+    </p>
 
 
 
-    \<p class="disclaimer">
+    <p class="disclaimer">
 
       SSL trend and continuation are combined with QQE momentum,
 
@@ -4276,77 +4276,77 @@
 
       No automatic orders or guaranteed results.
 
-    \</p>
+    </p>
 
 
 
-  \</section>
+  </section>
 
 
 
-  \</div>
+  </div>
 
 
 
-  \<div class="page-footer">
+  <div class="page-footer">
 
 
 
-    \<span>
+    <span>
 
-      \<span class="logo-mini">
+      <span class="logo-mini">
 
         ↗
 
-      \</span>
+      </span>
 
 
 
       SMRT Algo Pro · NIFTY 50 live analysis
 
-    \</span>
+    </span>
 
 
 
-    \<span>
+    <span>
 
       SMRT ALGO PRO · UPSTOX LIVE · NIFTY 50 ONLY · NO AUTOMATIC ORDERS
 
-    \</span>
+    </span>
 
 
 
-  \</div>
+  </div>
 
 
 
-\</main>
+</main>
 
 
 
 
 
-\<dialog id="alert-dialog">
+<dialog id="alert-dialog">
 
 
 
-  \<form id="alert-form">
+  <form id="alert-form">
 
 
 
-    \<div class="panel-heading">
+    <div class="panel-heading">
 
 
 
-      \<h2>
+      <h2>
 
         Create price alert
 
-      \</h2>
+      </h2>
 
 
 
-      \<button
+      <button
 
         type="button"
 
@@ -4358,29 +4358,29 @@
 
         ✕
 
-      \</button>
+      </button>
 
 
 
-    \</div>
+    </div>
 
 
 
 
 
-    \<p
+    <p
 
       class="muted"
 
       id="alert-symbol"
 
-    >\</p>
+    ></p>
 
 
 
 
 
-    \<label>
+    <label>
 
 
 
@@ -4388,37 +4388,37 @@
 
 
 
-      \<select id="alert-direction">
+      <select id="alert-direction">
 
 
 
-        \<option value="above">
+        <option value="above">
 
           Above
 
-        \</option>
+        </option>
 
 
 
-        \<option value="below">
+        <option value="below">
 
           Below
 
-        \</option>
+        </option>
 
 
 
-      \</select>
+      </select>
 
 
 
-    \</label>
+    </label>
 
 
 
 
 
-    \<label>
+    <label>
 
 
 
@@ -4426,7 +4426,7 @@
 
 
 
-      \<input
+      <input
 
         id="alert-price"
 
@@ -4442,13 +4442,13 @@
 
 
 
-    \</label>
+    </label>
 
 
 
 
 
-    \<button
+    <button
 
       class="primary"
 
@@ -4458,48 +4458,48 @@
 
       Create alert
 
-    \</button>
+    </button>
 
 
 
-  \</form>
+  </form>
 
 
 
-\</dialog>
+</dialog>
 
 
 
 
 
-\<div
+<div
 
   id="toast"
 
   role="status"
 
-\>\</div>
+\></div>
 
 
 
 
 
-\<script src="https\://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js">\</script>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
 
 
-\<script
+<script
 
   type="module"
 
   src="app.js?v=78"
 
-\>\</script>
+\></script>
 
 
 
-\</body>
+</body>
 
-\</html>
+</html>
 
 
