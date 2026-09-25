@@ -602,3 +602,117 @@ body.light .tv-shell-mode .chart-footer{
     grid-template-columns:1fr;
   }
 }
+/* =========================================
+   SMART MONEY + PREMIUM/DISCOUNT
+   ========================================= */
+
+.smrt-smart-money-panel,
+.smrt-pd-panel {
+  min-width: 0;
+}
+
+.smrt-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.smrt-indicator-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+
+  min-width: 0;
+  padding: 10px 12px;
+
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 8px;
+
+  background: rgba(15, 23, 42, .38);
+}
+
+.smrt-indicator-row span {
+  opacity: .72;
+}
+
+.smrt-indicator-row strong {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.smrt-zone-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-top: 10px;
+  padding-top: 10px;
+
+  border-top: 1px solid rgba(148, 163, 184, .15);
+}
+
+
+/* PREMIUM / DISCOUNT METER */
+
+.pd-meter {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+
+  overflow: hidden;
+
+  margin: 12px 0;
+
+  border: 1px solid rgba(148, 163, 184, .20);
+  border-radius: 8px;
+
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+.pd-meter > div {
+  padding: 9px 5px;
+}
+
+.pd-premium {
+  background: rgba(239, 68, 68, .12);
+}
+
+.pd-equilibrium {
+  background: rgba(148, 163, 184, .10);
+}
+
+.pd-discount {
+  background: rgba(16, 185, 129, .12);
+}
+
+
+/* STATUS */
+
+.smrt-bullish {
+  color: #34d399 !important;
+}
+
+.smrt-bearish {
+  color: #fb7185 !important;
+}
+
+.smrt-neutral {
+  color: #cbd5e1 !important;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 760px) {
+  .smrt-indicator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smrt-zone-values {
+    flex-direction: column;
+  }
+}
