@@ -602,3 +602,58 @@ body.light .tv-shell-mode .chart-footer{
     grid-template-columns:1fr;
   }
 }
+
+
+/* =========================================================
+   SMRT DESKTOP LAYOUT FIX
+   Restores full-width terminal + 75/25 workspace proportions.
+   ========================================================= */
+@media (min-width: 1051px) {
+  main#terminal {
+    width: min(96vw, 1800px);
+    max-width: 1800px;
+    margin-inline: auto;
+    padding-inline: 24px;
+  }
+
+  #terminal .workspace {
+    width: 100%;
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+
+  #terminal .workspace > .chart-card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #terminal .workspace > aside {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #terminal .chart-card,
+  #terminal .canvas-area,
+  #terminal .tv-lightweight-chart,
+  #terminal .tv-advanced-chart {
+    min-width: 0;
+  }
+
+  #terminal .page-title,
+  #terminal .bottom-grid,
+  #terminal .analysis-layout-grid,
+  #terminal .pro-suite-panel {
+    width: 100%;
+  }
+}
+
+@media (min-width: 1500px) {
+  main#terminal {
+    width: min(97vw, 1900px);
+    max-width: 1900px;
+  }
+
+  #terminal .workspace {
+    grid-template-columns: minmax(0, 3.2fr) minmax(320px, .8fr);
+  }
+}
