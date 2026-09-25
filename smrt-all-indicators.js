@@ -1,15 +1,18 @@
 // smrt-all-indicators.js
 // ============================================================
-// SMRT ALL INDICATORS CONSENSUS
-// Combines independent indicator groups already calculated by the app.
-// Decision-support only. No automatic orders.
+// SMRT ALL INDICATORS CONSENSUS - NIFTY 50 PRIME
 //
-// FIX:
-// - NO TRADE cannot show misleading 100/100 confidence.
-// - Confidence includes participation/readiness + directional agreement.
-// - Missing groups are NOT treated as zero/bear/bull confirmation.
-// - Bull/Bear weight remains visible separately.
-// - Minimum 4 active groups required for actionable signal.
+// FINAL DISPLAY CONSENSUS.
+//
+// RULES:
+// 1. Missing / WAIT / NOT READY never becomes BUY or SELL.
+// 2. Minimum 4 active groups.
+// 3. Trade Finalizer must be actionable.
+// 4. MTF must be directional.
+// 5. Finalizer and MTF must agree.
+// 6. Consensus cannot override Finalizer direction.
+// 7. NO TRADE confidence is capped.
+// 8. No automatic order placement.
 // ============================================================
 
 const sideFromText = value => {
@@ -36,6 +39,29 @@ const sideFromText = value => {
   return 0;
 };
 
+const actionableFinalizerSide = finalizer => {
+  const state = String(
+    finalizer?.state || ''
+  )
+    .trim()
+    .toUpperCase();
+
+  if (
+    state === 'BUY SETUP' ||
+    state === 'STRONG BUY SETUP'
+  ) {
+    return 1;
+  }
+
+  if (
+    state === 'SELL SETUP' ||
+    state === 'STRONG SELL SETUP'
+  ) {
+    return -1;
+  }
+
+  return 0;
+};
 
 export function analyseAllIndicators({
   finalizer,
@@ -49,9 +75,12 @@ export function analyseAllIndicators({
 
   const votes = [];
 
-  // Total independent groups available in this module.
   const TOTAL_GROUPS = 7;
   const MIN_ACTIVE_GROUPS = 4;
+
+  // ==========================================================
+  // VOTE HELPER
+  // ==========================================================
 
   const pushVote = (
     name,
@@ -59,9 +88,6 @@ export function analyseAllIndicators({
     weight,
     detail
   ) => {
-
-    // Missing / WAIT / NO TRADE / NOT READY data
-    // must NOT become a directional vote.
     if (
       side !== 1 &&
       side !== -1
@@ -69,7 +95,8 @@ export function analyseAllIndicators({
       return;
     }
 
-    const safeWeight = Number(weight);
+    const safeWeight =
+      Number(weight);
 
     if (
       !Number.isFinite(safeWeight) ||
@@ -86,14 +113,14 @@ export function analyseAllIndicators({
     });
   };
 
-
   // ==========================================================
   // 1. TRADE FINALIZER
   // ==========================================================
 
   const finalizerSide =
-    Number(finalizer?.side) ||
-    sideFromText(finalizer?.state);
+    actionableFinalizerSide(
+      finalizer
+    );
 
   pushVote(
     'Trade Finalizer',
@@ -102,17 +129,27 @@ export function analyseAllIndicators({
     finalizer?.state
   );
 
-
   // ==========================================================
   // 2. NIFTY EDGE
   // ==========================================================
 
-  const edgeLatest = edge?.latest;
+  const edgeLatest =
+    edge?.latest;
+
+  const edgeSignal =
+    String(
+      edgeLatest?.signal || ''
+    ).toUpperCase();
 
   const edgeSide =
-    ['BUY', 'BUY+', 'SELL', 'SELL+']
-      .includes(edgeLatest?.signal)
-      ? Number(edgeLatest?.side)
+    [
+      'BUY',
+      'BUY+',
+      'SELL',
+      'SELL+'
+    ].includes(edgeSignal)
+      ? Number(edgeLatest?.side) ||
+        sideFromText(edgeSignal)
       : 0;
 
   pushVote(
@@ -122,21 +159,28 @@ export function analyseAllIndicators({
     edgeLatest?.signal
   );
 
-
   // ==========================================================
   // 3. MARKET MAP
   // ==========================================================
 
   let mapSide = 0;
 
+  const mapAction =
+    String(
+      marketMap?.action || ''
+    )
+      .trim()
+      .toUpperCase();
+
   if (
-    marketMap?.action &&
-    marketMap.action !== 'NO TRADE'
+    mapAction &&
+    mapAction !== 'NO TRADE' &&
+    mapAction !== 'WAIT' &&
+    mapAction !== 'NOT READY'
   ) {
     mapSide =
-      sideFromText(
-        marketMap.action
-      );
+      sideFromText(mapAction);
+
   } else {
     mapSide =
       sideFromText(
@@ -152,30 +196,47 @@ export function analyseAllIndicators({
       marketMap?.trend
   );
 
-
   // ==========================================================
   // 4. MULTI TIMEFRAME
   // ==========================================================
 
-  pushVote(
-    'MTF 5m/15m/1h',
+  const mtfSide =
     sideFromText(
       mtf?.overall
-    ),
+    );
+
+  pushVote(
+    'MTF 5m/15m/1h',
+    mtfSide,
     4,
     mtf?.overall
   );
-
 
   // ==========================================================
   // 5. SSL + QQE
   // ==========================================================
 
+  const gainzSignal =
+    String(
+      gainz?.latest?.signal || ''
+    )
+      .trim()
+      .toUpperCase();
+
   const gainzSide =
-    Number(gainz?.latest?.side) ||
-    sideFromText(
-      gainz?.latest?.signal
-    );
+    (
+      gainzSignal.startsWith('LONG') ||
+      gainzSignal.startsWith('SHORT')
+    )
+      ? (
+          Number(
+            gainz?.latest?.side
+          ) ||
+          sideFromText(
+            gainzSignal
+          )
+        )
+      : 0;
 
   pushVote(
     'SSL + QQE',
@@ -184,55 +245,59 @@ export function analyseAllIndicators({
     gainz?.latest?.signal
   );
 
-
   // ==========================================================
   // 6. AI NIFTY
   // ==========================================================
 
-  pushVote(
-    'AI NIFTY',
+  const aiSide =
     sideFromText(
       aiNifty?.signal
-    ),
+    );
+
+  pushVote(
+    'AI NIFTY',
+    aiSide,
     2,
     aiNifty?.signal
   );
-
 
   // ==========================================================
   // 7. GLOBAL WATCH
   // ==========================================================
 
-  pushVote(
-    'Global Watch',
+  const globalSide =
     sideFromText(
       globalWatch?.bias
-    ),
+    );
+
+  pushVote(
+    'Global Watch',
+    globalSide,
     1,
     globalWatch?.bias
   );
 
-
   // ==========================================================
-  // DIRECTIONAL WEIGHTS
+  // WEIGHTS
   // ==========================================================
 
   const bullWeight =
     votes
       .filter(
-        vote => vote.side === 1
+        vote =>
+          vote.side === 1
       )
       .reduce(
         (sum, vote) =>
           sum + vote.weight,
         0
       );
-
 
   const bearWeight =
     votes
       .filter(
-        vote => vote.side === -1
+        vote =>
+          vote.side === -1
       )
       .reduce(
         (sum, vote) =>
@@ -240,11 +305,9 @@ export function analyseAllIndicators({
         0
       );
 
-
   const totalWeight =
     bullWeight +
     bearWeight;
-
 
   const leader =
     bullWeight > bearWeight
@@ -253,15 +316,12 @@ export function analyseAllIndicators({
         ? -1
         : 0;
 
-
   const leaderWeight =
     Math.max(
       bullWeight,
       bearWeight
     );
 
-
-  // Directional agreement among ACTIVE groups.
   const alignment =
     totalWeight > 0
       ? (
@@ -270,21 +330,18 @@ export function analyseAllIndicators({
         ) * 100
       : 0;
 
-
   const margin =
     Math.abs(
       bullWeight -
       bearWeight
     );
 
-
   // ==========================================================
-  // ACTIVE GROUP COUNTS
+  // PARTICIPATION
   // ==========================================================
 
   const activeGroups =
     votes.length;
-
 
   const alignedCount =
     leader === 0
@@ -294,38 +351,14 @@ export function analyseAllIndicators({
             vote.side === leader
         ).length;
 
-
   const opposingCount =
     leader === 0
       ? 0
       : votes.filter(
           vote =>
-            vote.side === -leader
+            vote.side ===
+            -leader
         ).length;
-
-
-  // ==========================================================
-  // CONFIDENCE FIX
-  // ==========================================================
-  //
-  // OLD:
-  // confidence = alignment
-  //
-  // Problem:
-  // 3 bearish groups / 0 bullish groups = 100% alignment.
-  // But only 3 of 7 systems are active.
-  //
-  // NEW:
-  // confidence combines:
-  //   1. directional agreement
-  //   2. system participation/readiness
-  //
-  // Example:
-  // 3 active groups, all bearish:
-  // alignment = 100%
-  // participation = 3/7 = 42.9%
-  // confidence ≈ 43/100
-  // ==========================================================
 
   const participation =
     Math.min(
@@ -336,6 +369,9 @@ export function analyseAllIndicators({
       ) * 100
     );
 
+  // ==========================================================
+  // CONFIDENCE
+  // ==========================================================
 
   let confidence =
     totalWeight > 0
@@ -348,7 +384,6 @@ export function analyseAllIndicators({
         )
       : 0;
 
-
   confidence =
     Math.max(
       0,
@@ -358,49 +393,133 @@ export function analyseAllIndicators({
       )
     );
 
+  // ==========================================================
+  // PRIME MANDATORY GATE
+  // ==========================================================
+
+  let gatePassed = true;
+  let gateReason = null;
+
+  if (
+    finalizerSide !== 1 &&
+    finalizerSide !== -1
+  ) {
+    gatePassed = false;
+
+    gateReason =
+      'Trade Finalizer has not confirmed an actionable setup.';
+
+  } else if (
+    mtfSide !== 1 &&
+    mtfSide !== -1
+  ) {
+    gatePassed = false;
+
+    gateReason =
+      '5m / 15m / 1h confirmation is not ready.';
+
+  } else if (
+    finalizerSide !==
+    mtfSide
+  ) {
+    gatePassed = false;
+
+    gateReason =
+      'Trade Finalizer and MTF directions conflict.';
+  }
 
   // ==========================================================
-  // SIGNAL DECISION
+  // SIGNAL
   // ==========================================================
 
   let signal =
     'NO TRADE';
 
-
-  // Strong signal:
-  // minimum participation + broad directional agreement.
   if (
-    activeGroups >= MIN_ACTIVE_GROUPS &&
-    leader !== 0 &&
+    gatePassed &&
+    activeGroups >=
+      MIN_ACTIVE_GROUPS &&
+    leader ===
+      finalizerSide &&
     alignment >= 80 &&
     margin >= 6
   ) {
-
     signal =
       leader === 1
         ? 'STRONG BUY'
         : 'STRONG SELL';
 
   } else if (
-    activeGroups >= MIN_ACTIVE_GROUPS &&
-    leader !== 0 &&
+    gatePassed &&
+    activeGroups >=
+      MIN_ACTIVE_GROUPS &&
+    leader ===
+      finalizerSide &&
     alignment >= 65 &&
     margin >= 3
   ) {
-
     signal =
       leader === 1
         ? 'BUY'
         : 'SELL';
   }
 
+  // ==========================================================
+  // FINAL DIRECTIONAL SAFETY
+  // ==========================================================
+
+  let side =
+    signal.includes('BUY')
+      ? 1
+      : signal.includes('SELL')
+        ? -1
+        : 0;
+
+  if (
+    side !== 0 &&
+    (
+      side !== finalizerSide ||
+      side !== mtfSide
+    )
+  ) {
+    signal =
+      'NO TRADE';
+
+    side = 0;
+
+    gatePassed = false;
+
+    gateReason =
+      'Final display direction failed Prime confirmation.';
+  }
 
   // ==========================================================
-  // ACTIONABLE CONFIDENCE GUARD
+  // SSL + QQE CONFLICT GUARD
   // ==========================================================
   //
-  // NO TRADE should never look like a fully confirmed trade.
-  // Directional bias remains available through Bull/Bear weight.
+  // SSL/QQE is supporting confirmation.
+  // An explicit OPPOSITE actionable SSL signal blocks the trade.
+  // Missing/NO TRADE SSL does not manufacture confirmation.
+  // ==========================================================
+
+  if (
+    side !== 0 &&
+    gainzSide !== 0 &&
+    gainzSide !== side
+  ) {
+    signal =
+      'NO TRADE';
+
+    side = 0;
+
+    gatePassed = false;
+
+    gateReason =
+      'SSL + QQE conflicts with the proposed trade direction.';
+  }
+
+  // ==========================================================
+  // CONFIDENCE SAFETY
   // ==========================================================
 
   if (
@@ -413,25 +532,19 @@ export function analyseAllIndicators({
       );
   }
 
-
-  const side =
-    signal.includes('BUY')
-      ? 1
-      : signal.includes('SELL')
-        ? -1
-        : 0;
-
-
   // ==========================================================
-  // REASON TEXT
+  // REASON
   // ==========================================================
 
   let reason;
 
-  if (
+  if (gateReason) {
+    reason =
+      gateReason;
+
+  } else if (
     activeGroups === 0
   ) {
-
     reason =
       'Indicator confirmation is not ready.';
 
@@ -439,7 +552,6 @@ export function analyseAllIndicators({
     activeGroups <
     MIN_ACTIVE_GROUPS
   ) {
-
     reason =
       activeGroups +
       ' of ' +
@@ -449,23 +561,20 @@ export function analyseAllIndicators({
   } else if (
     signal === 'NO TRADE'
   ) {
-
     reason =
-      'Indicators do not yet meet the confirmation threshold for a trade.';
+      'Indicators do not meet the Prime confirmation threshold.';
 
   } else {
-
     reason =
       alignedCount +
       ' indicator groups align with the ' +
       (
-        leader === 1
+        side === 1
           ? 'bullish'
           : 'bearish'
       ) +
-      ' side.';
+      ' Prime direction.';
   }
-
 
   // ==========================================================
   // RESULT
@@ -473,24 +582,24 @@ export function analyseAllIndicators({
 
   return {
     signal,
-
     side,
 
     confidence,
 
-    // Keep raw alignment available separately.
     alignment:
-      Math.round(alignment),
+      Math.round(
+        alignment
+      ),
 
     participation:
-      Math.round(participation),
+      Math.round(
+        participation
+      ),
 
     bullWeight,
-
     bearWeight,
 
     alignedCount,
-
     opposingCount,
 
     totalVotes:
@@ -505,6 +614,14 @@ export function analyseAllIndicators({
     margin,
 
     votes,
+
+    // Prime audit fields.
+    gatePassed,
+    gateReason,
+
+    finalizerSide,
+    mtfSide,
+    gainzSide,
 
     reason
   };
