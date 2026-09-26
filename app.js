@@ -5373,12 +5373,24 @@ function summary() {
       )
     );
 
-  const label =
-    side !== 0 &&
-    stPass &&
-    dmiPass
-      ? candidate
-      : 'Neutral';
+  const mtfDirection =
+  state.mtf.overall.includes('BUY')
+    ? 1
+    : state.mtf.overall.includes('SELL')
+      ? -1
+      : 0;
+
+const mtfPass =
+  side !== 0 &&
+  mtfDirection === side;
+
+const label =
+  side !== 0 &&
+  stPass &&
+  dmiPass &&
+  mtfPass
+    ? candidate
+    : 'Neutral';
 
   const score =
     bullishCount -
