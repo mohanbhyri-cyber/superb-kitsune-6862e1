@@ -300,14 +300,35 @@ async function upstoxFetch(endpoint, token) {
       details
     );
 
-    throw new Error(
+    const error = new Error(
       `Upstox returned HTTP ${response.status}.`
     );
+
+    // Preserve HTTP status for all callers
+    error.status = response.status;
+
+    // Special handling for Upstox rate limit
+    error.rateLimited = response.status === 429;
+
+    // Respect Retry-After when Upstox provides it.
+    const retryAfter = Number(
+      response.headers.get("retry-after")
+    );
+
+    error.retryAfterMs =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : response.status === 429
+          ? 60000
+          : 0;
+
+    error.details = details;
+
+    throw error;
   }
 
   return response.json();
 }
-
 // ----------------------------------------------------
 // LIVE QUOTE
 // ----------------------------------------------------
@@ -417,10 +438,28 @@ async function liveQuote(url, token) {
         Date.now(),
     });
   } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
     console.warn(
-      "Primary live quote failed, using intraday fallback",
-      error?.message || error
+      "Upstox rate limited live quote. Fallback blocked."
     );
+
+    return json({
+      live: false,
+      source: "UPSTOX",
+      symbol,
+      rateLimited: true,
+      retryAfterMs: error?.retryAfterMs || 60000,
+      reason: "Upstox rate limit reached. Waiting before retry.",
+    }, 429);
+  }
+
+  console.warn(
+    "Primary live quote failed, using intraday fallback",
+    error?.message || error
+  );
 
     try {
       const fallbackEndpoint =
@@ -666,13 +705,22 @@ async function intradayHistory(url, token) {
         rows =
           intradayBody.data.candles;
       }
-    } catch (error) {
-      console.warn(
-        "Primary intraday candle fetch failed",
-        error?.message || error
-      );
-    }
+   } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
+    console.warn(
+      "Upstox 429 - stopping intraday history fallback"
+    );
+    throw error;
+  }
 
+  console.warn(
+    "Primary intraday candle fetch failed",
+    error?.message || error
+  );
+}
     if (!rows.length) {
       try {
         const historicalTodayBody =
@@ -689,12 +737,22 @@ async function intradayHistory(url, token) {
           rows =
             historicalTodayBody.data.candles;
         }
-      } catch (error) {
-        console.warn(
-          "Today historical-candle fallback failed",
-          error?.message || error
-        );
-      }
+       } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
+    console.warn(
+      "Upstox 429 - stopping today historical fallback"
+    );
+    throw error;
+  }
+
+  console.warn(
+    "Today historical-candle fallback failed",
+    error?.message || error
+  );
+}
     }
 
     if (!rows.length) {
@@ -814,15 +872,33 @@ async function intradayHistory(url, token) {
       candles,
     });
   } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
     return json({
       live: false,
       source: "UPSTOX",
-      reason:
-        error?.message ||
-        "Unable to load intraday candles.",
+      symbol,
+      timeframe,
+      rateLimited: true,
+      retryAfterMs: error?.retryAfterMs || 60000,
+      reason: "Upstox rate limit reached. Waiting before retry.",
       candles: [],
-    });
+    }, 429);
   }
+
+  return json({
+    live: false,
+    source: "UPSTOX",
+    symbol,
+    timeframe,
+    reason:
+      error?.message ||
+      "Unable to load intraday candles.",
+    candles: [],
+  });
+}
 }
 
 async function previousSessionHistory(url, token) {
@@ -937,18 +1013,58 @@ async function mtfHistory(url, token) {
     config.interval;
 
   try {
-    const results =
-      await Promise.allSettled([
-        upstoxFetch(
-          historicalEndpoint,
-          token
-        ),
-        upstoxFetch(
-          intradayEndpoint,
-          token
-        ),
-      ]);
+    const results = [];
 
+try {
+  // First request only historical data.
+  const historicalBody = await upstoxFetch(
+    historicalEndpoint,
+    token
+  );
+
+  results.push({
+    status: "fulfilled",
+    value: historicalBody
+  });
+} catch (error) {
+  // Never make another Upstox request after HTTP 429.
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
+    throw error;
+  }
+
+  console.warn(
+    "MTF historical fetch failed; trying intraday fallback",
+    error?.message || error
+  );
+
+  // Intraday is fallback only — not a simultaneous request.
+  try {
+    const intradayBody = await upstoxFetch(
+      intradayEndpoint,
+      token
+    );
+
+    results.push({
+      status: "fulfilled",
+      value: intradayBody
+    });
+  } catch (fallbackError) {
+    if (
+      fallbackError?.rateLimited === true ||
+      fallbackError?.status === 429
+    ) {
+      throw fallbackError;
+    }
+
+    console.warn(
+      "MTF intraday fallback failed",
+      fallbackError?.message || fallbackError
+    );
+  }
+}
     const rows = [];
 
     for (const result of results) {
@@ -1015,17 +1131,33 @@ async function mtfHistory(url, token) {
         trimmed,
     });
   } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
     return json({
       live: false,
       source: "UPSTOX",
       symbol,
       timeframe,
-      reason:
-        error?.message ||
-        "Unable to load multi-timeframe history.",
+      rateLimited: true,
+      retryAfterMs: error?.retryAfterMs || 60000,
+      reason: "Upstox rate limit reached. Waiting before retry.",
       candles: [],
-    });
+    }, 429);
   }
+
+  return json({
+    live: false,
+    source: "UPSTOX",
+    symbol,
+    timeframe,
+    reason:
+      error?.message ||
+      "Unable to load multi-timeframe history.",
+    candles: [],
+  });
+}
 }
 
 
