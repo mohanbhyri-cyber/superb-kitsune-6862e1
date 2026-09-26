@@ -564,12 +564,26 @@ async function previousTradingSession(
         };
       }
     } catch (error) {
-      console.warn(
-        "Previous-session candle fetch failed",
-        date,
-        error?.message || error
-      );
-    }
+  // IMPORTANT: stop immediately when Upstox rate-limits us.
+  // Do not continue requesting additional previous dates.
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429 ||
+    String(error?.message || "").includes("HTTP 429")
+  ) {
+    console.warn(
+      "Upstox 429 rate limit - stopping previous-session fallback",
+      date
+    );
+    throw error;
+  }
+
+  console.warn(
+    "Previous-session candle fetch failed",
+    date,
+    error?.message || error
+  );
+}
   }
 
   return {
