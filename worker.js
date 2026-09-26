@@ -377,12 +377,12 @@ async function liveQuote(url, token) {
       Number(quote?.prev_close_price);
 
     const previousClose =
-      Number.isFinite(previousCloseRaw)
-        ? previousCloseRaw
-        : Number.isFinite(netChange)
-          ? price - netChange
-          : null;
-
+  Number.isFinite(previousCloseRaw) &&
+  previousCloseRaw > 0
+    ? previousCloseRaw
+    : Number.isFinite(netChange)
+      ? price - netChange
+      : null;
     const changePercent =
       Number.isFinite(netChange) &&
       Number.isFinite(previousClose) &&
