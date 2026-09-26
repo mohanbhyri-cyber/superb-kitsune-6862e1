@@ -807,12 +807,17 @@ export class UpstoxMarketAdapter {
       } finally {
         inFlight = false;
         if (alive && !document.hidden) {
-          timer = setTimeout(
-            tick,
-            consecutiveFailures
-              ? 1500
-              : 3000
-          );
+          const retryDelay =
+  consecutiveFailures >= 3
+    ? 30000
+    : consecutiveFailures > 0
+      ? 10000
+      : 5000;
+
+timer = setTimeout(
+  tick,
+  retryDelay
+);
         }
       }
     };
