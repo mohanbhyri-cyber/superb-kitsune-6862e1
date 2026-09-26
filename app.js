@@ -5818,7 +5818,7 @@ function startReplay() {
     !Array.isArray(
       state.data
     ) ||
-    state.data.length < 35
+    state.data.length < 221
   ) {
 
     toast(
@@ -5844,17 +5844,10 @@ function startReplay() {
 
 
   const warmup =
-    Math.min(
-      source.length - 2,
-      Math.max(
-        30,
-        Math.min(
-          60,
-          source.length - 20
-        )
-      )
-    );
-
+  Math.min(
+    source.length - 2,
+    220
+  );
 
   state.replay.active =
     true;
