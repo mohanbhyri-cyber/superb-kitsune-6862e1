@@ -237,10 +237,62 @@ if (closed.candles.length < 20) {
   return result;
 }
   const c = closed.candles, last = c.at(-1), index = c.length - 1;
-  result.time = last.time;
-  const s = result.structure = primeStructure(c), technical = result.technical = primeTechnical(c);
-  const side = technical.side;
-  check('Closed-candle freshness', now - (last.time + seconds) <= seconds * 2, 'Closed candle is stale');
+ result.time = last.time;
+
+// PRIME DATA DIAGNOSTIC
+console.log('PRIME DATA CHECK', {
+  symbol: state.symbol,
+  timeframe: state.tf,
+  totalData: Array.isArray(data) ? data.length : 0,
+  closedCandles: c.length,
+  lastClosedTime: last.time,
+  lastClosedIST: new Date(
+    Number(last.time) * 1000
+  ).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  }),
+  nowIST: new Date(
+    Number(now) * 1000
+  ).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  }),
+  ageMinutes: Math.round(
+    (
+      Number(now) -
+      (Number(last.time) + Number(seconds))
+    ) / 60
+  )
+});
+
+const s =
+  result.structure =
+    primeStructure(c);
+
+const technical =
+  result.technical =
+    primeTechnical(c);
+
+const side = technical.side;
+  const candleAge =
+  now - (Number(last.time) + Number(seconds));
+
+const freshnessLimit =
+  Math.max(Number(seconds) * 3, 900);
+
+const candleFresh =
+  candleAge >= 0 &&
+  candleAge <= freshnessLimit;
+
+check(
+  'Closed-candle freshness',
+  candleFresh,
+  candleFresh
+    ? null
+    : `Closed candle is stale · age ${Math.max(
+        0,
+        Math.round(candleAge / 60)
+      )} min`
+);
   check('EMA 9/21/50/200 + Supertrend + RSI + MACD + ADX/DMI', side !== 0, technical.error);
   check('Structure', side !== 0 && s.direction === side && s.events.some(e => e.side === side && index - e.index <= 8),
     'No recent aligned BOS / CHoCH / MSS');
@@ -271,7 +323,22 @@ if (closed.candles.length < 20) {
     const m = primeClosed(mtfData[tf], duration, now);
     const t = m.error ? { side: 0 } : primeTechnical(m.candles);
     const st = m.candles.length ? primeStructure(m.candles) : null;
-    const fresh = m.candles.length && now - (m.candles.at(-1).time + duration) <= 2 * duration;
+    const mtfLastTime =
+  Number(m.candles.at(-1)?.time);
+
+const mtfAge =
+  primeFinite(mtfLastTime)
+    ? now - (mtfLastTime + duration)
+    : Infinity;
+
+const mtfFreshnessLimit =
+  Math.max(duration * 3, 900);
+
+const fresh =
+  !m.error &&
+  m.candles.length > 0 &&
+  mtfAge >= 0 &&
+  mtfAge <= mtfFreshnessLimit;
     result.mtf[tf] = { side: t.side, structure: st?.direction || 0, fresh: !!fresh, time: m.candles.at(-1)?.time ?? null };
     check('MTF ' + tf, !replay && fresh && side !== 0 && t.side === side && st?.direction === side,
       replay ? 'Replay has no independently timestamped MTF history' : tf + ' closed-candle MTF incomplete or conflicting');
@@ -6564,15 +6631,28 @@ async function loadData() {
   state.tradeFinalizer = null;
   state.liveTradeFinalizer = null;
   state.allIndicatorsConsensus = null;
-  state.primeMtfData = {};
+
+  // Reset Prime safely before loading fresh history.
+  state.primeMarket = null;
+  state.primeMtfSymbol = null;
+
+  state.primeMtfData = {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  };
+
   lastAnalysisKey = null;
-  refreshPrimeConfirmation();
+
+  // Render WAIT state only.
+  // Do NOT calculate Prime before history is loaded.
+  renderPrimeMarket();
+  renderSmartMoneyTools();
   renderTradeFinalizer();
   renderAllIndicatorsConsensus();
   renderProSuiteSummary();
 
   activateAllIndicators();
-
 
   clearTimeout(
     reconnectTimer
