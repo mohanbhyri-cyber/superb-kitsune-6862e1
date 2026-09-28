@@ -91,8 +91,12 @@ function primeClosed(data, seconds, now) {
   if (!Array.isArray(data) || data.length < 2 || !(seconds > 0) || !primeFinite(now)) {
     return { candles: [], error: 'Missing candle data or timeframe' };
   }
-  // Keep the app's penultimate-candle convention. Never duplicate a live bar.
-  const candles = data.slice(0, -1).map(c => ({ ...c }));
+  const candles = data
+    .filter(c => primeFinite(c?.time) && Number(c.time) + Number(seconds) <= Number(now))
+    .map(c => ({ ...c }));
+  if (!candles.length) {
+    return { candles: [], error: 'No completed candles available yet' };
+  }
   let previous = -Infinity;
   for (const c of candles) {
     if (!['time', 'open', 'high', 'low', 'close'].every(k => primeFinite(c[k]))) {
@@ -106,6 +110,19 @@ function primeClosed(data, seconds, now) {
     previous = c.time;
   }
   return { candles, error: null };
+}
+
+function lastClosedCandleIndex(data, seconds, now = Date.now() / 1000) {
+  if (!Array.isArray(data) || !data.length || !(Number(seconds) > 0) || !primeFinite(now)) {
+    return -1;
+  }
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const time = Number(data[i]?.time);
+    if (Number.isFinite(time) && time + Number(seconds) <= Number(now)) return i;
+  }
+
+  return -1;
 }
 
 function primeStructure(candles) {
@@ -201,19 +218,108 @@ function primeStructure(candles) {
 }
 
 function primeTechnical(candles) {
-  if (candles.length < 220) return { side: 0, error: 'Need 220 closed candles for EMA 200 and momentum warm-up' };
-  const calc = indicators(candles), trend = trendIndicators(candles), i = candles.length - 1;
-  const values = Object.fromEntries(['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'vwap'].map(k => [k, calc[k]?.[i]]));
-  for (const k of ['direction', 'adx', 'plusDI', 'minusDI']) values[k] = trend[k]?.[i];
-  // MTF trend can be inspected without volume, but base execution requires VWAP below.
-  const needed = ['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'direction', 'adx', 'plusDI', 'minusDI'];
-  if (!needed.every(k => primeFinite(values[k]))) return { side: 0, values, error: 'Indicator values unavailable' };
-  const v = values, close = candles[i].close;
-  const bull = close > v.e9 && v.e9 > v.e21 && v.e21 > v.e50 && v.e50 > v.e200 &&
-    v.direction === 1 && v.adx >= 22 && v.plusDI > v.minusDI && v.rsi >= 52 && v.rsi <= 68 && v.hist > 0;
-  const bear = close < v.e9 && v.e9 < v.e21 && v.e21 < v.e50 && v.e50 < v.e200 &&
-    v.direction === -1 && v.adx >= 22 && v.minusDI > v.plusDI && v.rsi <= 48 && v.rsi >= 32 && v.hist < 0;
-  return { side: bull ? 1 : bear ? -1 : 0, values, error: null };
+  if (!Array.isArray(candles)) {
+    return { side: 0, values: {}, error: 'Technical candles unavailable' };
+  }
+
+  if (candles.length < 220) {
+    return {
+      side: 0,
+      values: {},
+      error: `Technical warm-up ${candles.length}/220 closed candles`
+    };
+  }
+
+  let calc;
+  let trend;
+
+  try {
+    calc = indicators(candles);
+    trend = trendIndicators(candles);
+  } catch (error) {
+    console.error('PRIME TECHNICAL CALCULATION ERROR', error);
+    return { side: 0, values: {}, error: 'Technical calculation error' };
+  }
+
+  const i = candles.length - 1;
+  const values = {
+    close: candles[i]?.close,
+    e9: calc?.e9?.[i],
+    e21: calc?.e21?.[i],
+    e50: calc?.e50?.[i],
+    e200: calc?.e200?.[i],
+    rsi: calc?.rsi?.[i],
+    hist: calc?.hist?.[i],
+    vwap: calc?.vwap?.[i],
+    direction: trend?.direction?.[i],
+    adx: trend?.adx?.[i],
+    plusDI: trend?.plusDI?.[i],
+    minusDI: trend?.minusDI?.[i]
+  };
+
+  const required = [
+    'close',
+    'e9',
+    'e21',
+    'e50',
+    'e200',
+    'rsi',
+    'hist',
+    'direction',
+    'adx',
+    'plusDI',
+    'minusDI'
+  ];
+
+  const missing = required.filter(k => !primeFinite(values[k]));
+  if (missing.length) {
+    return {
+      side: 0,
+      values,
+      error: `Indicator values unavailable: ${missing.join(', ')}`
+    };
+  }
+
+  const v = values;
+  const bullChecks = [
+    ['close above EMA9', v.close > v.e9],
+    ['EMA9 above EMA21', v.e9 > v.e21],
+    ['EMA21 above EMA50', v.e21 > v.e50],
+    ['EMA50 above EMA200', v.e50 > v.e200],
+    ['Supertrend bullish', v.direction === 1],
+    ['ADX >= 22', v.adx >= 22],
+    ['+DI above -DI', v.plusDI > v.minusDI],
+    ['RSI 52-68', v.rsi >= 52 && v.rsi <= 68],
+    ['MACD histogram positive', v.hist > 0]
+  ];
+  const bearChecks = [
+    ['close below EMA9', v.close < v.e9],
+    ['EMA9 below EMA21', v.e9 < v.e21],
+    ['EMA21 below EMA50', v.e21 < v.e50],
+    ['EMA50 below EMA200', v.e50 < v.e200],
+    ['Supertrend bearish', v.direction === -1],
+    ['ADX >= 22', v.adx >= 22],
+    ['-DI above +DI', v.minusDI > v.plusDI],
+    ['RSI 32-48', v.rsi <= 48 && v.rsi >= 32],
+    ['MACD histogram negative', v.hist < 0]
+  ];
+
+  const bull = bullChecks.every(([, ok]) => ok);
+  const bear = bearChecks.every(([, ok]) => ok);
+  if (bull || bear) {
+    return { side: bull ? 1 : -1, values, error: null };
+  }
+
+  const bullMissing = bullChecks.filter(([, ok]) => !ok).map(([name]) => name);
+  const bearMissing = bearChecks.filter(([, ok]) => !ok).map(([name]) => name);
+  const betterSide = bullMissing.length <= bearMissing.length ? 'bullish' : 'bearish';
+  const blockers = (betterSide === 'bullish' ? bullMissing : bearMissing).slice(0, 4);
+
+  return {
+    side: 0,
+    values,
+    error: `Mixed technical conditions; closest ${betterSide} setup blocked by ${blockers.join(', ')}`
+  };
 }
 
 function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, replay = false }) {
@@ -339,9 +445,18 @@ const fresh =
   m.candles.length > 0 &&
   mtfAge >= 0 &&
   mtfAge <= mtfFreshnessLimit;
-    result.mtf[tf] = { side: t.side, structure: st?.direction || 0, fresh: !!fresh, time: m.candles.at(-1)?.time ?? null };
+    const mtfError = m.error || t.error || (!fresh ? 'closed candle is stale' : null);
+    result.mtf[tf] = {
+      side: t.side,
+      structure: st?.direction || 0,
+      fresh: !!fresh,
+      time: m.candles.at(-1)?.time ?? null,
+      error: mtfError
+    };
     check('MTF ' + tf, !replay && fresh && side !== 0 && t.side === side && st?.direction === side,
-      replay ? 'Replay has no independently timestamped MTF history' : tf + ' closed-candle MTF incomplete or conflicting');
+      replay
+        ? 'Replay has no independently timestamped MTF history'
+        : `${tf} closed-candle MTF incomplete or conflicting${mtfError ? `: ${mtfError}` : ''}`);
   }
   const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
   check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
@@ -444,7 +559,14 @@ function renderSmartMoneyTools() {
   set('smt-order-block', zoneText(block, 'OB'), block?.active ? block.side : 0);
   set('smt-fvg', zoneText(gap, 'FVG'), gap?.active ? gap.side : 0);
   // Match Prime's closed-candle convention and three-bar sweep confirmation window.
-  const lastClosedIndex = state.data.length - 2;
+  const primeNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const lastClosedIndex = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    primeNow
+  );
   const sweep = (Array.isArray(structure.sweeps) ? structure.sweeps : [])
     .filter(s => (s.side === 1 || s.side === -1) && primeFinite(s.price) &&
       Number.isInteger(s.index) && s.index <= lastClosedIndex)
@@ -612,6 +734,16 @@ const state = {
   tvChartMode: 'tradingview',
 
   data: [],
+
+  primeMarket: null,
+
+  primeMtfSymbol: null,
+
+  primeMtfData: {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  },
 
   calc: null,
 
@@ -1870,9 +2002,16 @@ async function initTradingViewAdvancedChart() {
     if (
       !window.TradingView?.widget
     ) {
-      await loadScriptOnce(
-        '/charting_library/charting_library.standalone.js'
+      console.info(
+        'TradingView Advanced Charts unavailable; using Lightweight Charts.'
       );
+
+      setTradingViewDatafeedStatus(
+        'TradingView Lightweight · Upstox LIVE',
+        'up'
+      );
+
+      return false;
     }
 
     if (
@@ -3351,11 +3490,16 @@ function draw() {
   }
 
 
-  const closedIndex =
-    Math.max(
-      0,
-      state.data.length - 2
-    );
+  const analysisNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const closedIndex = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    analysisNow
+  );
+
+  if (closedIndex < 0) return;
 
   const closedCandle =
     state.data[
@@ -5310,11 +5454,16 @@ function summary() {
   // Technical Outlook must use one consistent CLOSED candle.
   // Mixing the live candle with closed-candle trend filters caused
   // Neutral / directional counts to disagree.
-  const closed =
-    Math.max(
-      0,
-      state.data.length - 2
-    );
+  const analysisNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const closed = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    analysisNow
+  );
+
+  if (closed < 0) return;
 
   const r =
     calc.rsi?.[closed];
@@ -5475,7 +5624,7 @@ const label =
   const closedEMA9 = calc.e9?.[closed];
   const closedEMA21 = calc.e21?.[closed];
   const closedRSI = calc.rsi?.[closed];
-  const ready = [closedClose, trend?.supertrend[closed], adxValue,
+  const ready = [closedClose, trend?.supertrend?.[closed], adxValue,
     plusValue, minusValue, closedEMA9, closedEMA21, closedRSI]
     .every(Number.isFinite);
   const dmiDirection = plusValue > minusValue ? 1 :
@@ -5633,7 +5782,7 @@ const label =
       </div>
       <div class="reason">
         <span>ADX/DMI (14) ${dmiOn ? '· filter on' : '· filter off'}</span>
-        <b>${Number.isFinite(adxValue)
+        <b>${[adxValue, plusValue, minusValue].every(Number.isFinite)
           ? 'ADX ' + adxValue.toFixed(1) + ' · +DI ' + plusValue.toFixed(1) +
             ' / -DI ' + minusValue.toFixed(1)
           : 'Warming up'}</b>
@@ -6092,7 +6241,8 @@ function exitReplay(
 
 
 function timeframeTrend(
-  candles
+  candles,
+  seconds
 ) {
 
   if (
@@ -6124,11 +6274,18 @@ function timeframeTrend(
     );
 
 
-  const closed =
-    Math.max(
-      0,
-      candles.length - 2
-    );
+  const closed = lastClosedCandleIndex(
+    candles,
+    seconds,
+    Date.now() / 1000
+  );
+
+  if (closed < 0) {
+    return {
+      state: 'WAITING FOR CLOSED CANDLE',
+      side: 0
+    };
+  }
 
 
   const e9 =
@@ -6434,17 +6591,20 @@ async function refreshMTF() {
 
     state.mtf['5m'] =
       timeframeTrend(
-        resultCandles[0]
+        resultCandles[0],
+        300
       );
 
     state.mtf['15m'] =
       timeframeTrend(
-        resultCandles[1]
+        resultCandles[1],
+        900
       );
 
     state.mtf['1h'] =
       timeframeTrend(
-        resultCandles[2]
+        resultCandles[2],
+        3600
       );
 
 
@@ -6529,7 +6689,12 @@ async function refreshMTF() {
     error
   ) {
 
-    state.primeMtfData = {};
+    state.primeMtfSymbol = null;
+    state.primeMtfData = {
+      '5m': [],
+      '15m': [],
+      '1h': []
+    };
     console.warn(
       'Multi-timeframe confirmation unavailable:',
       error
@@ -13524,4 +13689,3 @@ if (
 
 
 renderWatch();
-
