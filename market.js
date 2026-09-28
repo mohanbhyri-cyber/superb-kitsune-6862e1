@@ -33,6 +33,9 @@ async function upstoxRequest(url, options) {
 
 export const API_BASE =
   typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('sample') === '1'
+    ? ''
+    : typeof window !== 'undefined' &&
   ['127.0.0.1', 'localhost'].includes(
     window.location.hostname
   )
@@ -882,8 +885,119 @@ timer = setTimeout(
 // DemoMarketAdapter is intentionally NOT used.
 // ============================================================
 
-export const market =
-  new UpstoxMarketAdapter();
+const sampleMode =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('sample') === '1';
+
+function sampleCandles(timeframe, count = 500, endTime = Date.now() / 1000) {
+  const seconds = intervals[timeframe] || 60;
+  const currentOpen = Math.floor(Number(endTime) / seconds) * seconds;
+  const firstTime = currentOpen - (count - 1) * seconds;
+  const candles = Array.from({ length: count }, (_, index) => {
+    const close = 23200 + index * 0.15 + index * index * 0.001;
+    const open = close - 3;
+    return {
+      time: firstTime + index * seconds,
+      open,
+      high: close + 1,
+      low: open - 1,
+      close,
+      volume: 90000 + (index % 37) * 4200,
+      openInterest: 0
+    };
+  });
+
+  // Closed-candle fixtures near the end exercise the same Prime structure,
+  // order-block, FVG, and liquidity-sweep rules used for live data.
+  const fixture = [
+    [23512, 23515, 23517, 23511],
+    [23515, 23514, 23516, 23512],
+    [23514, 23513, 23515, 23511],
+    [23514, 23511, 23515, 23510],
+    [23512, 23510, 23513, 23508],
+    [23510, 23512, 23514, 23510],
+    [23512, 23514, 23516, 23512],
+    [23514, 23515, 23516, 23514],
+    [23514, 23520, 23521, 23507],
+    [23520, 23522, 23523, 23518],
+    [23522, 23524, 23525, 23520],
+    [23524, 23526, 23527, 23522],
+    [23526, 23528, 23529, 23524]
+  ];
+  const start = Math.max(0, count - fixture.length - 1);
+  fixture.forEach(([open, close, high, low], offset) => {
+    const index = start + offset;
+    if (!candles[index]) return;
+    candles[index] = {
+      ...candles[index],
+      open,
+      high,
+      low,
+      close,
+      volume: 165000 + offset * 6000
+    };
+  });
+
+  return candles;
+}
+
+class SampleMarketAdapter {
+  constructor() {
+    this.status = 'SAMPLE';
+    this.lastUpdate = Date.now();
+    this.quotes = {};
+  }
+
+  async history(_symbol, timeframe) {
+    return sampleCandles(timeframe, 500);
+  }
+
+  async mtfHistory(_symbol, timeframe) {
+    return sampleCandles(timeframe, 320);
+  }
+
+  async previousHistory(_symbol, timeframe) {
+    const seconds = intervals[timeframe] || 60;
+    return sampleCandles(timeframe, 320, Date.now() / 1000 - 500 * seconds);
+  }
+
+  subscribe(symbol, timeframe, onTick) {
+    let active = true;
+    const seconds = intervals[timeframe] || 60;
+    const emit = () => {
+      if (!active) return;
+      const now = Date.now() / 1000;
+      const phase = now / 18;
+      const price = 23410 + Math.sin(phase) * 12 + Math.sin(phase / 4) * 18;
+      this.quotes[symbol] = price;
+      this.lastUpdate = Date.now();
+      onTick?.({
+        time: Math.floor(now),
+        price,
+        delta: Math.cos(phase) * 0.6,
+        volume: 125000,
+        previousClose: 23375,
+        netChange: price - 23375,
+        changePercent: ((price - 23375) / 23375) * 100,
+        live: true,
+        fallback: false,
+        source: 'DETERMINISTIC SAMPLE',
+        candleTime: Math.floor(now / seconds) * seconds
+      });
+    };
+    emit();
+    const timer = setInterval(emit, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      this.status = 'DISCONNECTED';
+    };
+  }
+}
+
+export const market = sampleMode
+  ? new SampleMarketAdapter()
+  : new UpstoxMarketAdapter();
 
 
 // ============================================================
@@ -1088,4 +1202,3 @@ export function strideSignals(
 
   return result;
 }
-

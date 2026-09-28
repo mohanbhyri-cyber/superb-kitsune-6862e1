@@ -2437,7 +2437,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        15,
+        60,
         () => intradayHistory(url, token),
         context
       );
@@ -2448,7 +2448,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        300,
+        3600,
         () => previousSessionHistory(url, token),
         context
       );
@@ -2459,7 +2459,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        30,
+        60,
         () => mtfHistory(url, token),
         context
       );
@@ -2481,7 +2481,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        15,
+        30,
         () => futuresVWAP(url, token),
         context
       );
