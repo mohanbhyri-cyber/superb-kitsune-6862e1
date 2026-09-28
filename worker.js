@@ -39,6 +39,44 @@ function json(data, status = 200) {
   });
 }
 
+async function cachedApiResponse(request, ttlSeconds, loader, context) {
+  let cache = null;
+
+  if (request.method === "GET" && typeof caches !== "undefined") {
+    try {
+      cache = caches.default;
+      const cached = await cache.match(request);
+      if (cached) return cached;
+    } catch (error) {
+      console.warn("Edge cache read unavailable", error?.message || error);
+    }
+  }
+
+  const response = await loader();
+  if (!cache || !response.ok) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set(
+    "cache-control",
+    `public, max-age=0, s-maxage=${Math.max(1, Number(ttlSeconds) || 1)}`
+  );
+  const cacheable = new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+
+  try {
+    const write = cache.put(request, cacheable.clone());
+    if (context?.waitUntil) context.waitUntil(write);
+    else await write;
+  } catch (error) {
+    console.warn("Edge cache write unavailable", error?.message || error);
+  }
+
+  return cacheable;
+}
+
 function getISTParts(value = Date.now()) {
   const parts = istFormatter.formatToParts(new Date(value));
 
@@ -2273,7 +2311,7 @@ async function niftyDailyHistory(url, token) {
 // ----------------------------------------------------
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     const url =
       new URL(request.url);
 
@@ -2397,45 +2435,55 @@ export default {
     if (
       url.pathname === "/api/upstox-history"
     ) {
-      return intradayHistory(
-        url,
-        token
+      return cachedApiResponse(
+        request,
+        15,
+        () => intradayHistory(url, token),
+        context
       );
     }
 
     if (
       url.pathname === "/api/upstox-previous-history"
     ) {
-      return previousSessionHistory(
-        url,
-        token
+      return cachedApiResponse(
+        request,
+        300,
+        () => previousSessionHistory(url, token),
+        context
       );
     }
 
     if (
       url.pathname === "/api/upstox-mtf-history"
     ) {
-      return mtfHistory(
-        url,
-        token
+      return cachedApiResponse(
+        request,
+        30,
+        () => mtfHistory(url, token),
+        context
       );
     }
 
     if (
       url.pathname === "/api/nifty-daily-history"
     ) {
-      return niftyDailyHistory(
-        url,
-        token
+      return cachedApiResponse(
+        request,
+        300,
+        () => niftyDailyHistory(url, token),
+        context
       );
     }
 
     if (
       url.pathname === "/api/nifty-futures-vwap"
     ) {
-      return futuresVWAP(
-        url,
-        token
+      return cachedApiResponse(
+        request,
+        15,
+        () => futuresVWAP(url, token),
+        context
       );
     }
 
@@ -2498,4 +2546,3 @@ export default {
     );
   },
 };
-
