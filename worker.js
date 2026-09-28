@@ -282,7 +282,19 @@ function istDateMinusDays(days) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
+// Cooldowns are shared by credential within this Worker instance.
+const upstoxCooldowns = new Map();
+function upstoxCooldownError(until) {
+  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  error.status = 429;
+  error.rateLimited = true;
+  error.retryAfterMs = Math.max(1000, until - Date.now());
+  return error;
+}
 async function upstoxFetch(endpoint, token) {
+  const until = upstoxCooldowns.get(token) || 0;
+  if (until > Date.now()) throw upstoxCooldownError(until);
+  upstoxCooldowns.delete(token);
   const response = await fetch(endpoint, {
     method: "GET",
     headers: {
@@ -311,16 +323,12 @@ async function upstoxFetch(endpoint, token) {
     error.rateLimited = response.status === 429;
 
     // Respect Retry-After when Upstox provides it.
-    const retryAfter = Number(
-      response.headers.get("retry-after")
-    );
-
-    error.retryAfterMs =
-      Number.isFinite(retryAfter) && retryAfter > 0
-        ? retryAfter * 1000
-        : response.status === 429
-          ? 60000
-          : 0;
+    const retryHeader = response.headers.get('retry-after');
+    const seconds = retryHeader && Number.isFinite(Number(retryHeader))
+      ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
+    error.retryAfterMs = response.status === 429
+      ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
+    if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
 
     error.details = details;
 

@@ -1,3 +1,28 @@
+// All browser-side Upstox requests share the same retry deadline.
+let upstoxRetryAt = 0;
+function marketRateLimitError() {
+  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  error.status = 429;
+  error.retryAfterMs = Math.max(1000, upstoxRetryAt - Date.now());
+  return error;
+}
+async function upstoxRequest(url, options) {
+  if (Date.now() < upstoxRetryAt) throw marketRateLimitError();
+  const response = await fetch(url, options);
+  if (response.status === 429) {
+    const body = await response.clone().json().catch(() => ({}));
+    const header = response.headers.get('retry-after');
+    const seconds = header && Number.isFinite(Number(header))
+      ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : 0;
+    const bodyDelay = Number(body.retryAfterMs);
+    const delay = Math.max(60000, Number.isFinite(bodyDelay) ? bodyDelay : 0,
+      Number.isFinite(seconds) ? seconds * 1000 : 0);
+    upstoxRetryAt = Math.max(upstoxRetryAt, Date.now() + delay);
+    throw marketRateLimitError();
+  }
+  return response;
+}
+
 // market.js
 // ============================================================
 // PRO SCALPER — LIVE MARKET ADAPTER
@@ -407,7 +432,7 @@ export class UpstoxMarketAdapter {
 
     try {
 
-      response = await fetch(
+      response = await upstoxRequest(
         url,
         {
           cache: 'no-store'
@@ -416,6 +441,7 @@ export class UpstoxMarketAdapter {
 
     } catch (error) {
 
+      if (error?.status === 429) { this.status = 'RATE LIMITED'; throw error; }
       this.status = 'OFFLINE';
 
       throw new Error(
@@ -534,7 +560,7 @@ export class UpstoxMarketAdapter {
         );
 
       const response =
-        await fetch(
+        await upstoxRequest(
           API_BASE + '/api/upstox-mtf-history' +
           '?symbol=' +
           encodeURIComponent(symbol) +
@@ -596,7 +622,7 @@ export class UpstoxMarketAdapter {
 
     try {
       const response =
-        await fetch(
+        await upstoxRequest(
           API_BASE + '/api/upstox-previous-history' +
           '?symbol=' +
           encodeURIComponent(symbol) +
@@ -674,7 +700,7 @@ export class UpstoxMarketAdapter {
       try {
 
         const response =
-          await fetch(
+          await upstoxRequest(
             API_BASE + '/api/live-quote' +
             '?symbol=' +
             encodeURIComponent(symbol),
@@ -816,7 +842,7 @@ export class UpstoxMarketAdapter {
 
 timer = setTimeout(
   tick,
-  retryDelay
+  Math.max(retryDelay, upstoxRetryAt - Date.now())
 );
         }
       }

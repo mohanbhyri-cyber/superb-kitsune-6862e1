@@ -6499,7 +6499,7 @@ async function refreshMTF() {
 }
 
 
-function scheduleReconnect() {
+function scheduleReconnect(retryAfterMs = 0) {
 
   if (
     state.replay.active
@@ -6517,13 +6517,10 @@ function scheduleReconnect() {
     1;
 
 
-  const delay =
-    Math.min(
-      15000,
-      1500 *
-      reconnectAttempts
-    );
-
+  const delay = Math.max(
+    Number.isFinite(retryAfterMs) ? retryAfterMs : 0,
+    Math.min(60000, 1500 * 2 ** Math.min(reconnectAttempts - 1, 6))
+  );
 
   setFeedStatus(
     'RECONNECTING',
@@ -7225,7 +7222,7 @@ async function loadData() {
     );
 
 
-    scheduleReconnect();
+    scheduleReconnect(error?.retryAfterMs);
   }
 }
 
