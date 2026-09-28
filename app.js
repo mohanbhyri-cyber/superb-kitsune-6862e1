@@ -224,10 +224,18 @@ function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, rep
     if (!ok) result.reasons.push(reason || name + ' incomplete or conflicting');
   };
   const closed = primeClosed(data, seconds, now);
-  if (closed.error || closed.candles.length < 220) {
-    result.reasons.push(closed.error || 'Need 220 closed candles; no signal during warm-up');
-    return result;
-  }
+
+if (closed.error) {
+  result.reasons.push(closed.error);
+  return result;
+}
+
+if (closed.candles.length < 20) {
+  result.reasons.push(
+    `Need at least 20 closed candles for market structure · currently ${closed.candles.length}`
+  );
+  return result;
+}
   const c = closed.candles, last = c.at(-1), index = c.length - 1;
   result.time = last.time;
   const s = result.structure = primeStructure(c), technical = result.technical = primeTechnical(c);
