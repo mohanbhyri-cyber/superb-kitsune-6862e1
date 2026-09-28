@@ -856,7 +856,7 @@ const state = {
 
   filter: 'all',
 
-  count: 300,
+  count: 220,
 
   offset: 0,
 
