@@ -856,7 +856,7 @@ const state = {
 
   filter: 'all',
 
-  count: 180,
+  count: 300,
 
   offset: 0,
 
@@ -6094,7 +6094,7 @@ function startReplay() {
     !Array.isArray(
       state.data
     ) ||
-    state.data.length < 221
+    state.data.length < 180
   ) {
 
     toast(
