@@ -39,7 +39,7 @@ import {
   indicators,
   market,
   strideSignals
-} from './market.js?v=2';
+} from './market.js';
 
 
 window.SMRTTradingViewDatafeed =
@@ -527,47 +527,7 @@ function refreshPrimeConfirmation() {
 }
 
 function renderSmartMoneyTools() {
-  const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
-  const sampleEdge = state.niftyEdge?.latest;
-  let structure = state.primeMarket?.structure;
-
-  // The deterministic sample is deliberately smooth and may not form the
-  // confirmed pivot pair required by Prime. In sample mode only, derive the
-  // range from completed OHLC candles so premium/discount remains testable.
-  if (samplePreview && (!structure?.high || !structure?.low)) {
-    const now = Date.now() / 1000;
-    const closedIndex = lastClosedCandleIndex(
-      state.data,
-      Number(intervals[state.tf]),
-      now
-    );
-    const closed = state.data
-      .slice(0, Math.max(0, closedIndex + 1))
-      .slice(-40);
-    const highs = closed.map(c => Number(c.high)).filter(primeFinite);
-    const lows = closed.map(c => Number(c.low)).filter(primeFinite);
-    const current = Number(closed.at(-1)?.close);
-    const high = highs.length ? Math.max(...highs) : NaN;
-    const low = lows.length ? Math.min(...lows) : NaN;
-    const span = high - low;
-
-    if (primeFinite(current) && primeFinite(high) && primeFinite(low) && span > 0) {
-      const position = Math.max(0, Math.min(1, (current - low) / span));
-      structure = {
-        ...(structure || {}),
-        direction: primeSide(sampleEdge?.signal),
-        high: { price: high, label: 'RANGE HIGH' },
-        low: { price: low, label: 'RANGE LOW' },
-        equilibrium: (high + low) / 2,
-        position,
-        zone: position < 0.5 ? 'DISCOUNT' : position > 0.5 ? 'PREMIUM' : 'EQUILIBRIUM',
-        blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
-        gaps: Array.isArray(structure?.gaps) ? structure.gaps : [],
-        sweeps: Array.isArray(structure?.sweeps) ? structure.sweeps : []
-      };
-    }
-  }
+  const structure = state.primeMarket?.structure;
   const set = (id, text, side = 0) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -634,8 +594,7 @@ function renderSmartMoneyTools() {
   // Describe evidence without inventing a trading score or overriding Prime's gate.
   const sides = [block?.active ? block.side : 0, gap?.active ? gap.side : 0,
     recentSweep ? sweep.side : 0].filter(Boolean);
-  const bull = sides.includes(1) || (!sides.length && structure.direction === 1);
-  const bear = sides.includes(-1) || (!sides.length && structure.direction === -1);
+  const bull = sides.includes(1), bear = sides.includes(-1);
   set('smt-status', bull && bear ? 'MIXED' : bull ? 'BULLISH CONTEXT'
     : bear ? 'BEARISH CONTEXT' : 'NO ACTIVE CONTEXT', bull && !bear ? 1 : bear && !bull ? -1 : 0);
 }
@@ -1667,8 +1626,6 @@ function renderProSuiteSummary() {
   const edgeLatest = state.niftyEdge?.latest || null;
   const consensus = state.allIndicatorsConsensus || null;
   const finalizer = state.tradeFinalizer || null;
-  const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
 
   // =========================================================
   // FINAL DISPLAY SIGNAL
@@ -1686,24 +1643,18 @@ function renderProSuiteSummary() {
     "STRONG SELL"
   ];
 
-  const edgeSignal = String(edgeLatest?.signal || 'NO TRADE').toUpperCase();
-  const actionable = samplePreview
-    ? ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edgeSignal)
-    : actionableSignals.includes(consensusSignal) &&
-      state.primeMarket?.side === primeSide(consensusSignal);
+  const actionable =
+    actionableSignals.includes(consensusSignal) &&
+    state.primeMarket?.side === primeSide(consensusSignal);
 
   const displaySignal =
-    actionable
-      ? (samplePreview ? edgeSignal : consensusSignal)
-      : "NO TRADE";
+    actionable ? consensusSignal : "NO TRADE";
 
   // =========================================================
   // CONFIDENCE
   // Use corrected All Indicators confidence.
   // =========================================================
-  const confidenceRaw = samplePreview
-    ? Number(edgeLatest?.score) * 10
-    : Number(consensus?.confidence);
+  const confidenceRaw = Number(consensus?.confidence);
 
   const confidence =
     Number.isFinite(confidenceRaw)
@@ -1729,13 +1680,12 @@ function renderProSuiteSummary() {
   // =========================================================
   const finalizerSide = Number(finalizer?.side);
 
-  const plan = samplePreview
-    ? (actionable ? edgeLatest?.plan || null : null)
-    : actionable &&
-      finalizer?.plan &&
-      finalizerSide === finalSide
-        ? finalizer.plan
-        : null;
+  const plan =
+    actionable &&
+    finalizer?.plan &&
+    finalizerSide === finalSide
+      ? finalizer.plan
+      : null;
 
   // =========================================================
   // MARKET / STRUCTURE
@@ -1754,9 +1704,7 @@ function renderProSuiteSummary() {
   // =========================================================
   // STRENGTH
   // =========================================================
-  let strength = samplePreview
-    ? edgeLatest?.strength || "WAIT"
-    : "WAIT";
+  let strength = "WAIT";
 
   if (
     displaySignal === "STRONG BUY" ||
@@ -11436,26 +11384,11 @@ function renderAiNifty() {
 
 function recomputeAiNifty() {
 
-  const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
-  const edge = state.niftyEdge?.latest;
-  const sampleFinalizer =
-    samplePreview &&
-    edge?.plan &&
-    ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edge.signal)
-      ? {
-          state: edge.signal,
-          plan: edge.plan,
-          primeConfirmed: true
-        }
-      : null;
-
   state.aiNifty =
     analyseSmrtAiNifty({
       upstoxPrice:
         quote(),
       finalizer:
-        sampleFinalizer ??
         state.liveTradeFinalizer ??
         state.tradeFinalizer,
       mtf:
@@ -12016,26 +11949,8 @@ function setupAllIndicatorsChat() {
 
 
 function renderTradeFinalizer() {
-  const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
-  const edge = state.niftyEdge?.latest;
-  const sampleFinalizer =
-    samplePreview &&
-    edge?.plan &&
-    ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edge.signal)
-      ? {
-          state: edge.signal,
-          score: Math.min(100, Number(edge.score) * 10),
-          bullScore: edge.bullScore,
-          bearScore: edge.bearScore,
-          invalidation: 'Deterministic sample setup; production still requires Prime confirmation',
-          plan: edge.plan,
-          primeConfirmed: true,
-          reasons: edge.reasons
-        }
-      : null;
 
-  const f = sampleFinalizer ??
+  const f =
     state.liveTradeFinalizer ??
     state.tradeFinalizer;
 
