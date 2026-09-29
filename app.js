@@ -294,9 +294,11 @@ function primeTechnical(candles) {
 function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, replay = false }) {
   const result = { signal: 'NO TRADE', side: 0, reasons: [], checks: [], structure: null,
     volume: null, mtf: {}, time: null };
-  const check = (name, ok, reason) => {
-    result.checks.push({ name, ok: !!ok });
-    if (!ok) result.reasons.push(reason || name + ' incomplete or conflicting');
+  const check = (name, ok, reason, required = true) => {
+    result.checks.push({ name, ok: !!ok, required: required !== false });
+    if (!ok && required !== false) {
+      result.reasons.push(reason || name + ' incomplete or conflicting');
+    }
   };
   const closed = primeClosed(data, seconds, now);
 
@@ -390,10 +392,16 @@ check(
   }
   result.volume = { available: volumesValid, pressure, relative, source: 'Candle OHLCV proxy; not bid/ask delta' };
   check('Volume pressure', volumesValid && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
-    volumesValid ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
-  const vwap = technical.values?.vwap;
-  check('Closed-candle VWAP', primeFinite(vwap) && side !== 0 && (last.close - Number(vwap)) * side > 0,
-    'Closed-candle VWAP unavailable or conflicting; live futures VWAP is not substituted');
+    'Volume pressure does not confirm', volumesValid);
+  const indexVWAP = technical.values?.vwap;
+  const futuresVWAP = legacy.futuresVWAP;
+  const vwap = primeFinite(indexVWAP)
+    ? Number(indexVWAP)
+    : primeFinite(futuresVWAP) ? Number(futuresVWAP) : null;
+  const vwapAvailable = primeFinite(vwap);
+  check(vwapAvailable && !primeFinite(indexVWAP) ? 'NIFTY futures VWAP' : 'Closed-candle VWAP',
+    vwapAvailable && side !== 0 && (last.close - Number(vwap)) * side > 0,
+    'VWAP is conflicting with the technical direction', vwapAvailable);
   for (const [tf, duration] of [['5m', 300], ['15m', 900], ['1h', 3600]]) {
     const m = primeClosed(mtfData[tf], duration, now);
     const t = m.error ? { side: 0 } : primeTechnical(m.candles);
@@ -450,7 +458,7 @@ const fresh =
     const vote = primeSide(value);
     check(name + ' conflict veto', !vote || vote === side, name + ' conflicts with closed-candle evidence');
   }
-  if (side && result.checks.every(x => x.ok)) {
+  if (side && result.checks.every(x => x.required === false || x.ok)) {
     result.side = side;
     result.signal = side === 1 ? 'BUY' : 'SELL';
     result.reasons.push('All required closed-candle confirmation layers agree');
@@ -484,7 +492,8 @@ function refreshPrimeConfirmation() {
         : state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
       legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
         candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
-        aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus } });
+        aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus,
+        futuresVWAP: state.futuresVWAP } });
     state.allIndicatorsConsensus = primeGate(consensus, state.primeMarket, 'signal');
   } catch (error) {
     console.warn('Prime confirmation failed closed:', error);
@@ -638,10 +647,14 @@ function renderPrimeMarket() {
       row('p', z.kind + ' ' + (z.side === 1 ? '↑' : '↓') + ' ' + fmt(z.low) + '–' + fmt(z.high) + ' · ' + z.status);
     }
     row('p', p.volume?.available ? 'OHLCV pressure proxy: ' + (p.volume.pressure * 100).toFixed(1) + '% · Relative volume ' + p.volume.relative.toFixed(2) + '×'
-      : 'Volume unavailable — confirmation blocked');
+      : 'Index volume unavailable · optional check skipped');
     row('p', Object.entries(p.mtf).map(([tf, m]) => tf + ': ' + (!m.fresh ? 'STALE / MISSING' : m.side === 1 ? 'BULLISH' : m.side === -1 ? 'BEARISH' : 'MIXED')).join(' · '));
   }
-  row('p', (p?.checks || []).filter(c => c.ok).length + ' / ' + (p?.checks?.length || 0) + ' checks passed (not a probability)');
+  const requiredChecks = (p?.checks || []).filter(c => c.required !== false);
+  const optionalUnavailable = (p?.checks || []).filter(c => c.required === false && !c.ok).length;
+  row('p', requiredChecks.filter(c => c.ok).length + ' / ' + requiredChecks.length +
+    ' required checks passed' + (optionalUnavailable ? ` · ${optionalUnavailable} optional data source unavailable` : '') +
+    ' (not a probability)');
   row('p', (p?.reasons || ['Waiting for history']).join(' · '));
 }
 
