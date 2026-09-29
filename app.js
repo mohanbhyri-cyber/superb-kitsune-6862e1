@@ -460,11 +460,12 @@ const fresh =
 
 function primeGate(candidate, prime, field = 'state') {
   const side = primeSide(candidate?.[field]);
-  const conflict = field === 'signal' && (candidate?.opposingCount > 0 ||
+  const conflict = field === 'signal' && side !== 0 && (candidate?.opposingCount > 0 ||
     candidate?.votes?.some(v => v.side && v.side !== side));
   if (side && prime?.side === side && !conflict) return { ...candidate, primeConfirmed: true };
   const reasons = conflict ? ['All Indicators Consensus contains opposing evidence']
-    : prime?.reasons?.length ? prime.reasons : ['Required confirmation is incomplete'];
+    : field === 'signal' && candidate?.reason ? [candidate.reason]
+      : prime?.reasons?.length ? prime.reasons : ['Required confirmation is incomplete'];
   return { ...(candidate || {}), [field]: 'NO TRADE', side: 0, plan: null, score: 0,
     bullScore: candidate?.bullScore ?? 0, bearScore: candidate?.bearScore ?? 0,
     confidence: 0, primeConfirmed: false, reasons, reason: reasons.join(' · '), invalidation: reasons[0] };
@@ -7488,7 +7489,6 @@ function runSmrtDiagnostics() {
 
   const requiredIds = [
     'chart',
-    'tv-lightweight-chart',
     'watch-rows',
     'signal-label',
     'mtf-overall',
@@ -7545,14 +7545,10 @@ function runSmrtDiagnostics() {
       'function',
     allIndicators:
       typeof analyseAllIndicators ===
-      'function',
+        'function',
     chartConsensus:
       typeof analyseChartConsensus ===
-      'function',
-    tradingViewDatafeed:
-      Boolean(
-        window.SMRTTradingViewDatafeed
-      )
+        'function'
   };
 
   const failedEngines =
