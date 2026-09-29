@@ -1,5 +1,43 @@
 // All browser-side Upstox requests share the same retry deadline.
 let upstoxRetryAt = 0;
+
+// ============================================================
+// HISTORY CACHE + REQUEST DEDUPLICATION
+// Prevent duplicate Upstox historical requests / HTTP 429
+// ============================================================
+
+const historyCache = new Map();
+const historyInFlight = new Map();
+const HISTORY_CACHE_MS = 60 * 1000;
+
+async function cachedMarketRequest(key, requestFn) {
+  const now = Date.now();
+  const cached = historyCache.get(key);
+
+  if (cached && now - cached.time < HISTORY_CACHE_MS) {
+    return cached.data;
+  }
+
+  if (historyInFlight.has(key)) {
+    return historyInFlight.get(key);
+  }
+
+  const promise = Promise.resolve()
+    .then(requestFn)
+    .then(data => {
+      historyCache.set(key, {
+        time: Date.now(),
+        data
+      });
+      return data;
+    })
+    .finally(() => {
+      historyInFlight.delete(key);
+    });
+
+  historyInFlight.set(key, promise);
+  return promise;
+}
 function marketRateLimitError() {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
@@ -417,193 +455,168 @@ export class UpstoxMarketAdapter {
   async history(symbol, timeframe) {
 
     if (!intervals[timeframe]) {
-      throw new Error(
-        'Unsupported timeframe'
-      );
+      throw new Error('Unsupported timeframe');
     }
 
-    this.status = 'CONNECTING';
+    const cacheKey = `history:${symbol}:${timeframe}`;
 
-    const url =
-      API_BASE + '/api/upstox-history' +
-      '?symbol=' +
-      encodeURIComponent(symbol) +
-      '&timeframe=' +
-      encodeURIComponent(timeframe);
+    return cachedMarketRequest(cacheKey, async () => {
 
-    let response;
+      this.status = 'CONNECTING';
 
-    try {
+      const url =
+        API_BASE + '/api/upstox-history' +
+        '?symbol=' +
+        encodeURIComponent(symbol) +
+        '&timeframe=' +
+        encodeURIComponent(timeframe);
 
-      response = await upstoxRequest(
-        url,
-        {
-          cache: 'no-store'
-        }
-      );
+      let response;
 
-    } catch (error) {
-
-      if (error?.status === 429) { this.status = 'RATE LIMITED'; throw error; }
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'Unable to connect to live market history'
-      );
-    }
-
-
-    if (!response.ok) {
-
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'Upstox history request failed'
-      );
-    }
-
-
-    const data =
-      await response.json();
-
-
-    if (
-      !data ||
-      data.live !== true ||
-      !Array.isArray(data.candles)
-    ) {
-
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        data?.reason ||
-        'Live candle data unavailable'
-      );
-    }
-
-
-    const candles =
-      data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
+      try {
+        response = await upstoxRequest(
+          url,
+          { cache: 'no-store' }
         );
+      } catch (error) {
+        if (error?.status === 429) {
+          this.status = 'RATE LIMITED';
+          throw error;
+        }
 
+        this.status = 'OFFLINE';
+        throw new Error(
+          'Unable to connect to live market history'
+        );
+      }
 
-    if (!candles.length) {
+      if (!response.ok) {
+        this.status = 'OFFLINE';
+        throw new Error(
+          'Upstox history request failed'
+        );
+      }
 
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'No live candles returned'
-      );
-    }
-
-
-    // --------------------------------------------------------
-    // Remove duplicates
-    // --------------------------------------------------------
-
-    const unique = [];
-
-    let previousTime = null;
-
-    for (const candle of candles) {
+      const data = await response.json();
 
       if (
-        candle.time === previousTime
+        !data ||
+        data.live !== true ||
+        !Array.isArray(data.candles)
       ) {
-
-        unique[unique.length - 1] =
-          candle;
-
-      } else {
-
-        unique.push(candle);
-
-        previousTime =
-          candle.time;
+        this.status = 'OFFLINE';
+        throw new Error(
+          data?.reason ||
+          'Live candle data unavailable'
+        );
       }
-    }
 
+      const candles =
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .sort((a, b) => a.time - b.time);
 
-    this.status = 'LIVE';
+      if (!candles.length) {
+        this.status = 'OFFLINE';
+        throw new Error(
+          'No live candles returned'
+        );
+      }
 
-    this.lastUpdate =
-      Date.now();
+      const byTime = new Map();
+      for (const candle of candles) {
+        byTime.set(candle.time, candle);
+      }
 
+      const latest =
+        [...byTime.values()]
+          .sort((a, b) => a.time - b.time)
+          .slice(-500);
 
-    return unique;
+      this.status = 'LIVE';
+      this.lastUpdate = Date.now();
+
+      console.log(
+        `[SMRT HISTORY] ${symbol} ${timeframe}: ${latest.length} candles`
+      );
+
+      return latest;
+    });
   }
 
 
   async mtfHistory(symbol, timeframe) {
 
-    if (
-      ![
-        '5m',
-        '15m',
-        '1h'
-      ].includes(timeframe)
-    ) {
+    if (!['5m', '15m', '1h'].includes(timeframe)) {
       return [];
     }
 
-    try {
-      const controller =
-        new AbortController();
+    const cacheKey = `mtf:${symbol}:${timeframe}`;
 
-      const timeout =
-        setTimeout(
-          () =>
-            controller.abort(),
+    try {
+      return await cachedMarketRequest(cacheKey, async () => {
+        const controller = new AbortController();
+
+        const timeout = setTimeout(
+          () => controller.abort(),
           8000
         );
 
-      const response =
-        await upstoxRequest(
-          API_BASE + '/api/upstox-mtf-history' +
-          '?symbol=' +
-          encodeURIComponent(symbol) +
-          '&timeframe=' +
-          encodeURIComponent(timeframe),
-          {
-            cache: 'no-store',
-            signal:
-              controller.signal
+        let response;
+
+        try {
+          response = await upstoxRequest(
+            API_BASE + '/api/upstox-mtf-history' +
+            '?symbol=' +
+            encodeURIComponent(symbol) +
+            '&timeframe=' +
+            encodeURIComponent(timeframe),
+            {
+              cache: 'no-store',
+              signal: controller.signal
+            }
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw marketRateLimitError();
           }
-        ).finally(
-          () =>
-            clearTimeout(
-              timeout
-            )
+          return [];
+        }
+
+        const data = await response.json();
+
+        if (
+          data?.live !== true ||
+          !Array.isArray(data?.candles)
+        ) {
+          return [];
+        }
+
+        const byTime = new Map();
+
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .forEach(candle => {
+            byTime.set(candle.time, candle);
+          });
+
+        const candles =
+          [...byTime.values()]
+            .sort((a, b) => a.time - b.time)
+            .slice(-500);
+
+        console.log(
+          `[SMRT MTF] ${symbol} ${timeframe}: ${candles.length} candles`
         );
 
-      if (!response.ok) {
-        return [];
-      }
-
-      const data =
-        await response.json();
-
-      if (
-        data?.live !== true ||
-        !Array.isArray(
-          data?.candles
-        )
-      ) {
-        return [];
-      }
-
-      return data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (x, y) =>
-            x.time - y.time
-        );
+        return candles;
+      });
 
     } catch (error) {
       console.warn(
@@ -623,9 +636,11 @@ export class UpstoxMarketAdapter {
       return [];
     }
 
+    const cacheKey = `previous:${symbol}:${timeframe}`;
+
     try {
-      const response =
-        await upstoxRequest(
+      return await cachedMarketRequest(cacheKey, async () => {
+        const response = await upstoxRequest(
           API_BASE + '/api/upstox-previous-history' +
           '?symbol=' +
           encodeURIComponent(symbol) +
@@ -636,24 +651,39 @@ export class UpstoxMarketAdapter {
           }
         );
 
-      if (!response.ok) {
-        return [];
-      }
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw marketRateLimitError();
+          }
+          return [];
+        }
 
-      const data =
-        await response.json();
+        const data = await response.json();
 
-      if (!Array.isArray(data?.candles)) {
-        return [];
-      }
+        if (!Array.isArray(data?.candles)) {
+          return [];
+        }
 
-      return data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
+        const byTime = new Map();
+
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .forEach(candle => {
+            byTime.set(candle.time, candle);
+          });
+
+        const candles =
+          [...byTime.values()]
+            .sort((a, b) => a.time - b.time)
+            .slice(-500);
+
+        console.log(
+          `[SMRT PREVIOUS] ${symbol} ${timeframe}: ${candles.length} candles`
         );
+
+        return candles;
+      });
 
     } catch (error) {
       console.warn(
