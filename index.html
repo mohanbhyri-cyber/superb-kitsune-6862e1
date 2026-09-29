@@ -755,12 +755,41 @@
             id="tradingview-datafeed-status"
             class="tv-datafeed-status"
           >
-            Native chart · Upstox LIVE
+            TradingView Lightweight · Upstox LIVE
+          </div>
+
+          <div class="chart-view-toggle">
+            <button
+              type="button"
+              id="chart-view-tv"
+              class="active"
+            >
+              TradingView
+            </button>
+
+            <button
+              type="button"
+              id="chart-view-classic"
+            >
+              Classic
+            </button>
           </div>
 
           <div
             id="ohlc"
             class="ohlc"
+          ></div>
+
+          <div
+            id="tv-advanced-chart"
+            class="tv-advanced-chart hidden"
+            aria-label="TradingView Advanced Charts NIFTY chart"
+          ></div>
+
+          <div
+            id="tv-lightweight-chart"
+            class="tv-lightweight-chart"
+            aria-label="TradingView Lightweight Charts NIFTY chart"
           ></div>
 
           <canvas
@@ -850,12 +879,12 @@
           <b>INR</b>
           ·
           <a
-            href="https://upstox.com/"
+            href="https://www.tradingview.com/"
             target="_blank"
             rel="noopener noreferrer"
             class="tv-attribution"
           >
-            Live data by Upstox
+            Charts by TradingView
           </a>
         </span>
 
@@ -2247,10 +2276,13 @@
 ></div>
 
 
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
 <script
   type="module"
-  src="app.js?v=87"
+  src="app.js?v=79"
 ></script>
 
 </body>
 </html>
+

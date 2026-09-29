@@ -39,44 +39,6 @@ function json(data, status = 200) {
   });
 }
 
-async function cachedApiResponse(request, ttlSeconds, loader, context) {
-  let cache = null;
-
-  if (request.method === "GET" && typeof caches !== "undefined") {
-    try {
-      cache = caches.default;
-      const cached = await cache.match(request);
-      if (cached) return cached;
-    } catch (error) {
-      console.warn("Edge cache read unavailable", error?.message || error);
-    }
-  }
-
-  const response = await loader();
-  if (!cache || !response.ok) return response;
-
-  const headers = new Headers(response.headers);
-  headers.set(
-    "cache-control",
-    `public, max-age=0, s-maxage=${Math.max(1, Number(ttlSeconds) || 1)}`
-  );
-  const cacheable = new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-
-  try {
-    const write = cache.put(request, cacheable.clone());
-    if (context?.waitUntil) context.waitUntil(write);
-    else await write;
-  } catch (error) {
-    console.warn("Edge cache write unavailable", error?.message || error);
-  }
-
-  return cacheable;
-}
-
 function getISTParts(value = Date.now()) {
   const parts = istFormatter.formatToParts(new Date(value));
 
@@ -320,19 +282,7 @@ function istDateMinusDays(days) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-// Cooldowns are shared by credential within this Worker instance.
-const upstoxCooldowns = new Map();
-function upstoxCooldownError(until) {
-  const error = new Error('Upstox rate limit reached. Waiting before retry.');
-  error.status = 429;
-  error.rateLimited = true;
-  error.retryAfterMs = Math.max(1000, until - Date.now());
-  return error;
-}
 async function upstoxFetch(endpoint, token) {
-  const until = upstoxCooldowns.get(token) || 0;
-  if (until > Date.now()) throw upstoxCooldownError(until);
-  upstoxCooldowns.delete(token);
   const response = await fetch(endpoint, {
     method: "GET",
     headers: {
@@ -350,31 +300,14 @@ async function upstoxFetch(endpoint, token) {
       details
     );
 
-    const error = new Error(
+    throw new Error(
       `Upstox returned HTTP ${response.status}.`
     );
-
-    // Preserve HTTP status for all callers
-    error.status = response.status;
-
-    // Special handling for Upstox rate limit
-    error.rateLimited = response.status === 429;
-
-    // Respect Retry-After when Upstox provides it.
-    const retryHeader = response.headers.get('retry-after');
-    const seconds = retryHeader && Number.isFinite(Number(retryHeader))
-      ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
-    error.retryAfterMs = response.status === 429
-      ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
-    if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
-
-    error.details = details;
-
-    throw error;
   }
 
   return response.json();
 }
+
 // ----------------------------------------------------
 // LIVE QUOTE
 // ----------------------------------------------------
@@ -423,12 +356,12 @@ async function liveQuote(url, token) {
       Number(quote?.prev_close_price);
 
     const previousClose =
-  Number.isFinite(previousCloseRaw) &&
-  previousCloseRaw > 0
-    ? previousCloseRaw
-    : Number.isFinite(netChange)
-      ? price - netChange
-      : null;
+      Number.isFinite(previousCloseRaw)
+        ? previousCloseRaw
+        : Number.isFinite(netChange)
+          ? price - netChange
+          : null;
+
     const changePercent =
       Number.isFinite(netChange) &&
       Number.isFinite(previousClose) &&
@@ -484,28 +417,10 @@ async function liveQuote(url, token) {
         Date.now(),
     });
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
     console.warn(
-      "Upstox rate limited live quote. Fallback blocked."
+      "Primary live quote failed, using intraday fallback",
+      error?.message || error
     );
-
-    return json({
-      live: false,
-      source: "UPSTOX",
-      symbol,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
-    }, 429);
-  }
-
-  console.warn(
-    "Primary live quote failed, using intraday fallback",
-    error?.message || error
-  );
 
     try {
       const fallbackEndpoint =
@@ -649,26 +564,12 @@ async function previousTradingSession(
         };
       }
     } catch (error) {
-  // IMPORTANT: stop immediately when Upstox rate-limits us.
-  // Do not continue requesting additional previous dates.
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429 ||
-    String(error?.message || "").includes("HTTP 429")
-  ) {
-    console.warn(
-      "Upstox 429 rate limit - stopping previous-session fallback",
-      date
-    );
-    throw error;
-  }
-
-  console.warn(
-    "Previous-session candle fetch failed",
-    date,
-    error?.message || error
-  );
-}
+      console.warn(
+        "Previous-session candle fetch failed",
+        date,
+        error?.message || error
+      );
+    }
   }
 
   return {
@@ -723,15 +624,6 @@ async function intradayHistory(url, token) {
   const today =
     todayIST();
 
-  const lookbackDays = {
-    1: 10,
-    3: 20,
-    5: 30,
-    15: 60,
-  }[Number(interval)] || 30;
-
-  const fromDate = istDateMinusDays(lookbackDays);
-
   const historicalTodayEndpoint =
     "https://api.upstox.com/v3/historical-candle/" +
     encodeURIComponent(instrumentKey) +
@@ -740,34 +632,54 @@ async function intradayHistory(url, token) {
     "/" +
     today +
     "/" +
-    fromDate;
+    today;
 
   try {
-    const rows = [];
+    let rows = [];
 
     try {
-      const historicalTodayBody = await upstoxFetch(
-        historicalTodayEndpoint,
-        token
-      );
+      const intradayBody =
+        await upstoxFetch(
+          intradayEndpoint,
+          token
+        );
 
-      if (Array.isArray(historicalTodayBody?.data?.candles)) {
-        rows.push(...historicalTodayBody.data.candles);
+      if (
+        Array.isArray(
+          intradayBody?.data?.candles
+        )
+      ) {
+        rows =
+          intradayBody.data.candles;
       }
     } catch (error) {
-      if (error?.rateLimited === true || error?.status === 429) throw error;
-      console.warn("Historical candle fetch failed", error?.message || error);
+      console.warn(
+        "Primary intraday candle fetch failed",
+        error?.message || error
+      );
     }
 
     if (!rows.length) {
       try {
-        const intradayBody = await upstoxFetch(intradayEndpoint, token);
-        if (Array.isArray(intradayBody?.data?.candles)) {
-          rows.push(...intradayBody.data.candles);
+        const historicalTodayBody =
+          await upstoxFetch(
+            historicalTodayEndpoint,
+            token
+          );
+
+        if (
+          Array.isArray(
+            historicalTodayBody?.data?.candles
+          )
+        ) {
+          rows =
+            historicalTodayBody.data.candles;
         }
       } catch (error) {
-        if (error?.rateLimited === true || error?.status === 429) throw error;
-        console.warn("Intraday candle fallback failed", error?.message || error);
+        console.warn(
+          "Today historical-candle fallback failed",
+          error?.message || error
+        );
       }
     }
 
@@ -824,17 +736,14 @@ async function intradayHistory(url, token) {
       });
     }
 
-    const allCandles =
+    const todayCandles =
       rows
-        .map(normalizeRegularSessionCandle)
+        .map(normalizeCandle)
         .filter(Boolean)
         .sort((a, b) => a.time - b.time);
 
-    const todayCandles = allCandles.filter(candle =>
-      isTodayFrom0915(Number(candle.time) * 1000)
-    );
-
-    let candles = allCandles;
+    let candles =
+      todayCandles.slice();
 
     const unique = [];
 
@@ -853,7 +762,7 @@ async function intradayHistory(url, token) {
       }
     }
 
-    candles = unique.slice(-500);
+    candles = unique;
 
     if (!candles.length) {
       return json({
@@ -883,9 +792,7 @@ async function intradayHistory(url, token) {
       currentSessionCount:
         todayCandles.length,
       historyMode:
-        "merged-intraday-and-historical",
-      requestedCount: 500,
-      historyComplete: candles.length >= 500,
+        "intraday-with-historical-fallback",
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
@@ -893,33 +800,15 @@ async function intradayHistory(url, token) {
       candles,
     });
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
     return json({
       live: false,
       source: "UPSTOX",
-      symbol,
-      timeframe,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
+      reason:
+        error?.message ||
+        "Unable to load intraday candles.",
       candles: [],
-    }, 429);
+    });
   }
-
-  return json({
-    live: false,
-    source: "UPSTOX",
-    symbol,
-    timeframe,
-    reason:
-      error?.message ||
-      "Unable to load intraday candles.",
-    candles: [],
-  });
-}
 }
 
 async function previousSessionHistory(url, token) {
@@ -979,17 +868,17 @@ async function mtfHistory(url, token) {
     "5m": {
       unit: "minutes",
       interval: 5,
-      lookbackDays: 20,
+      lookbackDays: 7,
     },
     "15m": {
       unit: "minutes",
       interval: 15,
-      lookbackDays: 45,
+      lookbackDays: 10,
     },
     "1h": {
       unit: "hours",
       interval: 1,
-      lookbackDays: 90,
+      lookbackDays: 45,
     },
   }[timeframe];
 
@@ -1034,58 +923,18 @@ async function mtfHistory(url, token) {
     config.interval;
 
   try {
-    const results = [];
+    const results =
+      await Promise.allSettled([
+        upstoxFetch(
+          historicalEndpoint,
+          token
+        ),
+        upstoxFetch(
+          intradayEndpoint,
+          token
+        ),
+      ]);
 
-try {
-  // First request only historical data.
-  const historicalBody = await upstoxFetch(
-    historicalEndpoint,
-    token
-  );
-
-  results.push({
-    status: "fulfilled",
-    value: historicalBody
-  });
-} catch (error) {
-  // Never make another Upstox request after HTTP 429.
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
-    throw error;
-  }
-
-  console.warn(
-    "MTF historical fetch failed; trying intraday fallback",
-    error?.message || error
-  );
-
-  // Intraday is fallback only — not a simultaneous request.
-  try {
-    const intradayBody = await upstoxFetch(
-      intradayEndpoint,
-      token
-    );
-
-    results.push({
-      status: "fulfilled",
-      value: intradayBody
-    });
-  } catch (fallbackError) {
-    if (
-      fallbackError?.rateLimited === true ||
-      fallbackError?.status === 429
-    ) {
-      throw fallbackError;
-    }
-
-    console.warn(
-      "MTF intraday fallback failed",
-      fallbackError?.message || fallbackError
-    );
-  }
-}
     const rows = [];
 
     for (const result of results) {
@@ -1152,33 +1001,17 @@ try {
         trimmed,
     });
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
     return json({
       live: false,
       source: "UPSTOX",
       symbol,
       timeframe,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
+      reason:
+        error?.message ||
+        "Unable to load multi-timeframe history.",
       candles: [],
-    }, 429);
+    });
   }
-
-  return json({
-    live: false,
-    source: "UPSTOX",
-    symbol,
-    timeframe,
-    reason:
-      error?.message ||
-      "Unable to load multi-timeframe history.",
-    candles: [],
-  });
-}
 }
 
 
@@ -2286,7 +2119,7 @@ async function niftyDailyHistory(url, token) {
 // ----------------------------------------------------
 
 export default {
-  async fetch(request, env, context) {
+  async fetch(request, env) {
     const url =
       new URL(request.url);
 
@@ -2410,55 +2243,45 @@ export default {
     if (
       url.pathname === "/api/upstox-history"
     ) {
-      return cachedApiResponse(
-        request,
-        60,
-        () => intradayHistory(url, token),
-        context
+      return intradayHistory(
+        url,
+        token
       );
     }
 
     if (
       url.pathname === "/api/upstox-previous-history"
     ) {
-      return cachedApiResponse(
-        request,
-        3600,
-        () => previousSessionHistory(url, token),
-        context
+      return previousSessionHistory(
+        url,
+        token
       );
     }
 
     if (
       url.pathname === "/api/upstox-mtf-history"
     ) {
-      return cachedApiResponse(
-        request,
-        300,
-        () => mtfHistory(url, token),
-        context
+      return mtfHistory(
+        url,
+        token
       );
     }
 
     if (
       url.pathname === "/api/nifty-daily-history"
     ) {
-      return cachedApiResponse(
-        request,
-        300,
-        () => niftyDailyHistory(url, token),
-        context
+      return niftyDailyHistory(
+        url,
+        token
       );
     }
 
     if (
       url.pathname === "/api/nifty-futures-vwap"
     ) {
-      return cachedApiResponse(
-        request,
-        30,
-        () => futuresVWAP(url, token),
-        context
+      return futuresVWAP(
+        url,
+        token
       );
     }
 
@@ -2521,3 +2344,4 @@ export default {
     );
   },
 };
+
