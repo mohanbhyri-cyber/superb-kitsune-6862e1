@@ -524,6 +524,13 @@ export class UpstoxMarketAdapter {
         );
       }
 
+      if (candles.length < 221) {
+        this.status = 'WARMING UP';
+        throw new Error(
+          `Insufficient Upstox history: ${candles.length}/221 candles. Signals and replay remain disabled.`
+        );
+      }
+
       const byTime = new Map();
       for (const candle of candles) {
         byTime.set(candle.time, candle);

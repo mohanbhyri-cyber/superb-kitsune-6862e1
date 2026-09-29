@@ -29,45 +29,14 @@ import {
   analyseChartConsensus
 } from './smrt-chart-consensus.js';
 import {
-  createTradingViewDatafeed
-} from './tradingview-datafeed.js';
-
-import {
   API_BASE,
   instruments,
   intervals,
   indicators,
   market,
   strideSignals
-} from './market.js?v=2';
+} from './market.js?v=3';
 
-
-window.SMRTTradingViewDatafeed =
-  createTradingViewDatafeed(
-    API_BASE
-  );
-
-window.SMRTTradingViewDatafeedStatus =
-  'READY · UPSTOX';
-
-setTimeout(
-  () => {
-    if (
-      !window.TradingView?.widget
-    ) {
-      const statusEl =
-        document.querySelector(
-          '#tradingview-datafeed-status'
-        );
-
-      if (statusEl) {
-        statusEl.textContent =
-          'TradingView Lightweight · Upstox';
-      }
-    }
-  },
-  0
-);
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -453,10 +422,8 @@ const fresh =
       time: m.candles.at(-1)?.time ?? null,
       error: mtfError
     };
-    check('MTF ' + tf, !replay && fresh && side !== 0 && t.side === side && st?.direction === side,
-      replay
-        ? 'Replay has no independently timestamped MTF history'
-        : `${tf} closed-candle MTF incomplete or conflicting${mtfError ? `: ${mtfError}` : ''}`);
+    check('MTF ' + tf, fresh && side !== 0 && t.side === side && st?.direction === side,
+      `${tf} closed-candle MTF incomplete or conflicting${mtfError ? `: ${mtfError}` : ''}`);
   }
   const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
   check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
@@ -510,7 +477,10 @@ function refreshPrimeConfirmation() {
       marketMap: state.marketMap, mtf: state.mtf, gainz: state.gainzSSL,
       aiNifty: state.aiNifty, globalWatch: state.globalWatch });
     state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
-      replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
+      replay: state.replay.active,
+      mtfData: state.replay.active
+        ? state.replay.mtfData
+        : state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
       legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
         candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
         aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus } });
@@ -772,7 +742,7 @@ const state = {
 
   tf: '5m',
 
-  tvChartMode: 'tradingview',
+  tvChartMode: 'classic',
 
   data: [],
 
@@ -899,7 +869,8 @@ const state = {
     source: [],
     index: 0,
     timer: null,
-    speed: 700
+    speed: 700,
+    mtfData: { '5m': [], '15m': [], '1h': [] }
   },
 
   mtf: {
@@ -1612,6 +1583,16 @@ function refreshProSuite() {
     state.smartMarketState =
       'WAIT';
 
+    return;
+  }
+
+  const replayMtfReady = ['5m', '15m', '1h'].every(
+    tf => Array.isArray(state.primeMtfData?.[tf]) && state.primeMtfData[tf].length >= 220
+  );
+
+  if (!replayMtfReady || state.primeMtfSymbol !== state.symbol) {
+    toast('Replay waiting for 5m / 15m / 1h warm-up history');
+    refreshMTF().catch(() => {});
     return;
   }
 
@@ -6134,6 +6115,13 @@ function startReplay() {
   state.replay.source =
     source;
 
+  state.replay.mtfData = Object.fromEntries(
+    ['5m', '15m', '1h'].map(tf => [
+      tf,
+      (state.primeMtfData?.[tf] || []).map(candle => ({ ...candle }))
+    ])
+  );
+
   state.replay.index =
     warmup;
 
@@ -6268,6 +6256,12 @@ function exitReplay(
 
   state.replay.source =
     [];
+
+  state.replay.mtfData = {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  };
 
   state.replay.index =
     0;
@@ -6660,22 +6654,6 @@ async function refreshMTF() {
       );
 
 
-    const edge =
-      state.niftyEdge
-        ?.latest;
-
-    const signalSide =
-      [
-        'BUY+',
-        'SELL+',
-        'BUY',
-        'SELL'
-      ].includes(
-        edge?.signal
-      )
-        ? edge.side
-        : 0;
-
     const s5 =
       state.mtf['5m']
         ?.side ??
@@ -6693,7 +6671,6 @@ async function refreshMTF() {
 
 
     if (
-      signalSide === 1 &&
       s5 === 1 &&
       s15 === 1 &&
       s1h === 1
@@ -6703,7 +6680,6 @@ async function refreshMTF() {
         'HIGH-CONFIDENCE BUY+';
 
     } else if (
-      signalSide === -1 &&
       s5 === -1 &&
       s15 === -1 &&
       s1h === -1
@@ -7098,84 +7074,6 @@ async function loadData() {
     draw();
 
     summary();
-
-    refreshMTF().catch(
-      () => {}
-    );
-
-    // Load previous trading session in the background so it never
-    // blocks today's live chart or quote.
-    market.previousHistory(
-      state.symbol,
-      state.tf
-    ).then(
-      previousCandles => {
-
-        if (
-          id !== request ||
-          !Array.isArray(
-            previousCandles
-          ) ||
-          !previousCandles.length
-        ) {
-          return;
-        }
-
-        const merged =
-          [
-            ...previousCandles,
-            ...state.data
-          ]
-            .sort(
-              (x, y) =>
-                x.time - y.time
-            );
-
-        const unique = [];
-
-        for (
-          const candle of merged
-        ) {
-          const last =
-            unique.at(-1);
-
-          if (
-            last &&
-            last.time ===
-              candle.time
-          ) {
-            unique[
-              unique.length - 1
-            ] =
-              candle;
-          } else {
-            unique.push(
-              candle
-            );
-          }
-        }
-
-        state.data =
-          unique.slice(
-            -500
-          );
-
-        lastAnalysisKey =
-          null;
-
-        updateTradingDate();
-
-        scheduleLiveRender(
-          true
-        );
-
-        refreshMTF().catch(
-          () => {}
-        );
-      }
-    ).catch(
-      () => {}
-    );
 
     // The optional futures VWAP request must not hold up the first chart.
     refreshFuturesVWAP().then(() => {
@@ -7824,7 +7722,7 @@ $$('[data-tv-range]').forEach(
   );
 
 setChartView(
-  'tradingview'
+  'classic'
 );
 
 runSmrtDiagnostics();

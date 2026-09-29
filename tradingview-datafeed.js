@@ -1,471 +1,500 @@
-// tradingview-datafeed.js
+// trend-indicators.js
 // ============================================================
-// TradingView Advanced Charts Datafeed API adapter for SMRT Algo Pro.
-// Uses the app's existing Upstox-backed Cloudflare Worker endpoints.
-// This file is ready for the official private Advanced Charts library.
+// NIFTY 50 TREND ENGINE
+// Supertrend + Wilder ATR + DMI / ADX
+//
+// DESIGN:
+// - Closed-candle compatible.
+// - Missing OHLC never becomes zero.
+// - Safer Supertrend initialization.
+// - Wilder smoothing for ATR / DMI / ADX.
+// - Exposes ATR and DX for other engines.
+// - No BUY / SELL generation here.
 // ============================================================
 
-const RESOLUTION_TO_TF = {
-  '1': '1m',
-  '3': '3m',
-  '5': '5m',
-  '15': '15m',
-  '60': '1h',
-  '1D': '1D',
-  D: '1D'
-};
+const finite = value =>
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  Number.isFinite(Number(value));
 
-const TF_SECONDS = {
-  '1m': 60,
-  '3m': 180,
-  '5m': 300,
-  '15m': 900,
-  '1h': 3600,
-  '1D': 86400
-};
+export function trendIndicators(
+  candles,
+  atrPeriod = 10,
+  multiplier = 3,
+  dmiPeriod = 14
+) {
+  const n = Array.isArray(candles)
+    ? candles.length
+    : 0;
 
-const asyncCall = fn =>
-  setTimeout(fn, 0);
+  const supertrend = Array(n).fill(null);
+  const direction = Array(n).fill(0);
 
-function normalizeBase(base) {
-  return String(base || '')
-    .replace(/\/$/, '');
-}
+  const atr = Array(n).fill(null);
 
-function toBars(candles, from, to) {
-  return (Array.isArray(candles) ? candles : [])
-    .map(c => ({
-      time: Number(c.time) * 1000,
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-      volume: Number(c.volume) || 0
-    }))
-    .filter(bar => {
-      if (
-        ![
-          bar.time,
-          bar.open,
-          bar.high,
-          bar.low,
-          bar.close
-        ].every(Number.isFinite)
-      ) {
-        return false;
-      }
+  const plusDI = Array(n).fill(null);
+  const minusDI = Array(n).fill(null);
 
-      const seconds =
-        bar.time / 1000;
+  const dx = Array(n).fill(null);
+  const adx = Array(n).fill(null);
 
-      if (
-        Number.isFinite(from) &&
-        seconds < from
-      ) {
-        return false;
-      }
-
-      if (
-        Number.isFinite(to) &&
-        seconds > to
-      ) {
-        return false;
-      }
-
-      return true;
-    })
-    .sort((a, b) => a.time - b.time);
-}
-
-async function fetchJson(url) {
-  const response =
-    await fetch(url, {
-      cache: 'no-store'
-    });
-
-  if (!response.ok) {
-    throw new Error(
-      'HTTP ' + response.status
-    );
+  if (
+    n < 2 ||
+    atrPeriod < 1 ||
+    dmiPeriod < 1 ||
+    !finite(multiplier) ||
+    Number(multiplier) <= 0
+  ) {
+    return {
+      supertrend,
+      direction,
+      atr,
+      plusDI,
+      minusDI,
+      dx,
+      adx
+    };
   }
 
-  return response.json();
-}
+  // ==========================================================
+  // TRUE RANGE / DIRECTIONAL MOVEMENT
+  // ==========================================================
 
-export function createTradingViewDatafeed(
-  apiBase = ''
-) {
-  const base =
-    normalizeBase(apiBase);
+  const tr = Array(n).fill(null);
+  const plusDM = Array(n).fill(null);
+  const minusDM = Array(n).fill(null);
 
-  const subscriptions =
-    new Map();
+  for (let i = 1; i < n; i++) {
+    const current = candles[i];
+    const previous = candles[i - 1];
 
-  const datafeed = {
-
-    onReady(callback) {
-      asyncCall(
-        () =>
-          callback({
-            supported_resolutions: [
-              '1',
-              '3',
-              '5',
-              '15',
-              '60',
-              '1D'
-            ],
-            exchanges: [
-              {
-                value: 'NSE',
-                name: 'NSE',
-                desc: 'National Stock Exchange of India'
-              }
-            ],
-            symbols_types: [
-              {
-                name: 'index',
-                value: 'index'
-              }
-            ],
-            supports_marks: false,
-            supports_timescale_marks: false,
-            supports_time: true
-          })
-      );
-    },
-
-
-    searchSymbols(
-      userInput,
-      exchange,
-      symbolType,
-      onResult
+    if (
+      ![
+        current?.high,
+        current?.low,
+        current?.close,
+        previous?.high,
+        previous?.low,
+        previous?.close
+      ].every(finite)
     ) {
-      const q =
-        String(userInput || '')
-          .trim()
-          .toUpperCase();
+      continue;
+    }
 
-      const matches =
-        !q ||
-        'NIFTY 50'.includes(q) ||
-        'NIFTY'.includes(q);
+    const high = Number(current.high);
+    const low = Number(current.low);
 
-      asyncCall(
-        () =>
-          onResult(
-            matches
-              ? [
-                  {
-                    symbol: 'NIFTY',
-                    full_name: 'NSE:NIFTY',
-                    description: 'NIFTY 50',
-                    exchange: 'NSE',
-                    ticker: 'NIFTY',
-                    type: 'index'
-                  }
-                ]
-              : []
-          )
-      );
-    },
+    const prevHigh = Number(previous.high);
+    const prevLow = Number(previous.low);
+    const prevClose = Number(previous.close);
 
-
-    resolveSymbol(
-      symbolName,
-      onResolve,
-      onError
+    if (
+      high < low ||
+      prevHigh < prevLow
     ) {
-      const name =
-        String(symbolName || '')
-          .toUpperCase();
+      continue;
+    }
+
+    tr[i] = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+
+    const upMove =
+      high - prevHigh;
+
+    const downMove =
+      prevLow - low;
+
+    plusDM[i] =
+      upMove > downMove &&
+      upMove > 0
+        ? upMove
+        : 0;
+
+    minusDM[i] =
+      downMove > upMove &&
+      downMove > 0
+        ? downMove
+        : 0;
+  }
+
+  // ==========================================================
+  // WILDER ATR
+  // ==========================================================
+
+  let atrSeed = 0;
+  let atrSeedCount = 0;
+  let lastATR = null;
+
+  for (let i = 1; i < n; i++) {
+    if (!finite(tr[i])) {
+      continue;
+    }
+
+    if (lastATR === null) {
+      atrSeed += Number(tr[i]);
+      atrSeedCount += 1;
+
+      if (atrSeedCount === atrPeriod) {
+        lastATR =
+          atrSeed / atrPeriod;
+
+        atr[i] = lastATR;
+      }
+
+      continue;
+    }
+
+    lastATR =
+      (
+        lastATR *
+          (atrPeriod - 1) +
+        Number(tr[i])
+      ) /
+      atrPeriod;
+
+    atr[i] = lastATR;
+  }
+
+  // ==========================================================
+  // SUPERTREND
+  // ==========================================================
+
+  const finalUpper =
+    Array(n).fill(null);
+
+  const finalLower =
+    Array(n).fill(null);
+
+  let previousDirection = 0;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(atr[i]) ||
+      !finite(candles[i]?.high) ||
+      !finite(candles[i]?.low) ||
+      !finite(candles[i]?.close) ||
+      !finite(candles[i - 1]?.close)
+    ) {
+      continue;
+    }
+
+    const high =
+      Number(candles[i].high);
+
+    const low =
+      Number(candles[i].low);
+
+    const close =
+      Number(candles[i].close);
+
+    const prevClose =
+      Number(candles[i - 1].close);
+
+    const midpoint =
+      (high + low) / 2;
+
+    const basicUpper =
+      midpoint +
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const basicLower =
+      midpoint -
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const previousUpper =
+      finalUpper[i - 1];
+
+    const previousLower =
+      finalLower[i - 1];
+
+    // First valid Supertrend candle.
+    if (
+      !finite(previousUpper) ||
+      !finite(previousLower)
+    ) {
+      finalUpper[i] =
+        basicUpper;
+
+      finalLower[i] =
+        basicLower;
+
+      previousDirection =
+        close >= midpoint
+          ? 1
+          : -1;
+
+      direction[i] =
+        previousDirection;
+
+      supertrend[i] =
+        previousDirection === 1
+          ? finalLower[i]
+          : finalUpper[i];
+
+      continue;
+    }
+
+    // Final upper band.
+    finalUpper[i] =
+      basicUpper <
+        Number(previousUpper) ||
+      prevClose >
+        Number(previousUpper)
+        ? basicUpper
+        : Number(previousUpper);
+
+    // Final lower band.
+    finalLower[i] =
+      basicLower >
+        Number(previousLower) ||
+      prevClose <
+        Number(previousLower)
+        ? basicLower
+        : Number(previousLower);
+
+    const priorDirection =
+      direction[i - 1] === 1 ||
+      direction[i - 1] === -1
+        ? direction[i - 1]
+        : previousDirection;
+
+    let currentDirection =
+      priorDirection;
+
+    if (
+      priorDirection === 1 &&
+      close <
+        Number(previousLower)
+    ) {
+      currentDirection = -1;
+
+    } else if (
+      priorDirection === -1 &&
+      close >
+        Number(previousUpper)
+    ) {
+      currentDirection = 1;
+    }
+
+    direction[i] =
+      currentDirection;
+
+    previousDirection =
+      currentDirection;
+
+    supertrend[i] =
+      currentDirection === 1
+        ? finalLower[i]
+        : finalUpper[i];
+  }
+
+  // ==========================================================
+  // WILDER DMI
+  // ==========================================================
+
+  let trSeed = 0;
+  let plusSeed = 0;
+  let minusSeed = 0;
+  let dmiSeedCount = 0;
+
+  let smoothTR = null;
+  let smoothPlus = null;
+  let smoothMinus = null;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(tr[i]) ||
+      !finite(plusDM[i]) ||
+      !finite(minusDM[i])
+    ) {
+      continue;
+    }
+
+    if (smoothTR === null) {
+      trSeed += Number(tr[i]);
+      plusSeed += Number(plusDM[i]);
+      minusSeed += Number(minusDM[i]);
+
+      dmiSeedCount += 1;
 
       if (
-        !name.includes('NIFTY')
+        dmiSeedCount === dmiPeriod
       ) {
-        asyncCall(
-          () =>
-            onError(
-              'Only NIFTY 50 is enabled'
-            )
-        );
-
-        return;
+        smoothTR = trSeed;
+        smoothPlus = plusSeed;
+        smoothMinus = minusSeed;
+      } else {
+        continue;
       }
 
-      asyncCall(
-        () =>
-          onResolve({
-            ticker: 'NIFTY',
-            name: 'NIFTY',
-            full_name: 'NSE:NIFTY',
-            description: 'NIFTY 50',
-            type: 'index',
-            session: '0915-1530',
-            exchange: 'NSE',
-            listed_exchange: 'NSE',
-            timezone: 'Asia/Kolkata',
-            minmov: 1,
-            pricescale: 100,
-            has_intraday: true,
-            has_daily: true,
-            has_weekly_and_monthly: false,
-            supported_resolutions: [
-              '1',
-              '3',
-              '5',
-              '15',
-              '60',
-              '1D'
-            ],
-            volume_precision: 0,
-            data_status: 'streaming',
-            currency_code: 'INR'
-          })
-      );
-    },
+    } else {
+      smoothTR =
+        smoothTR -
+        smoothTR / dmiPeriod +
+        Number(tr[i]);
 
+      smoothPlus =
+        smoothPlus -
+        smoothPlus / dmiPeriod +
+        Number(plusDM[i]);
 
-    async getBars(
-      symbolInfo,
-      resolution,
-      periodParams,
-      onResult,
-      onError
-    ) {
-      try {
-        const tf =
-          RESOLUTION_TO_TF[
-            resolution
-          ];
-
-        if (!tf) {
-          throw new Error(
-            'Unsupported resolution ' +
-            resolution
-          );
-        }
-
-        let payload;
-
-        if (tf === '1D') {
-          payload =
-            await fetchJson(
-              base +
-              '/api/nifty-daily-history?days=180'
-            );
-        } else if (
-          tf === '1h'
-        ) {
-          payload =
-            await fetchJson(
-              base +
-              '/api/upstox-mtf-history?symbol=NIFTY&timeframe=1h'
-            );
-        } else {
-          payload =
-            await fetchJson(
-              base +
-              '/api/upstox-history?symbol=NIFTY&timeframe=' +
-              encodeURIComponent(tf)
-            );
-        }
-
-        const bars =
-          toBars(
-            payload?.candles,
-            periodParams?.from,
-            periodParams?.to
-          );
-
-        asyncCall(
-          () =>
-            onResult(
-              bars,
-              {
-                noData:
-                  bars.length === 0
-              }
-            )
-        );
-
-      } catch (error) {
-        asyncCall(
-          () =>
-            onError(
-              error?.message ||
-              'Unable to load NIFTY bars'
-            )
-        );
-      }
-    },
-
-
-    subscribeBars(
-      symbolInfo,
-      resolution,
-      onRealtimeCallback,
-      subscriberUID,
-      onResetCacheNeededCallback
-    ) {
-      const tf =
-        RESOLUTION_TO_TF[
-          resolution
-        ] ||
-        '5m';
-
-      const bucketSeconds =
-        TF_SECONDS[tf] ||
-        300;
-
-      let stopped = false;
-      let timer = null;
-      let currentBar = null;
-
-
-      const poll =
-        async () => {
-          if (stopped) {
-            return;
-          }
-
-          try {
-            const q =
-              await fetchJson(
-                base +
-                '/api/live-quote?symbol=NIFTY'
-              );
-
-            const price =
-              Number(q?.price);
-
-            if (
-              Number.isFinite(price)
-            ) {
-              const nowSeconds =
-                Number(
-                  q?.time
-                ) ||
-                Math.floor(
-                  Date.now() / 1000
-                );
-
-              const bucket =
-                Math.floor(
-                  nowSeconds /
-                  bucketSeconds
-                ) *
-                bucketSeconds;
-
-              if (
-                !currentBar ||
-                currentBar.time !==
-                  bucket * 1000
-              ) {
-                currentBar = {
-                  time:
-                    bucket * 1000,
-                  open: price,
-                  high: price,
-                  low: price,
-                  close: price,
-                  volume:
-                    Number(
-                      q?.volume
-                    ) || 0
-                };
-              } else {
-                currentBar = {
-                  ...currentBar,
-                  high:
-                    Math.max(
-                      currentBar.high,
-                      price
-                    ),
-                  low:
-                    Math.min(
-                      currentBar.low,
-                      price
-                    ),
-                  close: price,
-                  volume:
-                    Number(
-                      q?.volume
-                    ) ||
-                    currentBar.volume ||
-                    0
-                };
-              }
-
-              onRealtimeCallback({
-                ...currentBar
-              });
-            }
-
-          } catch (error) {
-            console.warn(
-              'TradingView realtime poll failed:',
-              error
-            );
-          }
-
-          if (!stopped) {
-            timer =
-              setTimeout(
-                poll,
-                1500
-              );
-          }
-        };
-
-
-      poll();
-
-      subscriptions.set(
-        subscriberUID,
-        () => {
-          stopped = true;
-
-          if (timer) {
-            clearTimeout(
-              timer
-            );
-          }
-        }
-      );
-    },
-
-
-    unsubscribeBars(
-      subscriberUID
-    ) {
-      const stop =
-        subscriptions.get(
-          subscriberUID
-        );
-
-      stop?.();
-
-      subscriptions.delete(
-        subscriberUID
-      );
-    },
-
-
-    async getServerTime(
-      callback
-    ) {
-      asyncCall(
-        () =>
-          callback(
-            Math.floor(
-              Date.now() / 1000
-            )
-          )
-      );
+      smoothMinus =
+        smoothMinus -
+        smoothMinus / dmiPeriod +
+        Number(minusDM[i]);
     }
-  };
 
-  return datafeed;
+    if (
+      !finite(smoothTR) ||
+      smoothTR <= 0
+    ) {
+      plusDI[i] = 0;
+      minusDI[i] = 0;
+      dx[i] = 0;
+
+      continue;
+    }
+
+    plusDI[i] =
+      100 *
+      Number(smoothPlus) /
+      Number(smoothTR);
+
+    minusDI[i] =
+      100 *
+      Number(smoothMinus) /
+      Number(smoothTR);
+
+    const total =
+      plusDI[i] +
+      minusDI[i];
+
+    dx[i] =
+      total > 0
+        ? (
+            100 *
+            Math.abs(
+              plusDI[i] -
+              minusDI[i]
+            )
+          ) /
+          total
+        : 0;
+  }
+
+  // ==========================================================
+  // WILDER ADX
+  // ==========================================================
+
+  let dxSeed = 0;
+  let dxSeedCount = 0;
+  let lastADX = null;
+
+  for (let i = 0; i < n; i++) {
+    if (!finite(dx[i])) {
+      continue;
+    }
+
+    if (lastADX === null) {
+      dxSeed += Number(dx[i]);
+      dxSeedCount += 1;
+
+      if (
+        dxSeedCount === dmiPeriod
+      ) {
+        lastADX =
+          dxSeed / dmiPeriod;
+
+        adx[i] =
+          lastADX;
+      }
+
+      continue;
+    }
+
+    lastADX =
+      (
+        lastADX *
+          (dmiPeriod - 1) +
+        Number(dx[i])
+      ) /
+      dmiPeriod;
+
+    adx[i] =
+      lastADX;
+  }
+
+  // ==========================================================
+  // SANITY CLEANUP
+  // ==========================================================
+
+  for (let i = 0; i < n; i++) {
+    if (
+      finite(plusDI[i])
+    ) {
+      plusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(plusDI[i])
+          )
+        );
+    }
+
+    if (
+      finite(minusDI[i])
+    ) {
+      minusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(minusDI[i])
+          )
+        );
+    }
+
+    if (finite(dx[i])) {
+      dx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(dx[i])
+          )
+        );
+    }
+
+    if (finite(adx[i])) {
+      adx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(adx[i])
+          )
+        );
+    }
+  }
+
+  return {
+    supertrend,
+    direction,
+
+    // Additional outputs used by Prime/Finalizer.
+    atr,
+
+    plusDI,
+    minusDI,
+
+    dx,
+    adx
+  };
 }
