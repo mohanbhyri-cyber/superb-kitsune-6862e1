@@ -984,7 +984,7 @@ async function mtfHistory(url, token) {
     "15m": {
       unit: "minutes",
       interval: 15,
-      lookbackDays: 45,
+      lookbackDays: 28,
     },
     "1h": {
       unit: "hours",
