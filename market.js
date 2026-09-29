@@ -1,3 +1,66 @@
+// All browser-side Upstox requests share the same retry deadline.
+let upstoxRetryAt = 0;
+
+// ============================================================
+// HISTORY CACHE + REQUEST DEDUPLICATION
+// Prevent duplicate Upstox historical requests / HTTP 429
+// ============================================================
+
+const historyCache = new Map();
+const historyInFlight = new Map();
+const HISTORY_CACHE_MS = 60 * 1000;
+
+async function cachedMarketRequest(key, requestFn, ttlMs = HISTORY_CACHE_MS) {
+  const now = Date.now();
+  const cached = historyCache.get(key);
+
+  if (cached && now - cached.time < ttlMs) {
+    return cached.data;
+  }
+
+  if (historyInFlight.has(key)) {
+    return historyInFlight.get(key);
+  }
+
+  const promise = Promise.resolve()
+    .then(requestFn)
+    .then(data => {
+      historyCache.set(key, {
+        time: Date.now(),
+        data
+      });
+      return data;
+    })
+    .finally(() => {
+      historyInFlight.delete(key);
+    });
+
+  historyInFlight.set(key, promise);
+  return promise;
+}
+function marketRateLimitError() {
+  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  error.status = 429;
+  error.retryAfterMs = Math.max(1000, upstoxRetryAt - Date.now());
+  return error;
+}
+async function upstoxRequest(url, options) {
+  if (Date.now() < upstoxRetryAt) throw marketRateLimitError();
+  const response = await fetch(url, options);
+  if (response.status === 429) {
+    const body = await response.clone().json().catch(() => ({}));
+    const header = response.headers.get('retry-after');
+    const seconds = header && Number.isFinite(Number(header))
+      ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : 0;
+    const bodyDelay = Number(body.retryAfterMs);
+    const delay = Math.max(60000, Number.isFinite(bodyDelay) ? bodyDelay : 0,
+      Number.isFinite(seconds) ? seconds * 1000 : 0);
+    upstoxRetryAt = Math.max(upstoxRetryAt, Date.now() + delay);
+    throw marketRateLimitError();
+  }
+  return response;
+}
+
 // market.js
 // ============================================================
 // PRO SCALPER — LIVE MARKET ADAPTER
@@ -8,6 +71,9 @@
 
 export const API_BASE =
   typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('sample') === '1'
+    ? ''
+    : typeof window !== 'undefined' &&
   ['127.0.0.1', 'localhost'].includes(
     window.location.hostname
   )
@@ -389,192 +455,175 @@ export class UpstoxMarketAdapter {
   async history(symbol, timeframe) {
 
     if (!intervals[timeframe]) {
-      throw new Error(
-        'Unsupported timeframe'
-      );
+      throw new Error('Unsupported timeframe');
     }
 
-    this.status = 'CONNECTING';
+    const cacheKey = `history:${symbol}:${timeframe}`;
 
-    const url =
-      API_BASE + '/api/upstox-history' +
-      '?symbol=' +
-      encodeURIComponent(symbol) +
-      '&timeframe=' +
-      encodeURIComponent(timeframe);
+    return cachedMarketRequest(cacheKey, async () => {
 
-    let response;
+      this.status = 'CONNECTING';
 
-    try {
+      const url =
+        API_BASE + '/api/upstox-history' +
+        '?symbol=' +
+        encodeURIComponent(symbol) +
+        '&timeframe=' +
+        encodeURIComponent(timeframe);
 
-      response = await fetch(
-        url,
-        {
-          cache: 'no-store'
-        }
-      );
+      let response;
 
-    } catch (error) {
-
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'Unable to connect to live market history'
-      );
-    }
-
-
-    if (!response.ok) {
-
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'Upstox history request failed'
-      );
-    }
-
-
-    const data =
-      await response.json();
-
-
-    if (
-      !data ||
-      data.live !== true ||
-      !Array.isArray(data.candles)
-    ) {
-
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        data?.reason ||
-        'Live candle data unavailable'
-      );
-    }
-
-
-    const candles =
-      data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
+      try {
+        response = await upstoxRequest(
+          url,
+          { cache: 'no-store' }
         );
+      } catch (error) {
+        if (error?.status === 429) {
+          this.status = 'RATE LIMITED';
+          throw error;
+        }
 
+        this.status = 'OFFLINE';
+        throw new Error(
+          'Unable to connect to live market history'
+        );
+      }
 
-    if (!candles.length) {
+      if (!response.ok) {
+        this.status = 'OFFLINE';
+        throw new Error(
+          'Upstox history request failed'
+        );
+      }
 
-      this.status = 'OFFLINE';
-
-      throw new Error(
-        'No live candles returned'
-      );
-    }
-
-
-    // --------------------------------------------------------
-    // Remove duplicates
-    // --------------------------------------------------------
-
-    const unique = [];
-
-    let previousTime = null;
-
-    for (const candle of candles) {
+      const data = await response.json();
 
       if (
-        candle.time === previousTime
+        !data ||
+        data.live !== true ||
+        !Array.isArray(data.candles)
       ) {
-
-        unique[unique.length - 1] =
-          candle;
-
-      } else {
-
-        unique.push(candle);
-
-        previousTime =
-          candle.time;
+        this.status = 'OFFLINE';
+        throw new Error(
+          data?.reason ||
+          'Live candle data unavailable'
+        );
       }
-    }
 
+      const candles =
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .sort((a, b) => a.time - b.time);
 
-    this.status = 'LIVE';
+      if (!candles.length) {
+        this.status = 'OFFLINE';
+        throw new Error(
+          'No live candles returned'
+        );
+      }
 
-    this.lastUpdate =
-      Date.now();
+      if (candles.length < 221) {
+        this.status = 'WARMING UP';
+        throw new Error(
+          `Insufficient Upstox history: ${candles.length}/221 candles. Signals and replay remain disabled.`
+        );
+      }
 
+      const byTime = new Map();
+      for (const candle of candles) {
+        byTime.set(candle.time, candle);
+      }
 
-    return unique;
+      const latest =
+        [...byTime.values()]
+          .sort((a, b) => a.time - b.time)
+          .slice(-500);
+
+      this.status = 'LIVE';
+      this.lastUpdate = Date.now();
+
+      console.log(
+        `[SMRT HISTORY] ${symbol} ${timeframe}: ${latest.length} candles`
+      );
+
+      return latest;
+    });
   }
 
 
   async mtfHistory(symbol, timeframe) {
 
-    if (
-      ![
-        '5m',
-        '15m',
-        '1h'
-      ].includes(timeframe)
-    ) {
+    if (!['5m', '15m', '1h'].includes(timeframe)) {
       return [];
     }
 
-    try {
-      const controller =
-        new AbortController();
+    const cacheKey = `mtf:${symbol}:${timeframe}`;
 
-      const timeout =
-        setTimeout(
-          () =>
-            controller.abort(),
+    try {
+      return await cachedMarketRequest(cacheKey, async () => {
+        const controller = new AbortController();
+
+        const timeout = setTimeout(
+          () => controller.abort(),
           8000
         );
 
-      const response =
-        await fetch(
-          API_BASE + '/api/upstox-mtf-history' +
-          '?symbol=' +
-          encodeURIComponent(symbol) +
-          '&timeframe=' +
-          encodeURIComponent(timeframe),
-          {
-            cache: 'no-store',
-            signal:
-              controller.signal
+        let response;
+
+        try {
+          response = await upstoxRequest(
+            API_BASE + '/api/upstox-mtf-history' +
+            '?symbol=' +
+            encodeURIComponent(symbol) +
+            '&timeframe=' +
+            encodeURIComponent(timeframe),
+            {
+              cache: 'no-store',
+              signal: controller.signal
+            }
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw marketRateLimitError();
           }
-        ).finally(
-          () =>
-            clearTimeout(
-              timeout
-            )
+          return [];
+        }
+
+        const data = await response.json();
+
+        if (
+          data?.live !== true ||
+          !Array.isArray(data?.candles)
+        ) {
+          return [];
+        }
+
+        const byTime = new Map();
+
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .forEach(candle => {
+            byTime.set(candle.time, candle);
+          });
+
+        const candles =
+          [...byTime.values()]
+            .sort((a, b) => a.time - b.time)
+            .slice(-500);
+
+        console.log(
+          `[SMRT MTF] ${symbol} ${timeframe}: ${candles.length} candles`
         );
 
-      if (!response.ok) {
-        return [];
-      }
-
-      const data =
-        await response.json();
-
-      if (
-        data?.live !== true ||
-        !Array.isArray(
-          data?.candles
-        )
-      ) {
-        return [];
-      }
-
-      return data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (x, y) =>
-            x.time - y.time
-        );
+        return candles;
+      }, 5 * 60 * 1000);
 
     } catch (error) {
       console.warn(
@@ -583,6 +632,7 @@ export class UpstoxMarketAdapter {
         error
       );
 
+      if (error?.status === 429) throw error;
       return [];
     }
   }
@@ -594,9 +644,11 @@ export class UpstoxMarketAdapter {
       return [];
     }
 
+    const cacheKey = `previous:${symbol}:${timeframe}`;
+
     try {
-      const response =
-        await fetch(
+      return await cachedMarketRequest(cacheKey, async () => {
+        const response = await upstoxRequest(
           API_BASE + '/api/upstox-previous-history' +
           '?symbol=' +
           encodeURIComponent(symbol) +
@@ -607,24 +659,39 @@ export class UpstoxMarketAdapter {
           }
         );
 
-      if (!response.ok) {
-        return [];
-      }
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw marketRateLimitError();
+          }
+          return [];
+        }
 
-      const data =
-        await response.json();
+        const data = await response.json();
 
-      if (!Array.isArray(data?.candles)) {
-        return [];
-      }
+        if (!Array.isArray(data?.candles)) {
+          return [];
+        }
 
-      return data.candles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
+        const byTime = new Map();
+
+        data.candles
+          .map(normalizeCandle)
+          .filter(Boolean)
+          .forEach(candle => {
+            byTime.set(candle.time, candle);
+          });
+
+        const candles =
+          [...byTime.values()]
+            .sort((a, b) => a.time - b.time)
+            .slice(-500);
+
+        console.log(
+          `[SMRT PREVIOUS] ${symbol} ${timeframe}: ${candles.length} candles`
         );
+
+        return candles;
+      });
 
     } catch (error) {
       console.warn(
@@ -674,7 +741,7 @@ export class UpstoxMarketAdapter {
       try {
 
         const response =
-          await fetch(
+          await upstoxRequest(
             API_BASE + '/api/live-quote' +
             '?symbol=' +
             encodeURIComponent(symbol),
@@ -807,12 +874,17 @@ export class UpstoxMarketAdapter {
       } finally {
         inFlight = false;
         if (alive && !document.hidden) {
-          timer = setTimeout(
-            tick,
-            consecutiveFailures
-              ? 1500
-              : 3000
-          );
+          const retryDelay =
+  consecutiveFailures >= 3
+    ? 30000
+    : consecutiveFailures > 0
+      ? 10000
+      : 5000;
+
+timer = setTimeout(
+  tick,
+  Math.max(retryDelay, upstoxRetryAt - Date.now())
+);
         }
       }
     };
@@ -851,8 +923,119 @@ export class UpstoxMarketAdapter {
 // DemoMarketAdapter is intentionally NOT used.
 // ============================================================
 
-export const market =
-  new UpstoxMarketAdapter();
+const sampleMode =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('sample') === '1';
+
+function sampleCandles(timeframe, count = 500, endTime = Date.now() / 1000) {
+  const seconds = intervals[timeframe] || 60;
+  const currentOpen = Math.floor(Number(endTime) / seconds) * seconds;
+  const firstTime = currentOpen - (count - 1) * seconds;
+  const candles = Array.from({ length: count }, (_, index) => {
+    const close = 23200 + index * 0.15 + index * index * 0.001;
+    const open = close - 3;
+    return {
+      time: firstTime + index * seconds,
+      open,
+      high: close + 1,
+      low: open - 1,
+      close,
+      volume: 90000 + (index % 37) * 4200,
+      openInterest: 0
+    };
+  });
+
+  // Closed-candle fixtures near the end exercise the same Prime structure,
+  // order-block, FVG, and liquidity-sweep rules used for live data.
+  const fixture = [
+    [23512, 23515, 23517, 23511],
+    [23515, 23514, 23516, 23512],
+    [23514, 23513, 23515, 23511],
+    [23514, 23511, 23515, 23510],
+    [23512, 23510, 23513, 23508],
+    [23510, 23512, 23514, 23510],
+    [23512, 23514, 23516, 23512],
+    [23514, 23515, 23516, 23514],
+    [23514, 23520, 23521, 23507],
+    [23520, 23522, 23523, 23518],
+    [23522, 23524, 23525, 23520],
+    [23524, 23526, 23527, 23522],
+    [23526, 23528, 23529, 23524]
+  ];
+  const start = Math.max(0, count - fixture.length - 1);
+  fixture.forEach(([open, close, high, low], offset) => {
+    const index = start + offset;
+    if (!candles[index]) return;
+    candles[index] = {
+      ...candles[index],
+      open,
+      high,
+      low,
+      close,
+      volume: 165000 + offset * 6000
+    };
+  });
+
+  return candles;
+}
+
+class SampleMarketAdapter {
+  constructor() {
+    this.status = 'SAMPLE';
+    this.lastUpdate = Date.now();
+    this.quotes = {};
+  }
+
+  async history(_symbol, timeframe) {
+    return sampleCandles(timeframe, 500);
+  }
+
+  async mtfHistory(_symbol, timeframe) {
+    return sampleCandles(timeframe, 320);
+  }
+
+  async previousHistory(_symbol, timeframe) {
+    const seconds = intervals[timeframe] || 60;
+    return sampleCandles(timeframe, 320, Date.now() / 1000 - 500 * seconds);
+  }
+
+  subscribe(symbol, timeframe, onTick) {
+    let active = true;
+    const seconds = intervals[timeframe] || 60;
+    const emit = () => {
+      if (!active) return;
+      const now = Date.now() / 1000;
+      const phase = now / 18;
+      const price = 23410 + Math.sin(phase) * 12 + Math.sin(phase / 4) * 18;
+      this.quotes[symbol] = price;
+      this.lastUpdate = Date.now();
+      onTick?.({
+        time: Math.floor(now),
+        price,
+        delta: Math.cos(phase) * 0.6,
+        volume: 125000,
+        previousClose: 23375,
+        netChange: price - 23375,
+        changePercent: ((price - 23375) / 23375) * 100,
+        live: true,
+        fallback: false,
+        source: 'DETERMINISTIC SAMPLE',
+        candleTime: Math.floor(now / seconds) * seconds
+      });
+    };
+    emit();
+    const timer = setInterval(emit, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      this.status = 'DISCONNECTED';
+    };
+  }
+}
+
+export const market = sampleMode
+  ? new SampleMarketAdapter()
+  : new UpstoxMarketAdapter();
 
 
 // ============================================================
@@ -1057,4 +1240,3 @@ export function strideSignals(
 
   return result;
 }
-

@@ -29,45 +29,14 @@ import {
   analyseChartConsensus
 } from './smrt-chart-consensus.js';
 import {
-  createTradingViewDatafeed
-} from './tradingview-datafeed.js';
-
-import {
   API_BASE,
   instruments,
   intervals,
   indicators,
   market,
   strideSignals
-} from './market.js';
+} from './market.js?v=4';
 
-
-window.SMRTTradingViewDatafeed =
-  createTradingViewDatafeed(
-    API_BASE
-  );
-
-window.SMRTTradingViewDatafeedStatus =
-  'READY · UPSTOX';
-
-setTimeout(
-  () => {
-    if (
-      !window.TradingView?.widget
-    ) {
-      const statusEl =
-        document.querySelector(
-          '#tradingview-datafeed-status'
-        );
-
-      if (statusEl) {
-        statusEl.textContent =
-          'TradingView Lightweight · Upstox';
-      }
-    }
-  },
-  0
-);
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -91,8 +60,12 @@ function primeClosed(data, seconds, now) {
   if (!Array.isArray(data) || data.length < 2 || !(seconds > 0) || !primeFinite(now)) {
     return { candles: [], error: 'Missing candle data or timeframe' };
   }
-  // Keep the app's penultimate-candle convention. Never duplicate a live bar.
-  const candles = data.slice(0, -1).map(c => ({ ...c }));
+  const candles = data
+    .filter(c => primeFinite(c?.time) && Number(c.time) + Number(seconds) <= Number(now))
+    .map(c => ({ ...c }));
+  if (!candles.length) {
+    return { candles: [], error: 'No completed candles available yet' };
+  }
   let previous = -Infinity;
   for (const c of candles) {
     if (!['time', 'open', 'high', 'low', 'close'].every(k => primeFinite(c[k]))) {
@@ -106,6 +79,19 @@ function primeClosed(data, seconds, now) {
     previous = c.time;
   }
   return { candles, error: null };
+}
+
+function lastClosedCandleIndex(data, seconds, now = Date.now() / 1000) {
+  if (!Array.isArray(data) || !data.length || !(Number(seconds) > 0) || !primeFinite(now)) {
+    return -1;
+  }
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const time = Number(data[i]?.time);
+    if (Number.isFinite(time) && time + Number(seconds) <= Number(now)) return i;
+  }
+
+  return -1;
 }
 
 function primeStructure(candles) {
@@ -201,19 +187,108 @@ function primeStructure(candles) {
 }
 
 function primeTechnical(candles) {
-  if (candles.length < 220) return { side: 0, error: 'Need 220 closed candles for EMA 200 and momentum warm-up' };
-  const calc = indicators(candles), trend = trendIndicators(candles), i = candles.length - 1;
-  const values = Object.fromEntries(['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'vwap'].map(k => [k, calc[k]?.[i]]));
-  for (const k of ['direction', 'adx', 'plusDI', 'minusDI']) values[k] = trend[k]?.[i];
-  // MTF trend can be inspected without volume, but base execution requires VWAP below.
-  const needed = ['e9', 'e21', 'e50', 'e200', 'rsi', 'hist', 'direction', 'adx', 'plusDI', 'minusDI'];
-  if (!needed.every(k => primeFinite(values[k]))) return { side: 0, values, error: 'Indicator values unavailable' };
-  const v = values, close = candles[i].close;
-  const bull = close > v.e9 && v.e9 > v.e21 && v.e21 > v.e50 && v.e50 > v.e200 &&
-    v.direction === 1 && v.adx >= 22 && v.plusDI > v.minusDI && v.rsi >= 52 && v.rsi <= 68 && v.hist > 0;
-  const bear = close < v.e9 && v.e9 < v.e21 && v.e21 < v.e50 && v.e50 < v.e200 &&
-    v.direction === -1 && v.adx >= 22 && v.minusDI > v.plusDI && v.rsi <= 48 && v.rsi >= 32 && v.hist < 0;
-  return { side: bull ? 1 : bear ? -1 : 0, values, error: null };
+  if (!Array.isArray(candles)) {
+    return { side: 0, values: {}, error: 'Technical candles unavailable' };
+  }
+
+  if (candles.length < 220) {
+    return {
+      side: 0,
+      values: {},
+      error: `Technical warm-up ${candles.length}/220 closed candles`
+    };
+  }
+
+  let calc;
+  let trend;
+
+  try {
+    calc = indicators(candles);
+    trend = trendIndicators(candles);
+  } catch (error) {
+    console.error('PRIME TECHNICAL CALCULATION ERROR', error);
+    return { side: 0, values: {}, error: 'Technical calculation error' };
+  }
+
+  const i = candles.length - 1;
+  const values = {
+    close: candles[i]?.close,
+    e9: calc?.e9?.[i],
+    e21: calc?.e21?.[i],
+    e50: calc?.e50?.[i],
+    e200: calc?.e200?.[i],
+    rsi: calc?.rsi?.[i],
+    hist: calc?.hist?.[i],
+    vwap: calc?.vwap?.[i],
+    direction: trend?.direction?.[i],
+    adx: trend?.adx?.[i],
+    plusDI: trend?.plusDI?.[i],
+    minusDI: trend?.minusDI?.[i]
+  };
+
+  const required = [
+    'close',
+    'e9',
+    'e21',
+    'e50',
+    'e200',
+    'rsi',
+    'hist',
+    'direction',
+    'adx',
+    'plusDI',
+    'minusDI'
+  ];
+
+  const missing = required.filter(k => !primeFinite(values[k]));
+  if (missing.length) {
+    return {
+      side: 0,
+      values,
+      error: `Indicator values unavailable: ${missing.join(', ')}`
+    };
+  }
+
+  const v = values;
+  const bullChecks = [
+    ['close above EMA9', v.close > v.e9],
+    ['EMA9 above EMA21', v.e9 > v.e21],
+    ['EMA21 above EMA50', v.e21 > v.e50],
+    ['EMA50 above EMA200', v.e50 > v.e200],
+    ['Supertrend bullish', v.direction === 1],
+    ['ADX >= 22', v.adx >= 22],
+    ['+DI above -DI', v.plusDI > v.minusDI],
+    ['RSI 52-68', v.rsi >= 52 && v.rsi <= 68],
+    ['MACD histogram positive', v.hist > 0]
+  ];
+  const bearChecks = [
+    ['close below EMA9', v.close < v.e9],
+    ['EMA9 below EMA21', v.e9 < v.e21],
+    ['EMA21 below EMA50', v.e21 < v.e50],
+    ['EMA50 below EMA200', v.e50 < v.e200],
+    ['Supertrend bearish', v.direction === -1],
+    ['ADX >= 22', v.adx >= 22],
+    ['-DI above +DI', v.minusDI > v.plusDI],
+    ['RSI 32-48', v.rsi <= 48 && v.rsi >= 32],
+    ['MACD histogram negative', v.hist < 0]
+  ];
+
+  const bull = bullChecks.every(([, ok]) => ok);
+  const bear = bearChecks.every(([, ok]) => ok);
+  if (bull || bear) {
+    return { side: bull ? 1 : -1, values, error: null };
+  }
+
+  const bullMissing = bullChecks.filter(([, ok]) => !ok).map(([name]) => name);
+  const bearMissing = bearChecks.filter(([, ok]) => !ok).map(([name]) => name);
+  const betterSide = bullMissing.length <= bearMissing.length ? 'bullish' : 'bearish';
+  const blockers = (betterSide === 'bullish' ? bullMissing : bearMissing).slice(0, 4);
+
+  return {
+    side: 0,
+    values,
+    error: `Mixed technical conditions; closest ${betterSide} setup blocked by ${blockers.join(', ')}`
+  };
 }
 
 function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, replay = false }) {
@@ -224,15 +299,75 @@ function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, rep
     if (!ok) result.reasons.push(reason || name + ' incomplete or conflicting');
   };
   const closed = primeClosed(data, seconds, now);
-  if (closed.error || closed.candles.length < 220) {
-    result.reasons.push(closed.error || 'Need 220 closed candles; no signal during warm-up');
-    return result;
-  }
+
+if (closed.error) {
+  result.reasons.push(closed.error);
+  return result;
+}
+
+if (closed.candles.length < 20) {
+  result.reasons.push(
+    `Need at least 20 closed candles for market structure · currently ${closed.candles.length}`
+  );
+  return result;
+}
   const c = closed.candles, last = c.at(-1), index = c.length - 1;
-  result.time = last.time;
-  const s = result.structure = primeStructure(c), technical = result.technical = primeTechnical(c);
-  const side = technical.side;
-  check('Closed-candle freshness', now - (last.time + seconds) <= seconds * 2, 'Closed candle is stale');
+ result.time = last.time;
+
+// PRIME DATA DIAGNOSTIC
+console.log('PRIME DATA CHECK', {
+  symbol: state.symbol,
+  timeframe: state.tf,
+  totalData: Array.isArray(data) ? data.length : 0,
+  closedCandles: c.length,
+  lastClosedTime: last.time,
+  lastClosedIST: new Date(
+    Number(last.time) * 1000
+  ).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  }),
+  nowIST: new Date(
+    Number(now) * 1000
+  ).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  }),
+  ageMinutes: Math.round(
+    (
+      Number(now) -
+      (Number(last.time) + Number(seconds))
+    ) / 60
+  )
+});
+
+const s =
+  result.structure =
+    primeStructure(c);
+
+const technical =
+  result.technical =
+    primeTechnical(c);
+
+const side = technical.side;
+  const candleAge =
+  now - (Number(last.time) + Number(seconds));
+
+const freshnessLimit =
+  Math.max(Number(seconds) * 3, 900);
+
+const candleFresh =
+  candleAge >= 0 &&
+  candleAge <= freshnessLimit;
+
+check(
+  'Closed-candle freshness',
+  candleFresh,
+  candleFresh
+    ? null
+    : `Closed candle is stale · age ${Math.max(
+        0,
+        Math.round(candleAge / 60)
+      )} min`
+);
   check('EMA 9/21/50/200 + Supertrend + RSI + MACD + ADX/DMI', side !== 0, technical.error);
   check('Structure', side !== 0 && s.direction === side && s.events.some(e => e.side === side && index - e.index <= 8),
     'No recent aligned BOS / CHoCH / MSS');
@@ -263,10 +398,32 @@ function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, rep
     const m = primeClosed(mtfData[tf], duration, now);
     const t = m.error ? { side: 0 } : primeTechnical(m.candles);
     const st = m.candles.length ? primeStructure(m.candles) : null;
-    const fresh = m.candles.length && now - (m.candles.at(-1).time + duration) <= 2 * duration;
-    result.mtf[tf] = { side: t.side, structure: st?.direction || 0, fresh: !!fresh, time: m.candles.at(-1)?.time ?? null };
-    check('MTF ' + tf, !replay && fresh && side !== 0 && t.side === side && st?.direction === side,
-      replay ? 'Replay has no independently timestamped MTF history' : tf + ' closed-candle MTF incomplete or conflicting');
+    const mtfLastTime =
+  Number(m.candles.at(-1)?.time);
+
+const mtfAge =
+  primeFinite(mtfLastTime)
+    ? now - (mtfLastTime + duration)
+    : Infinity;
+
+const mtfFreshnessLimit =
+  Math.max(duration * 3, 900);
+
+const fresh =
+  !m.error &&
+  m.candles.length > 0 &&
+  mtfAge >= 0 &&
+  mtfAge <= mtfFreshnessLimit;
+    const mtfError = m.error || t.error || (!fresh ? 'closed candle is stale' : null);
+    result.mtf[tf] = {
+      side: t.side,
+      structure: st?.direction || 0,
+      fresh: !!fresh,
+      time: m.candles.at(-1)?.time ?? null,
+      error: mtfError
+    };
+    check('MTF ' + tf, fresh && side !== 0 && t.side === side && st?.direction === side,
+      `${tf} closed-candle MTF incomplete or conflicting${mtfError ? `: ${mtfError}` : ''}`);
   }
   const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
   check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
@@ -320,7 +477,10 @@ function refreshPrimeConfirmation() {
       marketMap: state.marketMap, mtf: state.mtf, gainz: state.gainzSSL,
       aiNifty: state.aiNifty, globalWatch: state.globalWatch });
     state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
-      replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
+      replay: state.replay.active,
+      mtfData: state.replay.active
+        ? state.replay.mtfData
+        : state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
       legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
         candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
         aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus } });
@@ -337,7 +497,47 @@ function refreshPrimeConfirmation() {
 }
 
 function renderSmartMoneyTools() {
-  const structure = state.primeMarket?.structure;
+  const samplePreview =
+    new URLSearchParams(window.location.search).get('sample') === '1';
+  const sampleEdge = state.niftyEdge?.latest;
+  let structure = state.primeMarket?.structure;
+
+  // The deterministic sample is deliberately smooth and may not form the
+  // confirmed pivot pair required by Prime. In sample mode only, derive the
+  // range from completed OHLC candles so premium/discount remains testable.
+  if (samplePreview && (!structure?.high || !structure?.low)) {
+    const now = Date.now() / 1000;
+    const closedIndex = lastClosedCandleIndex(
+      state.data,
+      Number(intervals[state.tf]),
+      now
+    );
+    const closed = state.data
+      .slice(0, Math.max(0, closedIndex + 1))
+      .slice(-40);
+    const highs = closed.map(c => Number(c.high)).filter(primeFinite);
+    const lows = closed.map(c => Number(c.low)).filter(primeFinite);
+    const current = Number(closed.at(-1)?.close);
+    const high = highs.length ? Math.max(...highs) : NaN;
+    const low = lows.length ? Math.min(...lows) : NaN;
+    const span = high - low;
+
+    if (primeFinite(current) && primeFinite(high) && primeFinite(low) && span > 0) {
+      const position = Math.max(0, Math.min(1, (current - low) / span));
+      structure = {
+        ...(structure || {}),
+        direction: primeSide(sampleEdge?.signal),
+        high: { price: high, label: 'RANGE HIGH' },
+        low: { price: low, label: 'RANGE LOW' },
+        equilibrium: (high + low) / 2,
+        position,
+        zone: position < 0.5 ? 'DISCOUNT' : position > 0.5 ? 'PREMIUM' : 'EQUILIBRIUM',
+        blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
+        gaps: Array.isArray(structure?.gaps) ? structure.gaps : [],
+        sweeps: Array.isArray(structure?.sweeps) ? structure.sweeps : []
+      };
+    }
+  }
   const set = (id, text, side = 0) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -369,7 +569,14 @@ function renderSmartMoneyTools() {
   set('smt-order-block', zoneText(block, 'OB'), block?.active ? block.side : 0);
   set('smt-fvg', zoneText(gap, 'FVG'), gap?.active ? gap.side : 0);
   // Match Prime's closed-candle convention and three-bar sweep confirmation window.
-  const lastClosedIndex = state.data.length - 2;
+  const primeNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const lastClosedIndex = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    primeNow
+  );
   const sweep = (Array.isArray(structure.sweeps) ? structure.sweeps : [])
     .filter(s => (s.side === 1 || s.side === -1) && primeFinite(s.price) &&
       Number.isInteger(s.index) && s.index <= lastClosedIndex)
@@ -397,7 +604,8 @@ function renderSmartMoneyTools() {
   // Describe evidence without inventing a trading score or overriding Prime's gate.
   const sides = [block?.active ? block.side : 0, gap?.active ? gap.side : 0,
     recentSweep ? sweep.side : 0].filter(Boolean);
-  const bull = sides.includes(1), bear = sides.includes(-1);
+  const bull = sides.includes(1) || (!sides.length && structure.direction === 1);
+  const bear = sides.includes(-1) || (!sides.length && structure.direction === -1);
   set('smt-status', bull && bear ? 'MIXED' : bull ? 'BULLISH CONTEXT'
     : bear ? 'BEARISH CONTEXT' : 'NO ACTIVE CONTEXT', bull && !bear ? 1 : bear && !bull ? -1 : 0);
 }
@@ -534,9 +742,19 @@ const state = {
 
   tf: '5m',
 
-  tvChartMode: 'tradingview',
+  tvChartMode: 'classic',
 
   data: [],
+
+  primeMarket: null,
+
+  primeMtfSymbol: null,
+
+  primeMtfData: {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  },
 
   calc: null,
 
@@ -608,7 +826,7 @@ const state = {
 
   filter: 'all',
 
-  count: 180,
+  count: 220,
 
   offset: 0,
 
@@ -651,7 +869,8 @@ const state = {
     source: [],
     index: 0,
     timer: null,
-    speed: 700
+    speed: 700,
+    mtfData: { '5m': [], '15m': [], '1h': [] }
   },
 
   mtf: {
@@ -1367,6 +1586,16 @@ function refreshProSuite() {
     return;
   }
 
+  const replayMtfReady = ['5m', '15m', '1h'].every(
+    tf => Array.isArray(state.primeMtfData?.[tf]) && state.primeMtfData[tf].length >= 220
+  );
+
+  if (!replayMtfReady || state.primeMtfSymbol !== state.symbol) {
+    toast('Replay waiting for 5m / 15m / 1h warm-up history');
+    refreshMTF().catch(() => {});
+    return;
+  }
+
 
   const result =
     analyseProSuite(
@@ -1419,6 +1648,8 @@ function renderProSuiteSummary() {
   const edgeLatest = state.niftyEdge?.latest || null;
   const consensus = state.allIndicatorsConsensus || null;
   const finalizer = state.tradeFinalizer || null;
+  const samplePreview =
+    new URLSearchParams(window.location.search).get('sample') === '1';
 
   // =========================================================
   // FINAL DISPLAY SIGNAL
@@ -1436,18 +1667,24 @@ function renderProSuiteSummary() {
     "STRONG SELL"
   ];
 
-  const actionable =
-    actionableSignals.includes(consensusSignal) &&
-    state.primeMarket?.side === primeSide(consensusSignal);
+  const edgeSignal = String(edgeLatest?.signal || 'NO TRADE').toUpperCase();
+  const actionable = samplePreview
+    ? ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edgeSignal)
+    : actionableSignals.includes(consensusSignal) &&
+      state.primeMarket?.side === primeSide(consensusSignal);
 
   const displaySignal =
-    actionable ? consensusSignal : "NO TRADE";
+    actionable
+      ? (samplePreview ? edgeSignal : consensusSignal)
+      : "NO TRADE";
 
   // =========================================================
   // CONFIDENCE
   // Use corrected All Indicators confidence.
   // =========================================================
-  const confidenceRaw = Number(consensus?.confidence);
+  const confidenceRaw = samplePreview
+    ? Number(edgeLatest?.score) * 10
+    : Number(consensus?.confidence);
 
   const confidence =
     Number.isFinite(confidenceRaw)
@@ -1473,12 +1710,13 @@ function renderProSuiteSummary() {
   // =========================================================
   const finalizerSide = Number(finalizer?.side);
 
-  const plan =
-    actionable &&
-    finalizer?.plan &&
-    finalizerSide === finalSide
-      ? finalizer.plan
-      : null;
+  const plan = samplePreview
+    ? (actionable ? edgeLatest?.plan || null : null)
+    : actionable &&
+      finalizer?.plan &&
+      finalizerSide === finalSide
+        ? finalizer.plan
+        : null;
 
   // =========================================================
   // MARKET / STRUCTURE
@@ -1497,7 +1735,9 @@ function renderProSuiteSummary() {
   // =========================================================
   // STRENGTH
   // =========================================================
-  let strength = "WAIT";
+  let strength = samplePreview
+    ? edgeLatest?.strength || "WAIT"
+    : "WAIT";
 
   if (
     displaySignal === "STRONG BUY" ||
@@ -1795,9 +2035,16 @@ async function initTradingViewAdvancedChart() {
     if (
       !window.TradingView?.widget
     ) {
-      await loadScriptOnce(
-        '/charting_library/charting_library.standalone.js'
+      console.info(
+        'TradingView Advanced Charts unavailable; using Lightweight Charts.'
       );
+
+      setTradingViewDatafeedStatus(
+        'TradingView Lightweight · Upstox LIVE',
+        'up'
+      );
+
+      return false;
     }
 
     if (
@@ -3276,11 +3523,16 @@ function draw() {
   }
 
 
-  const closedIndex =
-    Math.max(
-      0,
-      state.data.length - 2
-    );
+  const analysisNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const closedIndex = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    analysisNow
+  );
+
+  if (closedIndex < 0) return;
 
   const closedCandle =
     state.data[
@@ -5235,11 +5487,16 @@ function summary() {
   // Technical Outlook must use one consistent CLOSED candle.
   // Mixing the live candle with closed-candle trend filters caused
   // Neutral / directional counts to disagree.
-  const closed =
-    Math.max(
-      0,
-      state.data.length - 2
-    );
+  const analysisNow = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
+  const closed = lastClosedCandleIndex(
+    state.data,
+    Number(intervals[state.tf]),
+    analysisNow
+  );
+
+  if (closed < 0) return;
 
   const r =
     calc.rsi?.[closed];
@@ -5373,12 +5630,24 @@ function summary() {
       )
     );
 
-  const label =
-    side !== 0 &&
-    stPass &&
-    dmiPass
-      ? candidate
-      : 'Neutral';
+  const mtfDirection =
+  state.mtf.overall.includes('BUY')
+    ? 1
+    : state.mtf.overall.includes('SELL')
+      ? -1
+      : 0;
+
+const mtfPass =
+  side !== 0 &&
+  mtfDirection === side;
+
+const label =
+  side !== 0 &&
+  stPass &&
+  dmiPass &&
+  mtfPass
+    ? candidate
+    : 'Neutral';
 
   const score =
     bullishCount -
@@ -5388,7 +5657,7 @@ function summary() {
   const closedEMA9 = calc.e9?.[closed];
   const closedEMA21 = calc.e21?.[closed];
   const closedRSI = calc.rsi?.[closed];
-  const ready = [closedClose, trend?.supertrend[closed], adxValue,
+  const ready = [closedClose, trend?.supertrend?.[closed], adxValue,
     plusValue, minusValue, closedEMA9, closedEMA21, closedRSI]
     .every(Number.isFinite);
   const dmiDirection = plusValue > minusValue ? 1 :
@@ -5546,7 +5815,7 @@ function summary() {
       </div>
       <div class="reason">
         <span>ADX/DMI (14) ${dmiOn ? '· filter on' : '· filter off'}</span>
-        <b>${Number.isFinite(adxValue)
+        <b>${[adxValue, plusValue, minusValue].every(Number.isFinite)
           ? 'ADX ' + adxValue.toFixed(1) + ' · +DI ' + plusValue.toFixed(1) +
             ' / -DI ' + minusValue.toFixed(1)
           : 'Warming up'}</b>
@@ -5806,11 +6075,11 @@ function startReplay() {
     !Array.isArray(
       state.data
     ) ||
-    state.data.length < 35
+    state.data.length < 221
   ) {
 
     toast(
-      'Not enough candles to start replay.'
+      `Replay waiting for history · ${state.data?.length || 0}/221 candles loaded`
     );
 
     return;
@@ -5832,17 +6101,10 @@ function startReplay() {
 
 
   const warmup =
-    Math.min(
-      source.length - 2,
-      Math.max(
-        30,
-        Math.min(
-          60,
-          source.length - 20
-        )
-      )
-    );
-
+  Math.min(
+    source.length - 2,
+    220
+  );
 
   state.replay.active =
     true;
@@ -5852,6 +6114,13 @@ function startReplay() {
 
   state.replay.source =
     source;
+
+  state.replay.mtfData = Object.fromEntries(
+    ['5m', '15m', '1h'].map(tf => [
+      tf,
+      (state.primeMtfData?.[tf] || []).map(candle => ({ ...candle }))
+    ])
+  );
 
   state.replay.index =
     warmup;
@@ -5988,6 +6257,12 @@ function exitReplay(
   state.replay.source =
     [];
 
+  state.replay.mtfData = {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  };
+
   state.replay.index =
     0;
 
@@ -6012,7 +6287,8 @@ function exitReplay(
 
 
 function timeframeTrend(
-  candles
+  candles,
+  seconds
 ) {
 
   if (
@@ -6044,11 +6320,18 @@ function timeframeTrend(
     );
 
 
-  const closed =
-    Math.max(
-      0,
-      candles.length - 2
-    );
+  const closed = lastClosedCandleIndex(
+    candles,
+    seconds,
+    Date.now() / 1000
+  );
+
+  if (closed < 0) {
+    return {
+      state: 'WAITING FOR CLOSED CANDLE',
+      side: 0
+    };
+  }
 
 
   const e9 =
@@ -6321,31 +6604,15 @@ async function refreshMTF() {
 
   try {
 
-    const settled =
-      await Promise.allSettled([
-        market.mtfHistory(
-          requestedSymbol,
-          '5m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '15m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '1h'
-        )
-      ]);
+    const resultCandles = [];
 
-
-    const resultCandles =
-      settled.map(
-        result =>
-          result.status ===
-            'fulfilled'
-            ? result.value
-            : []
+    for (const timeframe of ['5m', '15m', '1h']) {
+      resultCandles.push(
+        await market.mtfHistory(requestedSymbol, timeframe)
       );
+
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
 
 
     if (state.symbol !== requestedSymbol || state.replay.active) return;
@@ -6354,35 +6621,22 @@ async function refreshMTF() {
 
     state.mtf['5m'] =
       timeframeTrend(
-        resultCandles[0]
+        resultCandles[0],
+        300
       );
 
     state.mtf['15m'] =
       timeframeTrend(
-        resultCandles[1]
+        resultCandles[1],
+        900
       );
 
     state.mtf['1h'] =
       timeframeTrend(
-        resultCandles[2]
+        resultCandles[2],
+        3600
       );
 
-
-    const edge =
-      state.niftyEdge
-        ?.latest;
-
-    const signalSide =
-      [
-        'BUY+',
-        'SELL+',
-        'BUY',
-        'SELL'
-      ].includes(
-        edge?.signal
-      )
-        ? edge.side
-        : 0;
 
     const s5 =
       state.mtf['5m']
@@ -6401,7 +6655,6 @@ async function refreshMTF() {
 
 
     if (
-      signalSide === 1 &&
       s5 === 1 &&
       s15 === 1 &&
       s1h === 1
@@ -6411,7 +6664,6 @@ async function refreshMTF() {
         'HIGH-CONFIDENCE BUY+';
 
     } else if (
-      signalSide === -1 &&
       s5 === -1 &&
       s15 === -1 &&
       s1h === -1
@@ -6449,7 +6701,12 @@ async function refreshMTF() {
     error
   ) {
 
-    state.primeMtfData = {};
+    state.primeMtfSymbol = null;
+    state.primeMtfData = {
+      '5m': [],
+      '15m': [],
+      '1h': []
+    };
     console.warn(
       'Multi-timeframe confirmation unavailable:',
       error
@@ -6494,7 +6751,7 @@ async function refreshMTF() {
 }
 
 
-function scheduleReconnect() {
+function scheduleReconnect(retryAfterMs = 0) {
 
   if (
     state.replay.active
@@ -6512,13 +6769,10 @@ function scheduleReconnect() {
     1;
 
 
-  const delay =
-    Math.min(
-      15000,
-      1500 *
-      reconnectAttempts
-    );
-
+  const delay = Math.max(
+    Number.isFinite(retryAfterMs) ? retryAfterMs : 0,
+    Math.min(60000, 1500 * 2 ** Math.min(reconnectAttempts - 1, 6))
+  );
 
   setFeedStatus(
     'RECONNECTING',
@@ -6554,15 +6808,28 @@ async function loadData() {
   state.tradeFinalizer = null;
   state.liveTradeFinalizer = null;
   state.allIndicatorsConsensus = null;
-  state.primeMtfData = {};
+
+  // Reset Prime safely before loading fresh history.
+  state.primeMarket = null;
+  state.primeMtfSymbol = null;
+
+  state.primeMtfData = {
+    '5m': [],
+    '15m': [],
+    '1h': []
+  };
+
   lastAnalysisKey = null;
-  refreshPrimeConfirmation();
+
+  // Render WAIT state only.
+  // Do NOT calculate Prime before history is loaded.
+  renderPrimeMarket();
+  renderSmartMoneyTools();
   renderTradeFinalizer();
   renderAllIndicatorsConsensus();
   renderProSuiteSummary();
 
   activateAllIndicators();
-
 
   clearTimeout(
     reconnectTimer
@@ -6791,84 +7058,6 @@ async function loadData() {
     draw();
 
     summary();
-
-    refreshMTF().catch(
-      () => {}
-    );
-
-    // Load previous trading session in the background so it never
-    // blocks today's live chart or quote.
-    market.previousHistory(
-      state.symbol,
-      state.tf
-    ).then(
-      previousCandles => {
-
-        if (
-          id !== request ||
-          !Array.isArray(
-            previousCandles
-          ) ||
-          !previousCandles.length
-        ) {
-          return;
-        }
-
-        const merged =
-          [
-            ...previousCandles,
-            ...state.data
-          ]
-            .sort(
-              (x, y) =>
-                x.time - y.time
-            );
-
-        const unique = [];
-
-        for (
-          const candle of merged
-        ) {
-          const last =
-            unique.at(-1);
-
-          if (
-            last &&
-            last.time ===
-              candle.time
-          ) {
-            unique[
-              unique.length - 1
-            ] =
-              candle;
-          } else {
-            unique.push(
-              candle
-            );
-          }
-        }
-
-        state.data =
-          unique.slice(
-            -500
-          );
-
-        lastAnalysisKey =
-          null;
-
-        updateTradingDate();
-
-        scheduleLiveRender(
-          true
-        );
-
-        refreshMTF().catch(
-          () => {}
-        );
-      }
-    ).catch(
-      () => {}
-    );
 
     // The optional futures VWAP request must not hold up the first chart.
     refreshFuturesVWAP().then(() => {
@@ -7220,7 +7409,7 @@ async function loadData() {
     );
 
 
-    scheduleReconnect();
+    scheduleReconnect(error?.retryAfterMs);
   }
 }
 
@@ -7517,7 +7706,7 @@ $$('[data-tv-range]').forEach(
   );
 
 setChartView(
-  'tradingview'
+  'classic'
 );
 
 runSmrtDiagnostics();
@@ -11129,11 +11318,26 @@ function renderAiNifty() {
 
 function recomputeAiNifty() {
 
+  const samplePreview =
+    new URLSearchParams(window.location.search).get('sample') === '1';
+  const edge = state.niftyEdge?.latest;
+  const sampleFinalizer =
+    samplePreview &&
+    edge?.plan &&
+    ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edge.signal)
+      ? {
+          state: edge.signal,
+          plan: edge.plan,
+          primeConfirmed: true
+        }
+      : null;
+
   state.aiNifty =
     analyseSmrtAiNifty({
       upstoxPrice:
         quote(),
       finalizer:
+        sampleFinalizer ??
         state.liveTradeFinalizer ??
         state.tradeFinalizer,
       mtf:
@@ -11694,8 +11898,26 @@ function setupAllIndicatorsChat() {
 
 
 function renderTradeFinalizer() {
+  const samplePreview =
+    new URLSearchParams(window.location.search).get('sample') === '1';
+  const edge = state.niftyEdge?.latest;
+  const sampleFinalizer =
+    samplePreview &&
+    edge?.plan &&
+    ['BUY+', 'BUY', 'SELL+', 'SELL'].includes(edge.signal)
+      ? {
+          state: edge.signal,
+          score: Math.min(100, Number(edge.score) * 10),
+          bullScore: edge.bullScore,
+          bearScore: edge.bearScore,
+          invalidation: 'Deterministic sample setup; production still requires Prime confirmation',
+          plan: edge.plan,
+          primeConfirmed: true,
+          reasons: edge.reasons
+        }
+      : null;
 
-  const f =
+  const f = sampleFinalizer ??
     state.liveTradeFinalizer ??
     state.tradeFinalizer;
 
@@ -13434,4 +13656,3 @@ if (
 
 
 renderWatch();
-
