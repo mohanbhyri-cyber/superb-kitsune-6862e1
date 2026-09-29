@@ -6098,7 +6098,7 @@ function startReplay() {
   ) {
 
     toast(
-      'Not enough candles to start replay.'
+      `Replay waiting for history · ${state.data?.length || 0}/221 candles loaded`
     );
 
     return;
