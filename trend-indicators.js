@@ -1,429 +1,500 @@
-// netlify/functions/upstox-history.js
-// PRO SCALPER - REAL UPSTOX INTRADAY HISTORY
-// No demo/random candles.
-// Upstox token stays on Netlify server.
-
-const keys = {
-  NIFTY: 'NSE_INDEX|Nifty 50',
-  BANKNIFTY: 'NSE_INDEX|Nifty Bank',
-};
-
-const timeframeMap = {
-  '1m': 1,
-  '3m': 3,
-  '5m': 5,
-  '15m': 15,
-};
-
-function sendJSON(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'content-type': 'application/json',
-      'cache-control': 'no-store, no-cache, must-revalidate',
-    },
-  });
-}
-
-// ------------------------------------------------------------
-// Convert a timestamp into IST date/time parts
-// ------------------------------------------------------------
-
-function getISTParts(timestamp) {
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  });
-
-  const parts = formatter.formatToParts(new Date(timestamp));
-
-  return Object.fromEntries(
-    parts
-      .filter((part) => part.type !== 'literal')
-      .map((part) => [part.type, part.value])
-  );
-}
-
-// ------------------------------------------------------------
-// Keep only TODAY'S candles starting from 09:15 IST
-// ------------------------------------------------------------
-
-function isTodayFrom0915(timestamp) {
-  const candle = getISTParts(timestamp);
-  const today = getISTParts(Date.now());
-
-  const sameDate =
-    candle.year === today.year &&
-    candle.month === today.month &&
-    candle.day === today.day;
-
-  if (!sameDate) {
-    return false;
-  }
-
-  const candleMinutes =
-    Number(candle.hour) * 60 +
-    Number(candle.minute);
-
-  const marketStart = 9 * 60 + 15;
-
-  return candleMinutes >= marketStart;
-}
-
-// ------------------------------------------------------------
-// Convert Upstox candle array into our standard candle object
+// trend-indicators.js
+// ============================================================
+// NIFTY 50 TREND ENGINE
+// Supertrend + Wilder ATR + DMI / ADX
 //
-// Upstox:
-// [
-//   timestamp,
-//   open,
-//   high,
-//   low,
-//   close,
-//   volume,
-//   openInterest
-// ]
-// ------------------------------------------------------------
+// DESIGN:
+// - Closed-candle compatible.
+// - Missing OHLC never becomes zero.
+// - Safer Supertrend initialization.
+// - Wilder smoothing for ATR / DMI / ADX.
+// - Exposes ATR and DX for other engines.
+// - No BUY / SELL generation here.
+// ============================================================
 
-function normalizeCandle(row) {
-  if (!Array.isArray(row) || row.length < 6) {
-    return null;
-  }
+const finite = value =>
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  Number.isFinite(Number(value));
 
-  const [
-    timestamp,
-    open,
-    high,
-    low,
-    close,
-    volume,
-    openInterest,
-  ] = row;
+export function trendIndicators(
+  candles,
+  atrPeriod = 10,
+  multiplier = 3,
+  dmiPeriod = 14
+) {
+  const n = Array.isArray(candles)
+    ? candles.length
+    : 0;
 
-  const milliseconds = new Date(timestamp).getTime();
+  const supertrend = Array(n).fill(null);
+  const direction = Array(n).fill(0);
 
-  if (!Number.isFinite(milliseconds)) {
-    return null;
-  }
+  const atr = Array(n).fill(null);
 
-  const candle = {
-    time: Math.floor(milliseconds / 1000),
+  const plusDI = Array(n).fill(null);
+  const minusDI = Array(n).fill(null);
 
-    open: Number(open),
-    high: Number(high),
-    low: Number(low),
-    close: Number(close),
-
-    volume: Number(volume) || 0,
-
-    openInterest:
-      Number(openInterest) || 0,
-  };
-
-  // ----------------------------------------------------------
-  // Reject invalid numeric data
-  // ----------------------------------------------------------
+  const dx = Array(n).fill(null);
+  const adx = Array(n).fill(null);
 
   if (
-    !Number.isFinite(candle.open) ||
-    !Number.isFinite(candle.high) ||
-    !Number.isFinite(candle.low) ||
-    !Number.isFinite(candle.close)
+    n < 2 ||
+    atrPeriod < 1 ||
+    dmiPeriod < 1 ||
+    !finite(multiplier) ||
+    Number(multiplier) <= 0
   ) {
-    return null;
+    return {
+      supertrend,
+      direction,
+      atr,
+      plusDI,
+      minusDI,
+      dx,
+      adx
+    };
   }
 
-  if (
-    candle.open <= 0 ||
-    candle.high <= 0 ||
-    candle.low <= 0 ||
-    candle.close <= 0
-  ) {
-    return null;
-  }
+  // ==========================================================
+  // TRUE RANGE / DIRECTIONAL MOVEMENT
+  // ==========================================================
 
-  // ----------------------------------------------------------
-  // Reject malformed OHLC
-  // ----------------------------------------------------------
+  const tr = Array(n).fill(null);
+  const plusDM = Array(n).fill(null);
+  const minusDM = Array(n).fill(null);
 
-  if (
-    candle.high < candle.low ||
-    candle.high < candle.open ||
-    candle.high < candle.close ||
-    candle.low > candle.open ||
-    candle.low > candle.close
-  ) {
-    return null;
-  }
+  for (let i = 1; i < n; i++) {
+    const current = candles[i];
+    const previous = candles[i - 1];
 
-  // ----------------------------------------------------------
-  // Today's session only - starting 09:15 IST
-  // ----------------------------------------------------------
-
-  if (!isTodayFrom0915(milliseconds)) {
-    return null;
-  }
-
-  return candle;
-}
-
-// ------------------------------------------------------------
-// NETLIFY FUNCTION
-// ------------------------------------------------------------
-
-export default async (request) => {
-  try {
-    const requestURL = new URL(request.url);
-
-    const symbol = (
-      requestURL.searchParams.get('symbol') ||
-      'NIFTY'
-    ).toUpperCase();
-
-    const timeframe =
-      requestURL.searchParams.get('timeframe') ||
-      '1m';
-
-    const instrumentKey =
-      keys[symbol];
-
-    const interval =
-      timeframeMap[timeframe];
-
-    const token =
-      process.env.UPSTOX_ANALYTICS_TOKEN;
-
-    // --------------------------------------------------------
-    // Validate instrument
-    // --------------------------------------------------------
-
-    if (!instrumentKey) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason: 'Unsupported instrument.',
-        candles: [],
-      });
+    if (
+      ![
+        current?.high,
+        current?.low,
+        current?.close,
+        previous?.high,
+        previous?.low,
+        previous?.close
+      ].every(finite)
+    ) {
+      continue;
     }
 
-    // --------------------------------------------------------
-    // Validate timeframe
-    // --------------------------------------------------------
+    const high = Number(current.high);
+    const low = Number(current.low);
 
-    if (!interval) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason: 'Unsupported timeframe.',
-        candles: [],
-      });
+    const prevHigh = Number(previous.high);
+    const prevLow = Number(previous.low);
+    const prevClose = Number(previous.close);
+
+    if (
+      high < low ||
+      prevHigh < prevLow
+    ) {
+      continue;
     }
 
-    // --------------------------------------------------------
-    // Check token
-    // --------------------------------------------------------
-
-    if (!token) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          'UPSTOX_ANALYTICS_TOKEN is not configured.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Upstox V3 intraday candle endpoint
-    // --------------------------------------------------------
-
-    const endpoint =
-      'https://api.upstox.com/v3/historical-candle/intraday/' +
-      encodeURIComponent(instrumentKey) +
-      '/minutes/' +
-      interval;
-
-    // --------------------------------------------------------
-    // Request REAL candles from Upstox
-    // --------------------------------------------------------
-
-    const response = await fetch(endpoint, {
-      method: 'GET',
-
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
-
-    // --------------------------------------------------------
-    // Upstox error
-    // --------------------------------------------------------
-
-    if (!response.ok) {
-      let details = '';
-
-      try {
-        details = await response.text();
-      } catch {
-        details = '';
-      }
-
-      console.error(
-        'Upstox history request failed:',
-        response.status,
-        details
-      );
-
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          `Upstox returned HTTP ${response.status}.`,
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Read response
-    // --------------------------------------------------------
-
-    const body =
-      await response.json();
-
-    const rawCandles =
-      body?.data?.candles;
-
-    if (!Array.isArray(rawCandles)) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          'Upstox did not return candle data.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Normalize + validate + sort
-    // --------------------------------------------------------
-
-    let candles =
-      rawCandles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
-        );
-
-    // --------------------------------------------------------
-    // Remove duplicate candle timestamps
-    // --------------------------------------------------------
-
-    const uniqueCandles = [];
-
-    for (const candle of candles) {
-      const previous =
-        uniqueCandles[
-          uniqueCandles.length - 1
-        ];
-
-      if (
-        previous &&
-        previous.time === candle.time
-      ) {
-        uniqueCandles[
-          uniqueCandles.length - 1
-        ] = candle;
-      } else {
-        uniqueCandles.push(candle);
-      }
-    }
-
-    candles = uniqueCandles;
-
-    // --------------------------------------------------------
-    // Nothing returned for current trading session
-    // --------------------------------------------------------
-
-    if (!candles.length) {
-      return sendJSON({
-        live: false,
-
-        source: 'UPSTOX',
-
-        symbol,
-        timeframe,
-
-        sessionStart: '09:15',
-
-        timezone:
-          'Asia/Kolkata',
-
-        reason:
-          'No candles available for today from 09:15 IST.',
-
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // SUCCESS
-    // --------------------------------------------------------
-
-    return sendJSON({
-      live: true,
-
-      source: 'UPSTOX',
-
-      symbol,
-      timeframe,
-
-      instrumentKey,
-
-      sessionStart: '09:15',
-
-      timezone:
-        'Asia/Kolkata',
-
-      count:
-        candles.length,
-
-      firstCandleTime:
-        candles[0]?.time ??
-        null,
-
-      lastCandleTime:
-        candles[
-          candles.length - 1
-        ]?.time ??
-        null,
-
-      candles,
-    });
-  } catch (error) {
-    console.error(
-      'upstox-history error:',
-      error
+    tr[i] = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
     );
 
-    return sendJSON({
-      live: false,
+    const upMove =
+      high - prevHigh;
 
-      source: 'UPSTOX',
+    const downMove =
+      prevLow - low;
 
-      reason:
-        error?.message ||
-        'Unable to load Upstox intraday candles.',
+    plusDM[i] =
+      upMove > downMove &&
+      upMove > 0
+        ? upMove
+        : 0;
 
-      candles: [],
-    });
+    minusDM[i] =
+      downMove > upMove &&
+      downMove > 0
+        ? downMove
+        : 0;
   }
-};
+
+  // ==========================================================
+  // WILDER ATR
+  // ==========================================================
+
+  let atrSeed = 0;
+  let atrSeedCount = 0;
+  let lastATR = null;
+
+  for (let i = 1; i < n; i++) {
+    if (!finite(tr[i])) {
+      continue;
+    }
+
+    if (lastATR === null) {
+      atrSeed += Number(tr[i]);
+      atrSeedCount += 1;
+
+      if (atrSeedCount === atrPeriod) {
+        lastATR =
+          atrSeed / atrPeriod;
+
+        atr[i] = lastATR;
+      }
+
+      continue;
+    }
+
+    lastATR =
+      (
+        lastATR *
+          (atrPeriod - 1) +
+        Number(tr[i])
+      ) /
+      atrPeriod;
+
+    atr[i] = lastATR;
+  }
+
+  // ==========================================================
+  // SUPERTREND
+  // ==========================================================
+
+  const finalUpper =
+    Array(n).fill(null);
+
+  const finalLower =
+    Array(n).fill(null);
+
+  let previousDirection = 0;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(atr[i]) ||
+      !finite(candles[i]?.high) ||
+      !finite(candles[i]?.low) ||
+      !finite(candles[i]?.close) ||
+      !finite(candles[i - 1]?.close)
+    ) {
+      continue;
+    }
+
+    const high =
+      Number(candles[i].high);
+
+    const low =
+      Number(candles[i].low);
+
+    const close =
+      Number(candles[i].close);
+
+    const prevClose =
+      Number(candles[i - 1].close);
+
+    const midpoint =
+      (high + low) / 2;
+
+    const basicUpper =
+      midpoint +
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const basicLower =
+      midpoint -
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const previousUpper =
+      finalUpper[i - 1];
+
+    const previousLower =
+      finalLower[i - 1];
+
+    // First valid Supertrend candle.
+    if (
+      !finite(previousUpper) ||
+      !finite(previousLower)
+    ) {
+      finalUpper[i] =
+        basicUpper;
+
+      finalLower[i] =
+        basicLower;
+
+      previousDirection =
+        close >= midpoint
+          ? 1
+          : -1;
+
+      direction[i] =
+        previousDirection;
+
+      supertrend[i] =
+        previousDirection === 1
+          ? finalLower[i]
+          : finalUpper[i];
+
+      continue;
+    }
+
+    // Final upper band.
+    finalUpper[i] =
+      basicUpper <
+        Number(previousUpper) ||
+      prevClose >
+        Number(previousUpper)
+        ? basicUpper
+        : Number(previousUpper);
+
+    // Final lower band.
+    finalLower[i] =
+      basicLower >
+        Number(previousLower) ||
+      prevClose <
+        Number(previousLower)
+        ? basicLower
+        : Number(previousLower);
+
+    const priorDirection =
+      direction[i - 1] === 1 ||
+      direction[i - 1] === -1
+        ? direction[i - 1]
+        : previousDirection;
+
+    let currentDirection =
+      priorDirection;
+
+    if (
+      priorDirection === 1 &&
+      close <
+        Number(previousLower)
+    ) {
+      currentDirection = -1;
+
+    } else if (
+      priorDirection === -1 &&
+      close >
+        Number(previousUpper)
+    ) {
+      currentDirection = 1;
+    }
+
+    direction[i] =
+      currentDirection;
+
+    previousDirection =
+      currentDirection;
+
+    supertrend[i] =
+      currentDirection === 1
+        ? finalLower[i]
+        : finalUpper[i];
+  }
+
+  // ==========================================================
+  // WILDER DMI
+  // ==========================================================
+
+  let trSeed = 0;
+  let plusSeed = 0;
+  let minusSeed = 0;
+  let dmiSeedCount = 0;
+
+  let smoothTR = null;
+  let smoothPlus = null;
+  let smoothMinus = null;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(tr[i]) ||
+      !finite(plusDM[i]) ||
+      !finite(minusDM[i])
+    ) {
+      continue;
+    }
+
+    if (smoothTR === null) {
+      trSeed += Number(tr[i]);
+      plusSeed += Number(plusDM[i]);
+      minusSeed += Number(minusDM[i]);
+
+      dmiSeedCount += 1;
+
+      if (
+        dmiSeedCount === dmiPeriod
+      ) {
+        smoothTR = trSeed;
+        smoothPlus = plusSeed;
+        smoothMinus = minusSeed;
+      } else {
+        continue;
+      }
+
+    } else {
+      smoothTR =
+        smoothTR -
+        smoothTR / dmiPeriod +
+        Number(tr[i]);
+
+      smoothPlus =
+        smoothPlus -
+        smoothPlus / dmiPeriod +
+        Number(plusDM[i]);
+
+      smoothMinus =
+        smoothMinus -
+        smoothMinus / dmiPeriod +
+        Number(minusDM[i]);
+    }
+
+    if (
+      !finite(smoothTR) ||
+      smoothTR <= 0
+    ) {
+      plusDI[i] = 0;
+      minusDI[i] = 0;
+      dx[i] = 0;
+
+      continue;
+    }
+
+    plusDI[i] =
+      100 *
+      Number(smoothPlus) /
+      Number(smoothTR);
+
+    minusDI[i] =
+      100 *
+      Number(smoothMinus) /
+      Number(smoothTR);
+
+    const total =
+      plusDI[i] +
+      minusDI[i];
+
+    dx[i] =
+      total > 0
+        ? (
+            100 *
+            Math.abs(
+              plusDI[i] -
+              minusDI[i]
+            )
+          ) /
+          total
+        : 0;
+  }
+
+  // ==========================================================
+  // WILDER ADX
+  // ==========================================================
+
+  let dxSeed = 0;
+  let dxSeedCount = 0;
+  let lastADX = null;
+
+  for (let i = 0; i < n; i++) {
+    if (!finite(dx[i])) {
+      continue;
+    }
+
+    if (lastADX === null) {
+      dxSeed += Number(dx[i]);
+      dxSeedCount += 1;
+
+      if (
+        dxSeedCount === dmiPeriod
+      ) {
+        lastADX =
+          dxSeed / dmiPeriod;
+
+        adx[i] =
+          lastADX;
+      }
+
+      continue;
+    }
+
+    lastADX =
+      (
+        lastADX *
+          (dmiPeriod - 1) +
+        Number(dx[i])
+      ) /
+      dmiPeriod;
+
+    adx[i] =
+      lastADX;
+  }
+
+  // ==========================================================
+  // SANITY CLEANUP
+  // ==========================================================
+
+  for (let i = 0; i < n; i++) {
+    if (
+      finite(plusDI[i])
+    ) {
+      plusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(plusDI[i])
+          )
+        );
+    }
+
+    if (
+      finite(minusDI[i])
+    ) {
+      minusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(minusDI[i])
+          )
+        );
+    }
+
+    if (finite(dx[i])) {
+      dx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(dx[i])
+          )
+        );
+    }
+
+    if (finite(adx[i])) {
+      adx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(adx[i])
+          )
+        );
+    }
+  }
+
+  return {
+    supertrend,
+    direction,
+
+    // Additional outputs used by Prime/Finalizer.
+    atr,
+
+    plusDI,
+    minusDI,
+
+    dx,
+    adx
+  };
+}

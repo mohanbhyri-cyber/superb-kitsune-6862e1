@@ -35,7 +35,7 @@ import {
   indicators,
   market,
   strideSignals
-} from './market.js?v=3';
+} from './market.js?v=4';
 
 
 const $ = s => document.querySelector(s);
@@ -6604,31 +6604,15 @@ async function refreshMTF() {
 
   try {
 
-    const settled =
-      await Promise.allSettled([
-        market.mtfHistory(
-          requestedSymbol,
-          '5m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '15m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '1h'
-        )
-      ]);
+    const resultCandles = [];
 
-
-    const resultCandles =
-      settled.map(
-        result =>
-          result.status ===
-            'fulfilled'
-            ? result.value
-            : []
+    for (const timeframe of ['5m', '15m', '1h']) {
+      resultCandles.push(
+        await market.mtfHistory(requestedSymbol, timeframe)
       );
+
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
 
 
     if (state.symbol !== requestedSymbol || state.replay.active) return;

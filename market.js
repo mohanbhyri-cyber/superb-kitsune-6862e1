@@ -10,11 +10,11 @@ const historyCache = new Map();
 const historyInFlight = new Map();
 const HISTORY_CACHE_MS = 60 * 1000;
 
-async function cachedMarketRequest(key, requestFn) {
+async function cachedMarketRequest(key, requestFn, ttlMs = HISTORY_CACHE_MS) {
   const now = Date.now();
   const cached = historyCache.get(key);
 
-  if (cached && now - cached.time < HISTORY_CACHE_MS) {
+  if (cached && now - cached.time < ttlMs) {
     return cached.data;
   }
 
@@ -623,7 +623,7 @@ export class UpstoxMarketAdapter {
         );
 
         return candles;
-      });
+      }, 5 * 60 * 1000);
 
     } catch (error) {
       console.warn(
@@ -632,6 +632,7 @@ export class UpstoxMarketAdapter {
         error
       );
 
+      if (error?.status === 429) throw error;
       return [];
     }
   }
