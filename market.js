@@ -565,10 +565,11 @@ export class UpstoxMarketAdapter {
       const response =
         await upstoxRequest(
           API_BASE + '/api/upstox-mtf-history' +
-          '?symbol=' +
-          encodeURIComponent(symbol) +
-          '&timeframe=' +
-          encodeURIComponent(timeframe),
+            '?symbol=' +
+            encodeURIComponent(symbol) +
+             '&timeframe=' +
+             encodeURIComponent(timeframe) +
+             '&count=260',
           {
             cache: 'no-store',
             signal:
