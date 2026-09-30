@@ -26,6 +26,9 @@ import {
   analyseAllIndicators
 } from './smrt-all-indicators.js';
 import {
+  analyseAdvancedIndicators
+} from './smrt-advanced-indicators.js';
+import {
   analyseChartConsensus
 } from './smrt-chart-consensus.js';
 import {
@@ -504,9 +507,16 @@ function primeGate(candidate, prime, field = 'state') {
 function refreshPrimeConfirmation() {
   const now = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000;
   try {
-    const consensus = analyseAllIndicators({ finalizer: state.rawTradeFinalizer, edge: state.niftyEdge,
-      marketMap: state.marketMap, mtf: state.mtf, gainz: state.gainzSSL,
-      aiNifty: state.aiNifty, globalWatch: state.globalWatch });
+    const consensus = analyseAllIndicators({
+  finalizer: state.rawTradeFinalizer,
+  edge: state.niftyEdge,
+  marketMap: state.marketMap,
+  mtf: state.mtf,
+  gainz: state.gainzSSL,
+  aiNifty: state.aiNifty,
+  globalWatch: state.globalWatch,
+  technicalIndicators
+  });
     state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
       replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
       legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
