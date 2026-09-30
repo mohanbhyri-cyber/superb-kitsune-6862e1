@@ -1458,7 +1458,33 @@ if (advStatus.error) {
     }
     row('p', p.volume?.available ? 'OHLCV pressure proxy: ' + (p.volume.pressure * 100).toFixed(1) + '% · Relative volume ' + p.volume.relative.toFixed(2) + '×'
       : 'Volume unavailable — confirmation blocked');
-    row('p', Object.entries(p.mtf).map(([tf, m]) => tf + ': ' + (!m.fresh ? 'STALE / MISSING' : m.side === 1 ? 'BULLISH' : m.side === -1 ? 'BEARISH' : 'MIXED')).join(' · '));
+   row(
+  'p',
+  Object.entries(p.mtf)
+    .map(([tf, m]) => {
+      const hasData =
+        primeFinite(m?.time);
+
+      if (!hasData) {
+        return tf + ': MISSING';
+      }
+
+      if (!m.fresh) {
+        return tf + ': STALE';
+      }
+
+      if (m.side === 1) {
+        return tf + ': BULLISH';
+      }
+
+      if (m.side === -1) {
+        return tf + ': BEARISH';
+      }
+
+      return tf + ': MIXED / NEUTRAL';
+    })
+    .join(' · ')
+);
   }
   row('p', (p?.checks || []).filter(c => c.ok).length + ' / ' + (p?.checks?.length || 0) + ' checks passed (not a probability)');
   row('p', (p?.reasons || ['Waiting for history']).join(' · '));
@@ -7829,11 +7855,72 @@ async function loadData() {
 
   try {
 
-    const data =
-      await market.history(
+    let data =
+  await market.history(
+    state.symbol,
+    state.tf
+  );
+
+if (
+  Array.isArray(data) &&
+  data.length < 260 &&
+  ['5m', '15m', '1h'].includes(state.tf)
+) {
+  try {
+    const warmupData =
+      await market.mtfHistory(
         state.symbol,
         state.tf
       );
+
+    if (
+      Array.isArray(warmupData) &&
+      warmupData.length
+    ) {
+      const merged = [
+        ...warmupData,
+        ...data
+      ].sort(
+        (a, b) =>
+          Number(a.time) -
+          Number(b.time)
+      );
+
+      const byTime =
+        new Map();
+
+      for (const candle of merged) {
+        if (
+          candle &&
+          Number.isFinite(
+            Number(candle.time)
+          )
+        ) {
+          byTime.set(
+            Number(candle.time),
+            candle
+          );
+        }
+      }
+
+      data =
+        Array.from(
+          byTime.values()
+        )
+          .sort(
+            (a, b) =>
+              Number(a.time) -
+              Number(b.time)
+          )
+          .slice(-260);
+    }
+  } catch (error) {
+    console.warn(
+      'Main timeframe warm-up unavailable:',
+      error
+    );
+  }
+}
 
 
     if (
