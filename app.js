@@ -524,95 +524,664 @@ function refreshPrimeConfirmation() {
   renderSmartMoneyTools();
 }
 
-function refreshPrimeConfirmation() {
-  ...
-}
-
-
-// NEW FULL FUNCTION
 function renderSmartMoneyTools() {
-  ...
-  // Liquidity Sweep + FVG code included here
-  ...
-}
+  const samplePreview =
+    new URLSearchParams(window.location.search).get('sample') === '1';
 
+  const sampleEdge = state.niftyEdge?.latest;
+  let structure = state.primeMarket?.structure;
 
-// KEEP THIS - DO NOT DELETE
-function renderPrimeMarket() {
-  ...
-}
+  // =========================================================
+  // SAMPLE MODE RANGE FALLBACK
+  // =========================================================
+
+  if (samplePreview && (!structure?.high || !structure?.low)) {
+    const now = Date.now() / 1000;
+
+    const closedIndex = lastClosedCandleIndex(
+      state.data,
+      Number(intervals[state.tf]),
+      now
+    );
+
+    const closed = state.data
+      .slice(0, Math.max(0, closedIndex + 1))
+      .slice(-40);
+
+    const highs = closed
+      .map(c => Number(c.high))
+      .filter(primeFinite);
+
+    const lows = closed
+      .map(c => Number(c.low))
+      .filter(primeFinite);
+
+    const current = Number(closed.at(-1)?.close);
+    const high = highs.length ? Math.max(...highs) : NaN;
+    const low = lows.length ? Math.min(...lows) : NaN;
+    const span = high - low;
+
+    if (
+      primeFinite(current) &&
+      primeFinite(high) &&
+      primeFinite(low) &&
+      span > 0
+    ) {
+      const position = Math.max(
+        0,
+        Math.min(
+          1,
+          (current - low) / span
+        )
+      );
+
+      structure = {
+        ...(structure || {}),
+
+        direction:
+          primeSide(sampleEdge?.signal),
+
+        high: {
+          price: high,
+          label: 'RANGE HIGH'
+        },
+
+        low: {
+          price: low,
+          label: 'RANGE LOW'
+        },
+
+        equilibrium:
+          (high + low) / 2,
+
+        position,
+
+        zone:
+          position < 0.5
+            ? 'DISCOUNT'
+            : position > 0.5
+              ? 'PREMIUM'
+              : 'EQUILIBRIUM',
+
+        blocks:
+          Array.isArray(structure?.blocks)
+            ? structure.blocks
+            : [],
+
+        gaps:
+          Array.isArray(structure?.gaps)
+            ? structure.gaps
+            : [],
+
+        sweeps:
+          Array.isArray(structure?.sweeps)
+            ? structure.sweeps
+            : []
+      };
     }
   }
-  const set = (id, text, side = 0) => {
-    const el = document.getElementById(id);
+
+  // =========================================================
+  // DISPLAY HELPER
+  // =========================================================
+
+  const set = (
+    id,
+    text,
+    side = 0
+  ) => {
+    const el =
+      document.getElementById(id);
+
     if (!el) return;
+
     el.textContent = text;
-    el.classList.remove('smrt-bullish', 'smrt-bearish', 'smrt-neutral');
-    el.classList.add(side === 1 ? 'smrt-bullish' : side === -1 ? 'smrt-bearish' : 'smrt-neutral');
+
+    el.classList.remove(
+      'smrt-bullish',
+      'smrt-bearish',
+      'smrt-neutral'
+    );
+
+    el.classList.add(
+      side === 1
+        ? 'smrt-bullish'
+        : side === -1
+          ? 'smrt-bearish'
+          : 'smrt-neutral'
+    );
   };
-  const price = value => primeFinite(value) ? Number(value).toLocaleString('en-IN', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2
-  }) : '—';
-  const range = zone => zone ? `${price(zone.low)} – ${price(zone.high)}` : '—';
-  const validZone = zone => zone && (zone.side === 1 || zone.side === -1) &&
-    primeFinite(zone.low) && primeFinite(zone.high) && Number(zone.high) >= Number(zone.low);
-  // Prefer surviving zones, then the newest creation. Never mutate the engine's arrays.
-  const zones = values => (Array.isArray(values) ? values : []).filter(validZone).slice().sort((a, b) =>
-    Number(b.active === true) - Number(a.active === true) || b.created - a.created);
-  const zoneText = (zone, label) => zone
-    ? `${zone.side === 1 ? 'BULLISH' : 'BEARISH'} ${label} · ${range(zone)} · ${zone.status || (zone.active ? 'ACTIVE' : 'INACTIVE')}`
-    : 'NONE';
+
+  // =========================================================
+  // PRICE / ZONE HELPERS
+  // =========================================================
+
+  const price = value =>
+    primeFinite(value)
+      ? Number(value).toLocaleString(
+          'en-IN',
+          {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }
+        )
+      : '—';
+
+  const range = zone =>
+    zone
+      ? `${price(zone.low)} – ${price(zone.high)}`
+      : '—';
+
+  const validZone = zone =>
+    zone &&
+    (
+      zone.side === 1 ||
+      zone.side === -1
+    ) &&
+    primeFinite(zone.low) &&
+    primeFinite(zone.high) &&
+    Number(zone.high) >= Number(zone.low);
+
+  const zones = values =>
+    (
+      Array.isArray(values)
+        ? values
+        : []
+    )
+      .filter(validZone)
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(b.active === true) -
+            Number(a.active === true) ||
+          Number(b.created || 0) -
+            Number(a.created || 0)
+      );
+
+  const zoneText = (
+    zone,
+    label
+  ) =>
+    zone
+      ? `${
+          zone.side === 1
+            ? 'BULLISH'
+            : 'BEARISH'
+        } ${label} · ${range(zone)} · ${
+          zone.status ||
+          (
+            zone.active
+              ? 'ACTIVE'
+              : 'INACTIVE'
+          )
+        }`
+      : 'NONE';
+
+  // =========================================================
+  // NO STRUCTURE
+  // =========================================================
+
   if (!structure) {
-    for (const id of ['smt-status', 'smt-order-block', 'smt-fvg', 'smt-liquidity',
-      'smt-supply-demand', 'pd-status', 'pd-current-zone']) set(id, 'WAIT');
-    for (const id of ['smt-demand-value', 'smt-supply-value', 'pd-range-high',
-      'pd-range-low', 'pd-equilibrium-value', 'pd-position']) set(id, '—');
+    for (
+      const id of [
+        'smt-status',
+        'smt-order-block',
+        'smt-fvg',
+        'smt-liquidity',
+        'smt-liquidity-fvg',
+        'smt-supply-demand',
+        'pd-status',
+        'pd-current-zone'
+      ]
+    ) {
+      set(id, 'WAIT');
+    }
+
+    for (
+      const id of [
+        'smt-demand-value',
+        'smt-supply-value',
+        'pd-range-high',
+        'pd-range-low',
+        'pd-equilibrium-value',
+        'pd-position'
+      ]
+    ) {
+      set(id, '—');
+    }
+
     return;
   }
-  const blocks = zones(structure.blocks), gaps = zones(structure.gaps);
-  const block = blocks[0], gap = gaps[0];
-  set('smt-order-block', zoneText(block, 'OB'), block?.active ? block.side : 0);
-  set('smt-fvg', zoneText(gap, 'FVG'), gap?.active ? gap.side : 0);
-  // Match Prime's closed-candle convention and three-bar sweep confirmation window.
-  const primeNow = state.replay.active
-    ? Number(state.data.at(-1)?.time)
-    : Date.now() / 1000;
-  const lastClosedIndex = lastClosedCandleIndex(
-    state.data,
-    Number(intervals[state.tf]),
-    primeNow
+
+  // =========================================================
+  // ORDER BLOCK + FVG
+  // =========================================================
+
+  const blocks =
+    zones(structure.blocks);
+
+  const gaps =
+    zones(structure.gaps);
+
+  const block =
+    blocks[0];
+
+  const gap =
+    gaps[0];
+
+  set(
+    'smt-order-block',
+    zoneText(
+      block,
+      'OB'
+    ),
+    block?.active
+      ? block.side
+      : 0
   );
-  const sweep = (Array.isArray(structure.sweeps) ? structure.sweeps : [])
-    .filter(s => (s.side === 1 || s.side === -1) && primeFinite(s.price) &&
-      Number.isInteger(s.index) && s.index <= lastClosedIndex)
-    .slice().sort((a, b) => b.index - a.index)[0];
-  const recentSweep = sweep && lastClosedIndex - sweep.index <= 3;
-  set('smt-liquidity', sweep
-    ? `${sweep.side === 1 ? 'SELL-SIDE' : 'BUY-SIDE'} SWEPT · ${price(sweep.price)} · ${recentSweep ? 'RECENT' : 'HISTORICAL'}`
-    : 'NONE', recentSweep ? sweep.side : 0);
-  const demand = blocks.find(z => z.active && z.side === 1);
-  const supply = blocks.find(z => z.active && z.side === -1);
-  set('smt-demand-value', range(demand), demand ? 1 : 0);
-  set('smt-supply-value', range(supply), supply ? -1 : 0);
-  set('smt-supply-demand', demand && supply ? 'SUPPLY + DEMAND ACTIVE'
-    : demand ? 'DEMAND ACTIVE' : supply ? 'SUPPLY ACTIVE' : 'NO ACTIVE ZONES',
-    demand && !supply ? 1 : supply && !demand ? -1 : 0);
-  set('pd-range-high', price(structure.high?.price));
-  set('pd-range-low', price(structure.low?.price));
-  set('pd-equilibrium-value', price(structure.equilibrium));
-  const zone = structure.zone || 'UNAVAILABLE';
-  const zoneSide = zone === 'DISCOUNT' ? 1 : zone === 'PREMIUM' ? -1 : 0;
-  set('pd-current-zone', zone, zoneSide);
-  set('pd-status', zone, zoneSide);
-  set('pd-position', typeof structure.position === 'number' && Number.isFinite(structure.position)
-    ? `${(structure.position * 100).toFixed(1)}%` : '—');
-  // Describe evidence without inventing a trading score or overriding Prime's gate.
-  const sides = [block?.active ? block.side : 0, gap?.active ? gap.side : 0,
-    recentSweep ? sweep.side : 0].filter(Boolean);
-  const bull = sides.includes(1) || (!sides.length && structure.direction === 1);
-  const bear = sides.includes(-1) || (!sides.length && structure.direction === -1);
-  set('smt-status', bull && bear ? 'MIXED' : bull ? 'BULLISH CONTEXT'
-    : bear ? 'BEARISH CONTEXT' : 'NO ACTIVE CONTEXT', bull && !bear ? 1 : bear && !bull ? -1 : 0);
+
+  set(
+    'smt-fvg',
+    zoneText(
+      gap,
+      'FVG'
+    ),
+    gap?.active
+      ? gap.side
+      : 0
+  );
+
+  // =========================================================
+  // LAST CLOSED CANDLE
+  // =========================================================
+
+  const primeNow =
+    state.replay.active
+      ? Number(state.data.at(-1)?.time)
+      : Date.now() / 1000;
+
+  const lastClosedIndex =
+    lastClosedCandleIndex(
+      state.data,
+      Number(intervals[state.tf]),
+      primeNow
+    );
+
+  // =========================================================
+  // LIQUIDITY SWEEP
+  // =========================================================
+
+  const sweep =
+    (
+      Array.isArray(structure.sweeps)
+        ? structure.sweeps
+        : []
+    )
+      .filter(
+        s =>
+          (
+            s.side === 1 ||
+            s.side === -1
+          ) &&
+          primeFinite(s.price) &&
+          Number.isInteger(s.index) &&
+          s.index <= lastClosedIndex
+      )
+      .slice()
+      .sort(
+        (a, b) =>
+          b.index - a.index
+      )[0];
+
+  const recentSweep =
+    !!sweep &&
+    lastClosedIndex >= 0 &&
+    lastClosedIndex - sweep.index >= 0 &&
+    lastClosedIndex - sweep.index <= 3;
+
+  set(
+    'smt-liquidity',
+
+    sweep
+      ? `${
+          sweep.side === 1
+            ? 'SELL-SIDE'
+            : 'BUY-SIDE'
+        } SWEPT · ${
+          price(sweep.price)
+        } · ${
+          recentSweep
+            ? 'RECENT'
+            : 'HISTORICAL'
+        }`
+      : 'NONE',
+
+    recentSweep
+      ? sweep.side
+      : 0
+  );
+
+  // =========================================================
+  // LIQUIDITY SWEEP + FVG
+  // =========================================================
+  //
+  // sweep.side === 1
+  // = Sell-side liquidity swept
+  // = Bullish setup direction
+  //
+  // sweep.side === -1
+  // = Buy-side liquidity swept
+  // = Bearish setup direction
+  //
+  // Matching FVG must:
+  // 1. Be active
+  // 2. Match sweep direction
+  // 3. Form on/after the sweep
+  // 4. Form within 3 closed candles
+  // =========================================================
+
+  const sweepFvg =
+    recentSweep
+      ? gaps.find(
+          z =>
+            z.active === true &&
+            z.side === sweep.side &&
+            Number.isInteger(z.created) &&
+            z.created >= sweep.index &&
+            z.created - sweep.index <= 3
+        )
+      : null;
+
+  const sweepFvgTouched =
+    !!sweepFvg &&
+    Number.isInteger(sweepFvg.touched) &&
+    sweepFvg.touched >= sweepFvg.created &&
+    sweepFvg.touched <= lastClosedIndex;
+
+  let liquidityFvgText =
+    'WAIT · NO SWEEP + FVG SETUP';
+
+  let liquidityFvgSide =
+    0;
+
+  // =========================================================
+  // MATCHING SWEEP + FVG
+  // =========================================================
+
+  if (sweepFvg) {
+    liquidityFvgSide =
+      sweep.side;
+
+    if (sweepFvgTouched) {
+      liquidityFvgText =
+        `${
+          sweep.side === 1
+            ? 'BULLISH'
+            : 'BEARISH'
+        } CONFIRMED · ${
+          sweep.side === 1
+            ? 'SELL-SIDE'
+            : 'BUY-SIDE'
+        } SWEEP + ${
+          sweep.side === 1
+            ? 'BULLISH'
+            : 'BEARISH'
+        } FVG RETEST · ${range(sweepFvg)}`;
+    } else {
+      liquidityFvgText =
+        `${
+          sweep.side === 1
+            ? 'BULLISH'
+            : 'BEARISH'
+        } SETUP · ${
+          sweep.side === 1
+            ? 'SELL-SIDE'
+            : 'BUY-SIDE'
+        } SWEEP + ${
+          sweep.side === 1
+            ? 'BULLISH'
+            : 'BEARISH'
+        } FVG · WAITING RETEST · ${range(sweepFvg)}`;
+    }
+  }
+
+  // =========================================================
+  // SWEEP FOUND — WAITING FOR FVG
+  // =========================================================
+
+  else if (
+    recentSweep &&
+    sweep.side === 1
+  ) {
+    liquidityFvgText =
+      'WAIT · SELL-SIDE SWEPT · WAITING FOR BULLISH FVG';
+  }
+
+  else if (
+    recentSweep &&
+    sweep.side === -1
+  ) {
+    liquidityFvgText =
+      'WAIT · BUY-SIDE SWEPT · WAITING FOR BEARISH FVG';
+  }
+
+  // =========================================================
+  // FVG FOUND — NO RECENT SWEEP
+  // =========================================================
+
+  else {
+    const activeBullFvg =
+      gaps.find(
+        z =>
+          z.active === true &&
+          z.side === 1
+      );
+
+    const activeBearFvg =
+      gaps.find(
+        z =>
+          z.active === true &&
+          z.side === -1
+      );
+
+    if (
+      activeBullFvg &&
+      !activeBearFvg
+    ) {
+      liquidityFvgText =
+        `WAIT · BULLISH FVG ACTIVE · NO RECENT SELL-SIDE SWEEP · ${range(activeBullFvg)}`;
+    }
+
+    else if (
+      activeBearFvg &&
+      !activeBullFvg
+    ) {
+      liquidityFvgText =
+        `WAIT · BEARISH FVG ACTIVE · NO RECENT BUY-SIDE SWEEP · ${range(activeBearFvg)}`;
+    }
+
+    else if (
+      activeBullFvg &&
+      activeBearFvg
+    ) {
+      liquidityFvgText =
+        'WAIT · BULLISH + BEARISH FVG ACTIVE · NO RECENT LIQUIDITY SWEEP';
+    }
+  }
+
+  set(
+    'smt-liquidity-fvg',
+    liquidityFvgText,
+    liquidityFvgSide
+  );
+
+  // =========================================================
+  // SUPPLY + DEMAND
+  // =========================================================
+
+  const demand =
+    blocks.find(
+      z =>
+        z.active &&
+        z.side === 1
+    );
+
+  const supply =
+    blocks.find(
+      z =>
+        z.active &&
+        z.side === -1
+    );
+
+  set(
+    'smt-demand-value',
+    range(demand),
+    demand
+      ? 1
+      : 0
+  );
+
+  set(
+    'smt-supply-value',
+    range(supply),
+    supply
+      ? -1
+      : 0
+  );
+
+  set(
+    'smt-supply-demand',
+
+    demand && supply
+      ? 'SUPPLY + DEMAND ACTIVE'
+      : demand
+        ? 'DEMAND ACTIVE'
+        : supply
+          ? 'SUPPLY ACTIVE'
+          : 'NO ACTIVE ZONES',
+
+    demand && !supply
+      ? 1
+      : supply && !demand
+        ? -1
+        : 0
+  );
+
+  // =========================================================
+  // PREMIUM / DISCOUNT
+  // =========================================================
+
+  set(
+    'pd-range-high',
+    price(
+      structure.high?.price
+    )
+  );
+
+  set(
+    'pd-range-low',
+    price(
+      structure.low?.price
+    )
+  );
+
+  set(
+    'pd-equilibrium-value',
+    price(
+      structure.equilibrium
+    )
+  );
+
+  const zone =
+    structure.zone ||
+    'UNAVAILABLE';
+
+  const zoneSide =
+    zone === 'DISCOUNT'
+      ? 1
+      : zone === 'PREMIUM'
+        ? -1
+        : 0;
+
+  set(
+    'pd-current-zone',
+    zone,
+    zoneSide
+  );
+
+  set(
+    'pd-status',
+    zone,
+    zoneSide
+  );
+
+  set(
+    'pd-position',
+
+    typeof structure.position === 'number' &&
+    Number.isFinite(structure.position)
+
+      ? `${(
+          structure.position *
+          100
+        ).toFixed(1)}%`
+
+      : '—'
+  );
+
+  // =========================================================
+  // OVERALL SMART MONEY CONTEXT
+  // =========================================================
+
+  const sides = [
+    block?.active
+      ? block.side
+      : 0,
+
+    gap?.active
+      ? gap.side
+      : 0,
+
+    recentSweep
+      ? sweep.side
+      : 0,
+
+    sweepFvg
+      ? sweepFvg.side
+      : 0
+  ].filter(Boolean);
+
+  const bull =
+    sides.includes(1) ||
+    (
+      !sides.length &&
+      structure.direction === 1
+    );
+
+  const bear =
+    sides.includes(-1) ||
+    (
+      !sides.length &&
+      structure.direction === -1
+    );
+
+  set(
+    'smt-status',
+
+    bull && bear
+      ? 'MIXED'
+      : bull
+        ? 'BULLISH CONTEXT'
+        : bear
+          ? 'BEARISH CONTEXT'
+          : 'NO ACTIVE CONTEXT',
+
+    bull && !bear
+      ? 1
+      : bear && !bull
+        ? -1
+        : 0
+  );
 }
 
 
