@@ -430,54 +430,93 @@ check(
     'Closed-candle VWAP unavailable or conflicting; live futures VWAP is not substituted');
   for (const [tf, duration] of [['5m', 300], ['15m', 900], ['1h', 3600]]) {
     const m = primeClosed(mtfData[tf], duration, now);
-    const t = m.error ? { side: 0 } : primeTechnical(m.candles);
+    const t = m.error ? { side: 0, error: m.error } : primeTechnical(m.candles);
     const st = m.candles.length ? primeStructure(m.candles) : null;
-    const mtfLastTime =
-  Number(m.candles.at(-1)?.time);
 
-const mainClosedTime =
-  Number(last.time);
+    const mtfLastTime = Number(m.candles.at(-1)?.time);
+    const mainClosedTime = Number(last.time);
 
-const mtfAlignment =
-  primeFinite(mtfLastTime) &&
-  primeFinite(mainClosedTime)
-    ? Math.abs(
-        mainClosedTime -
-        mtfLastTime
-      )
-    : Infinity;
+    // Align MTF candles to the latest closed main-chart candle.
+    // Do not use wall-clock age here because that falsely marks valid
+    // post-market MTF history as stale.
+    const mtfAlignment =
+      primeFinite(mtfLastTime) && primeFinite(mainClosedTime)
+        ? Math.abs(mainClosedTime - mtfLastTime)
+        : Infinity;
 
-const mtfFreshnessLimit =
-  Math.max(
-    duration * 2,
-    seconds * 2
-  );
+    const mtfFreshnessLimit =
+      Math.max(duration * 2, seconds * 2);
 
-const fresh =
-  !m.error &&
-  m.candles.length >= 220 &&
-  primeFinite(mtfLastTime) &&
-  primeFinite(mainClosedTime) &&
-  mtfAlignment <= mtfFreshnessLimit;
+    console.log('PRIME MTF ALIGNMENT', {
+      tf,
+      duration,
+      candleCount: m.candles.length,
+      mainClosedTime,
+      mtfLastTime,
+      mainIST: primeFinite(mainClosedTime)
+        ? new Date(mainClosedTime * 1000).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata'
+          })
+        : 'INVALID',
+      mtfIST: primeFinite(mtfLastTime)
+        ? new Date(mtfLastTime * 1000).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata'
+          })
+        : 'INVALID',
+      alignmentMinutes: primeFinite(mtfAlignment)
+        ? Math.round(mtfAlignment / 60)
+        : null,
+      allowedMinutes: Math.round(mtfFreshnessLimit / 60),
+      technicalSide: t.side ?? 0,
+      structureSide: st?.direction ?? 0,
+      technicalError: t.error ?? null,
+      candleError: m.error ?? null
+    });
+
+    const fresh =
+      !m.error &&
+      m.candles.length >= 220 &&
+      primeFinite(mtfLastTime) &&
+      primeFinite(mainClosedTime) &&
+      mtfAlignment <= mtfFreshnessLimit;
+
     const mtfError =
-  m.error ||
-  t.error ||
-  (
-    m.candles.length < 220
-      ? `Technical warm-up ${m.candles.length}/220 closed candles`
-      : !fresh
-        ? 'closed candle is not aligned with main timeframe'
-        : null
-  );
+      m.error ||
+      t.error ||
+      (
+        m.candles.length < 220
+          ? `Technical warm-up ${m.candles.length}/220 closed candles`
+          : !fresh
+            ? `closed candle is not aligned with main timeframe · ${
+                primeFinite(mtfAlignment)
+                  ? Math.round(mtfAlignment / 60)
+                  : 'unknown'
+              } min difference`
+            : null
+      );
+
     result.mtf[tf] = {
-      side: t.side,
+      side: t.side ?? 0,
       structure: st?.direction || 0,
       fresh: !!fresh,
       time: m.candles.at(-1)?.time ?? null,
+      candleCount: m.candles.length,
+      alignmentMinutes: primeFinite(mtfAlignment)
+        ? Math.round(mtfAlignment / 60)
+        : null,
       error: mtfError
     };
-    check('MTF ' + tf, fresh && side !== 0 && t.side === side && st?.direction === side,
-      `${tf} closed-candle MTF incomplete or conflicting${mtfError ? `: ${mtfError}` : ''}`);
+
+    check(
+      'MTF ' + tf,
+      fresh &&
+        side !== 0 &&
+        t.side === side &&
+        st?.direction === side,
+      `${tf} closed-candle MTF incomplete or conflicting${
+        mtfError ? `: ${mtfError}` : ''
+      }`
+    );
   }
   const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
   check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
