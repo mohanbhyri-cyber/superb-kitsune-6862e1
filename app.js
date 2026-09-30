@@ -7935,11 +7935,9 @@ async function loadData() {
     updateTradingDate();
 
 
-    activateAllIndicators();
+  activateAllIndicators();
 
-// Recalculate after valid candle history
-// has been loaded into state.data.
-refreshPrimeConfirmation();
+refreshLiveTradeFinalizer();
 
 draw();
     summary();
