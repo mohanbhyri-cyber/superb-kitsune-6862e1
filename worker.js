@@ -1155,8 +1155,16 @@ try {
       }
     }
 
-    const trimmed =
-      unique.slice(-500);
+    const requestedCount = Math.max(
+  220,
+  Math.min(
+    500,
+    Number(url.searchParams.get("count")) || 260
+  )
+);
+
+const trimmed =
+  unique.slice(-requestedCount);
 
     return json({
       live:
