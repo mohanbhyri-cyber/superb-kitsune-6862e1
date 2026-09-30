@@ -2025,3 +2025,555 @@ function ehlersFisherSignal(candles) {
     'Ehlers Fisher neutral'
   );
 }
+// ============================================================
+// CONNORS RSI
+//
+// Defaults:
+// Price RSI       = 3
+// Streak RSI      = 2
+// Percent Rank    = 100
+//
+// CRSI =
+// (RSI(3) + RSI(Streak,2) + PercentRank(ROC,100)) / 3
+// ============================================================
+
+function connorsRsiSignal(values) {
+  const pricePeriod = 3;
+  const streakPeriod = 2;
+  const rankPeriod = 100;
+
+  if (
+    !Array.isArray(values) ||
+    values.length < 102
+  ) {
+    return wait(
+      null,
+      'Connors RSI warm-up'
+    );
+  }
+
+  const priceRsi =
+    calculateRsi(
+      values,
+      pricePeriod
+    );
+
+  const streaks =
+    new Array(values.length).fill(0);
+
+  let streak = 0;
+
+  for (
+    let i = 1;
+    i < values.length;
+    i++
+  ) {
+    const current =
+      Number(values[i]);
+
+    const previous =
+      Number(values[i - 1]);
+
+    if (
+      !Number.isFinite(current) ||
+      !Number.isFinite(previous)
+    ) {
+      streak = 0;
+      streaks[i] = 0;
+      continue;
+    }
+
+    if (current > previous) {
+      streak =
+        streak > 0
+          ? streak + 1
+          : 1;
+
+    } else if (current < previous) {
+      streak =
+        streak < 0
+          ? streak - 1
+          : -1;
+
+    } else {
+      streak = 0;
+    }
+
+    streaks[i] =
+      streak;
+  }
+
+  const usableStreaks =
+    streaks.slice(1);
+
+  const streakRsi =
+    calculateRsi(
+      usableStreaks,
+      streakPeriod
+    );
+
+  const roc1 = [];
+
+  for (
+    let i = 1;
+    i < values.length;
+    i++
+  ) {
+    const previous =
+      Number(values[i - 1]);
+
+    const current =
+      Number(values[i]);
+
+    if (
+      !Number.isFinite(previous) ||
+      !Number.isFinite(current) ||
+      previous === 0
+    ) {
+      roc1.push(NaN);
+      continue;
+    }
+
+    roc1.push(
+      (
+        (
+          current -
+          previous
+        ) /
+        previous
+      ) * 100
+    );
+  }
+
+  const validRoc =
+    roc1.filter(finite);
+
+  if (
+    validRoc.length <
+    rankPeriod
+  ) {
+    return wait(
+      null,
+      'Connors RSI percent-rank warm-up'
+    );
+  }
+
+  const rankWindow =
+    validRoc.slice(
+      -rankPeriod
+    );
+
+  const currentRoc =
+    last(rankWindow);
+
+  let below = 0;
+
+  for (
+    let i = 0;
+    i < rankWindow.length - 1;
+    i++
+  ) {
+    if (
+      Number(rankWindow[i]) <
+      Number(currentRoc)
+    ) {
+      below++;
+    }
+  }
+
+  const percentRank =
+    (
+      below /
+      (rankPeriod - 1)
+    ) * 100;
+
+  if (
+    !finite(priceRsi) ||
+    !finite(streakRsi) ||
+    !finite(percentRank)
+  ) {
+    return wait();
+  }
+
+  const value =
+    (
+      Number(priceRsi) +
+      Number(streakRsi) +
+      Number(percentRank)
+    ) / 3;
+
+  // Reversal interpretation.
+  if (value <= 20) {
+    return bullish(
+      value,
+      'Connors RSI oversold'
+    );
+  }
+
+  if (value >= 80) {
+    return bearish(
+      value,
+      'Connors RSI overbought'
+    );
+  }
+
+  return neutral(
+    value,
+    'Connors RSI neutral'
+  );
+}
+
+
+// ============================================================
+// TD SEQUENTIAL
+//
+// Defaults from uploaded source:
+// Setup lookback     = 4
+// Countdown lookback = 2
+// Setup              = 9
+// Countdown          = 13
+// ============================================================
+
+function tdSequentialSignal(values) {
+  if (
+    !Array.isArray(values) ||
+    values.length < 14
+  ) {
+    return wait(
+      null,
+      'TD Sequential warm-up'
+    );
+  }
+
+  const lookback = 4;
+  const countdownLookback = 2;
+  const setupPeriod = 9;
+  const countdownPeriod = 13;
+
+  let buySetup = 0;
+  let sellSetup = 0;
+
+  let buyCountdown = 0;
+  let sellCountdown = 0;
+
+  let inBuyCountdown = false;
+  let inSellCountdown = false;
+
+  let completedBuy = false;
+  let completedSell = false;
+
+  for (
+    let i = 0;
+    i < values.length;
+    i++
+  ) {
+    const current =
+      Number(values[i]);
+
+    if (
+      !Number.isFinite(current) ||
+      i < lookback
+    ) {
+      continue;
+    }
+
+    const previous =
+      Number(
+        values[
+          i - lookback
+        ]
+      );
+
+    if (!Number.isFinite(previous)) {
+      continue;
+    }
+
+    // Buy setup:
+    // close < close 4 bars ago.
+    if (current < previous) {
+      if (buySetup < setupPeriod) {
+        buySetup =
+          buySetup >= 0
+            ? buySetup + 1
+            : 1;
+      }
+    } else {
+      buySetup = 0;
+    }
+
+    // Sell setup:
+    // close > close 4 bars ago.
+    if (current > previous) {
+      if (
+        sellSetup >
+        -setupPeriod
+      ) {
+        sellSetup =
+          sellSetup <= 0
+            ? sellSetup - 1
+            : -1;
+      }
+    } else {
+      sellSetup = 0;
+    }
+
+    if (
+      buySetup >=
+      setupPeriod
+    ) {
+      inBuyCountdown = true;
+
+      inSellCountdown = false;
+      sellCountdown = 0;
+    }
+
+    if (
+      sellSetup <=
+      -setupPeriod
+    ) {
+      inSellCountdown = true;
+
+      inBuyCountdown = false;
+      buyCountdown = 0;
+    }
+
+    if (
+      inBuyCountdown &&
+      buyCountdown <
+        countdownPeriod &&
+      i >= countdownLookback
+    ) {
+      const compare =
+        Number(
+          values[
+            i -
+            countdownLookback
+          ]
+        );
+
+      if (
+        Number.isFinite(compare) &&
+        current <= compare
+      ) {
+        buyCountdown++;
+      }
+    }
+
+    if (
+      inSellCountdown &&
+      sellCountdown <
+        countdownPeriod &&
+      i >= countdownLookback
+    ) {
+      const compare =
+        Number(
+          values[
+            i -
+            countdownLookback
+          ]
+        );
+
+      if (
+        Number.isFinite(compare) &&
+        current >= compare
+      ) {
+        sellCountdown++;
+      }
+    }
+
+    if (
+      buyCountdown >=
+      countdownPeriod
+    ) {
+      completedBuy = true;
+
+      buyCountdown = 0;
+      inBuyCountdown = false;
+    }
+
+    if (
+      sellCountdown >=
+      countdownPeriod
+    ) {
+      completedSell = true;
+
+      sellCountdown = 0;
+      inSellCountdown = false;
+    }
+  }
+
+  const value = {
+    buySetup,
+    sellSetup,
+    buyCountdown,
+    sellCountdown,
+    completedBuy,
+    completedSell
+  };
+
+  /*
+   * Completed BUY countdown = potential bullish reversal.
+   * Completed SELL countdown = potential bearish reversal.
+   */
+
+  if (
+    completedBuy &&
+    !completedSell
+  ) {
+    return bullish(
+      value,
+      'TD Sequential buy exhaustion'
+    );
+  }
+
+  if (
+    completedSell &&
+    !completedBuy
+  ) {
+    return bearish(
+      value,
+      'TD Sequential sell exhaustion'
+    );
+  }
+
+  if (
+    buySetup >= setupPeriod
+  ) {
+    return bullish(
+      value,
+      'TD Sequential buy setup'
+    );
+  }
+
+  if (
+    sellSetup <=
+    -setupPeriod
+  ) {
+    return bearish(
+      value,
+      'TD Sequential sell setup'
+    );
+  }
+
+  return neutral(
+    value,
+    'TD Sequential not completed'
+  );
+}
+
+
+// ============================================================
+// PRING SPECIAL K
+//
+// Source paths:
+//
+// ROC10  -> SMA10
+// ROC15  -> SMA10
+// ROC20  -> SMA10
+// ROC30  -> SMA15
+// ROC40  -> SMA50
+// ROC65  -> SMA65
+// ROC75  -> SMA75
+// ROC100 -> SMA100
+// ROC195 -> SMA130
+// ROC265 -> SMA130
+// ROC390 -> SMA130
+// ROC530 -> SMA195
+//
+// Requires substantially more history than the normal
+// 220-candle Prime warm-up.
+//
+// Until enough history exists => WAIT.
+// ============================================================
+
+function specialKSignal(values) {
+  /*
+   * Slowest path is ROC530 + SMA195.
+   * Keep this fail-closed instead of manufacturing
+   * a partial Special K value.
+   */
+  if (
+    !Array.isArray(values) ||
+    values.length < 725
+  ) {
+    return wait(
+      null,
+      `Special K warm-up ${values?.length || 0}/725`
+    );
+  }
+
+  const specifications = [
+    [10, 10],
+    [15, 10],
+    [20, 10],
+    [30, 15],
+    [40, 50],
+    [65, 65],
+    [75, 75],
+    [100, 100],
+    [195, 130],
+    [265, 130],
+    [390, 130],
+    [530, 195]
+  ];
+
+  const components = [];
+
+  for (
+    const [
+      rocPeriod,
+      smaPeriod
+    ] of specifications
+  ) {
+    const roc =
+      rocSeries(
+        values,
+        rocPeriod
+      );
+
+    const usable =
+      roc.filter(finite);
+
+    if (
+      usable.length <
+      smaPeriod
+    ) {
+      return wait(
+        null,
+        'Special K component not ready'
+      );
+    }
+
+    const smoothed =
+      sma(
+        usable,
+        smaPeriod
+      );
+
+    if (!finite(smoothed)) {
+      return wait(
+        null,
+        'Special K calculation unavailable'
+      );
+    }
+
+    components.push(
+      Number(smoothed)
+    );
+  }
+
+  /*
+   * Do not invent the source's weighted Special K
+   * coefficients here.
+   *
+   * Until the exact source weights are applied,
+   * keep Special K non-directional.
+   */
+
+  return neutral(
+    {
+      components
+    },
+    'Special K components ready; weighted source output pending'
+  );
+}
