@@ -7456,22 +7456,33 @@ async function refreshMTF() {
 
   try {
 
-    const settled =
-      await Promise.allSettled([
-        market.mtfHistory(
-          requestedSymbol,
-          '5m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '15m'
-        ),
-        market.mtfHistory(
-          requestedSymbol,
-          '1h'
-        )
-      ]);
+   const settled = [];
 
+for (const timeframe of ['5m', '15m', '1h']) {
+  try {
+    const candles =
+      await market.mtfHistory(
+        requestedSymbol,
+        timeframe
+      );
+
+    settled.push({
+      status: 'fulfilled',
+      value: candles
+    });
+
+  } catch (error) {
+    console.warn(
+      `MTF ${timeframe} load failed`,
+      error
+    );
+
+    settled.push({
+      status: 'rejected',
+      reason: error
+    });
+  }
+}
 
     const resultCandles =
       settled.map(
