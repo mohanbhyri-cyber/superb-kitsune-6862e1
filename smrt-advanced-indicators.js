@@ -2577,3 +2577,191 @@ function specialKSignal(values) {
     'Special K components ready; weighted source output pending'
   );
 }
+// ============================================================
+// SMRT ADVANCED INDICATOR SUITE
+//
+// Runs all 20 advanced indicators.
+//
+// IMPORTANT:
+// - Calculations use CLOSED candle data supplied by app.js.
+// - Missing/invalid indicators remain WAIT.
+// - WAIT has side = 0.
+// - No automatic order placement.
+// ============================================================
+
+export function analyseAdvancedIndicators(
+  inputCandles = []
+) {
+  const candles =
+    validCandles(inputCandles);
+
+  if (candles.length === 0) {
+    return {
+      ready: false,
+      candleCount: 0,
+
+      ibs: wait(),
+      ichimoku: wait(),
+      ppo: wait(),
+      specialK: wait(),
+      pvo: wait(),
+      qstick: wait(),
+      rsi: wait(),
+      rvi: wait(),
+      stochastic: wait(),
+      stochasticRsi: wait(),
+      tdSequential: wait(),
+      ultimateOscillator: wait(),
+      williamsR: wait(),
+      awesomeOscillator: wait(),
+      chaikin: wait(),
+      connorsRsi: wait(),
+      coppock: wait(),
+      ehlersFisher: wait(),
+      elderRay: wait(),
+      fisher: wait()
+    };
+  }
+
+  const closeValues =
+    closes(candles);
+
+  // ==========================================================
+  // RUN ALL 20 INDICATORS
+  // ==========================================================
+
+  const result = {
+    ibs:
+      ibsSignal(candles),
+
+    ichimoku:
+      ichimokuSignal(candles),
+
+    ppo:
+      ppoSignal(closeValues),
+
+    specialK:
+      specialKSignal(closeValues),
+
+    pvo:
+      pvoSignal(candles),
+
+    qstick:
+      qstickSignal(candles),
+
+    rsi:
+      rsiSignal(closeValues),
+
+    rvi:
+      rviSignal(candles),
+
+    stochastic:
+      stochasticSignal(candles),
+
+    stochasticRsi:
+      stochasticRsiSignal(
+        closeValues
+      ),
+
+    tdSequential:
+      tdSequentialSignal(
+        closeValues
+      ),
+
+    ultimateOscillator:
+      ultimateOscillatorSignal(
+        candles
+      ),
+
+    williamsR:
+      williamsRSignal(
+        candles
+      ),
+
+    awesomeOscillator:
+      awesomeOscillatorSignal(
+        candles
+      ),
+
+    chaikin:
+      chaikinSignal(
+        candles
+      ),
+
+    connorsRsi:
+      connorsRsiSignal(
+        closeValues
+      ),
+
+    coppock:
+      coppockSignal(
+        closeValues
+      ),
+
+    ehlersFisher:
+      ehlersFisherSignal(
+        candles
+      ),
+
+    elderRay:
+      elderRaySignal(
+        candles
+      ),
+
+    fisher:
+      fisherSignal(
+        candles
+      )
+  };
+
+
+  // ==========================================================
+  // AUDIT COUNTS
+  // ==========================================================
+
+  const indicators =
+    Object.values(result);
+
+  const bullishCount =
+    indicators.filter(
+      indicator =>
+        Number(indicator?.side) === 1
+    ).length;
+
+  const bearishCount =
+    indicators.filter(
+      indicator =>
+        Number(indicator?.side) === -1
+    ).length;
+
+  const waitingCount =
+    indicators.filter(
+      indicator =>
+        Number(indicator?.side) !== 1 &&
+        Number(indicator?.side) !== -1
+    ).length;
+
+  const activeCount =
+    bullishCount +
+    bearishCount;
+
+
+  // ==========================================================
+  // RETURN
+  // ==========================================================
+
+  return {
+    ready:
+      activeCount > 0,
+
+    candleCount:
+      candles.length,
+
+    bullishCount,
+    bearishCount,
+    waitingCount,
+    activeCount,
+
+    ...result
+  };
+}
