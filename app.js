@@ -514,15 +514,51 @@ function refreshPrimeConfirmation() {
     // ADVANCED 20-INDICATOR ENGINE
     // ========================================================
 
-    const technicalIndicators =
-      analyseAdvancedIndicators(
-        state.data
-      );
+   const seconds =
+  Number(intervals[state.tf]);
 
-    console.log(
-      'SMRT ADVANCED INDICATORS',
-      technicalIndicators
-    );
+const advancedClosed =
+  primeClosed(
+    state.data,
+    seconds,
+    now
+  );
+
+const advancedCandles =
+  advancedClosed.error
+    ? []
+    : advancedClosed.candles;
+
+const technicalIndicators =
+  analyseAdvancedIndicators(
+    advancedCandles
+  );
+
+window.SMRTAdvancedIndicators =
+  technicalIndicators;
+
+window.SMRTAdvancedIndicatorStatus = {
+  sourceCount:
+    Array.isArray(state.data)
+      ? state.data.length
+      : 0,
+
+  closedCount:
+    advancedCandles.length,
+
+  ready:
+    technicalIndicators.ready === true,
+
+  error:
+    advancedClosed.error || null
+};
+
+if (advancedCandles.length > 0) {
+  console.log(
+    'SMRT ADVANCED INDICATORS',
+    technicalIndicators
+  );
+}
 
 
     // ========================================================
@@ -1552,7 +1588,7 @@ const state = {
 
   filter: 'all',
 
-  count: 180,
+  count: 260,
 
   offset: 0,
 
@@ -7843,12 +7879,11 @@ async function loadData() {
 
     activateAllIndicators();
 
+// Recalculate after valid candle history
+// has been loaded into state.data.
+refreshPrimeConfirmation();
 
-    refreshLiveTradeFinalizer();
-
-
-    draw();
-
+draw();
     summary();
 
     refreshMTF().catch(
