@@ -506,7 +506,15 @@ function primeGate(candidate, prime, field = 'state') {
 
 function refreshPrimeConfirmation() {
   const now = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000;
-  try {
+  try {const technicalIndicators =
+  analyseAdvancedIndicators(
+    state.data
+  );
+
+console.log(
+  "SMRT ADVANCED INDICATORS",
+  technicalIndicators
+);
     const consensus = analyseAllIndicators({
   finalizer: state.rawTradeFinalizer,
   edge: state.niftyEdge,
