@@ -721,3 +721,1307 @@ function coppockSignal(values) {
     'Coppock Curve neutral'
   );
 }
+// ============================================================
+// PPO - PERCENTAGE PRICE OSCILLATOR
+//
+// Default: 12 / 26 / 9
+// PPO = ((EMA12 - EMA26) / EMA26) * 100
+// ============================================================
+
+function ppoSignal(values) {
+  if (values.length < 35) {
+    return wait();
+  }
+
+  const fast =
+    emaSeries(values, 12);
+
+  const slow =
+    emaSeries(values, 26);
+
+  const ppo =
+    values.map((_, index) => {
+      const a = fast[index];
+      const b = slow[index];
+
+      if (
+        !finite(a) ||
+        !finite(b) ||
+        Number(b) === 0
+      ) {
+        return NaN;
+      }
+
+      return (
+        (
+          Number(a) -
+          Number(b)
+        ) /
+        Number(b)
+      ) * 100;
+    });
+
+  const usable =
+    ppo.filter(finite);
+
+  if (usable.length < 9) {
+    return wait();
+  }
+
+  const signalSeries =
+    emaSeries(usable, 9);
+
+  const value =
+    last(usable);
+
+  const signal =
+    last(signalSeries);
+
+  if (
+    !finite(value) ||
+    !finite(signal)
+  ) {
+    return wait();
+  }
+
+  const histogram =
+    Number(value) -
+    Number(signal);
+
+  if (
+    value > signal &&
+    histogram > 0
+  ) {
+    return bullish(
+      value,
+      'PPO above signal'
+    );
+  }
+
+  if (
+    value < signal &&
+    histogram < 0
+  ) {
+    return bearish(
+      value,
+      'PPO below signal'
+    );
+  }
+
+  return neutral(
+    value,
+    'PPO neutral'
+  );
+}
+
+
+// ============================================================
+// PVO - PERCENTAGE VOLUME OSCILLATOR
+//
+// Default: 12 / 26 / 9
+//
+// Missing/invalid volume MUST NOT create a signal.
+// ============================================================
+
+function pvoSignal(candles) {
+  if (candles.length < 35) {
+    return wait();
+  }
+
+  const volume =
+    volumes(candles);
+
+  if (
+    !volume.every(finite) ||
+    volume.every(value => Number(value) <= 0)
+  ) {
+    return wait(
+      null,
+      'Volume unavailable'
+    );
+  }
+
+  const fast =
+    emaSeries(volume, 12);
+
+  const slow =
+    emaSeries(volume, 26);
+
+  const pvo =
+    volume.map((_, index) => {
+      const a = fast[index];
+      const b = slow[index];
+
+      if (
+        !finite(a) ||
+        !finite(b) ||
+        Number(b) === 0
+      ) {
+        return NaN;
+      }
+
+      return (
+        (
+          Number(a) -
+          Number(b)
+        ) /
+        Number(b)
+      ) * 100;
+    });
+
+  const usable =
+    pvo.filter(finite);
+
+  if (usable.length < 9) {
+    return wait();
+  }
+
+  const signalSeries =
+    emaSeries(usable, 9);
+
+  const value =
+    last(usable);
+
+  const signal =
+    last(signalSeries);
+
+  if (
+    !finite(value) ||
+    !finite(signal)
+  ) {
+    return wait();
+  }
+
+  /*
+   * PVO measures volume momentum, not price direction.
+   * Therefore PVO alone is NOT allowed to manufacture
+   * bullish/bearish trade direction.
+   *
+   * Direction will be supplied by price-pressure members
+   * of the Pressure / Volume composite.
+   */
+
+  return neutral(
+    value,
+    value > signal
+      ? 'Volume momentum expanding'
+      : 'Volume momentum contracting'
+  );
+}
+
+
+// ============================================================
+// STOCHASTIC OSCILLATOR
+//
+// %K = (Close - LowestLow) /
+//      (HighestHigh - LowestLow) * 100
+//
+// Default lookback: 14
+// %D smoothing: 3
+// ============================================================
+
+function stochasticSignal(candles) {
+  if (candles.length < 16) {
+    return wait();
+  }
+
+  const kSeries =
+    new Array(candles.length).fill(NaN);
+
+  for (
+    let i = 13;
+    i < candles.length;
+    i++
+  ) {
+    const window =
+      candles.slice(
+        i - 13,
+        i + 1
+      );
+
+    const windowHigh =
+      Math.max(
+        ...window.map(
+          candle => num(candle.high)
+        )
+      );
+
+    const windowLow =
+      Math.min(
+        ...window.map(
+          candle => num(candle.low)
+        )
+      );
+
+    const close =
+      num(candles[i].close);
+
+    const range =
+      windowHigh -
+      windowLow;
+
+    kSeries[i] =
+      range === 0
+        ? 50
+        : (
+            (
+              close -
+              windowLow
+            ) /
+            range
+          ) * 100;
+  }
+
+  const kValues =
+    kSeries.filter(finite);
+
+  if (kValues.length < 3) {
+    return wait();
+  }
+
+  const k =
+    last(kValues);
+
+  const d =
+    sma(kValues, 3);
+
+  if (
+    !finite(k) ||
+    !finite(d)
+  ) {
+    return wait();
+  }
+
+  if (
+    k > d &&
+    k > 50 &&
+    k < 80
+  ) {
+    return bullish(
+      k,
+      'Stochastic bullish'
+    );
+  }
+
+  if (
+    k < d &&
+    k < 50 &&
+    k > 20
+  ) {
+    return bearish(
+      k,
+      'Stochastic bearish'
+    );
+  }
+
+  return neutral(
+    k,
+    'Stochastic neutral/extreme'
+  );
+}
+
+
+// ============================================================
+// RSI SERIES HELPER
+// Used by Stochastic RSI and Connors RSI.
+// ============================================================
+
+function rsiSeries(values, period = 14) {
+  const result =
+    new Array(values.length).fill(NaN);
+
+  if (
+    !Array.isArray(values) ||
+    values.length <= period
+  ) {
+    return result;
+  }
+
+  for (
+    let i = period;
+    i < values.length;
+    i++
+  ) {
+    const subset =
+      values.slice(
+        0,
+        i + 1
+      );
+
+    result[i] =
+      calculateRsi(
+        subset,
+        period
+      );
+  }
+
+  return result;
+}
+
+
+// ============================================================
+// STOCHASTIC RSI
+//
+// StochRSI =
+// (RSI - Lowest RSI) /
+// (Highest RSI - Lowest RSI)
+// ============================================================
+
+function stochasticRsiSignal(values) {
+  const period = 14;
+
+  if (values.length < 29) {
+    return wait();
+  }
+
+  const rsiValues =
+    rsiSeries(
+      values,
+      period
+    ).filter(finite);
+
+  if (rsiValues.length < period) {
+    return wait();
+  }
+
+  const window =
+    rsiValues.slice(-period);
+
+  const current =
+    last(window);
+
+  const minimum =
+    Math.min(...window);
+
+  const maximum =
+    Math.max(...window);
+
+  const range =
+    maximum -
+    minimum;
+
+  const value =
+    range === 0
+      ? 0.5
+      : (
+          current -
+          minimum
+        ) / range;
+
+  if (value > 0.55 && value < 0.8) {
+    return bullish(
+      value,
+      'Stochastic RSI bullish'
+    );
+  }
+
+  if (value < 0.45 && value > 0.2) {
+    return bearish(
+      value,
+      'Stochastic RSI bearish'
+    );
+  }
+
+  return neutral(
+    value,
+    'Stochastic RSI neutral/extreme'
+  );
+}
+
+
+// ============================================================
+// WILLIAMS %R
+//
+// Default: 14
+//
+// %R =
+// (HighestHigh - Close) /
+// (HighestHigh - LowestLow) * -100
+// ============================================================
+
+function williamsRSignal(candles) {
+  if (candles.length < 14) {
+    return wait();
+  }
+
+  const h =
+    highs(candles);
+
+  const l =
+    lows(candles);
+
+  const c =
+    last(closes(candles));
+
+  const hh =
+    highest(h, 14);
+
+  const ll =
+    lowest(l, 14);
+
+  const range =
+    hh - ll;
+
+  if (
+    !finite(c) ||
+    !finite(hh) ||
+    !finite(ll) ||
+    range === 0
+  ) {
+    return wait();
+  }
+
+  const value =
+    (
+      (
+        hh - c
+      ) /
+      range
+    ) * -100;
+
+  /*
+   * Williams %R is used here as a reversal/exhaustion
+   * component, not a standalone trend signal.
+   */
+
+  if (value <= -80) {
+    return bullish(
+      value,
+      'Williams %R oversold'
+    );
+  }
+
+  if (value >= -20) {
+    return bearish(
+      value,
+      'Williams %R overbought'
+    );
+  }
+
+  return neutral(
+    value,
+    'Williams %R neutral'
+  );
+}
+
+
+// ============================================================
+// ULTIMATE OSCILLATOR
+//
+// Default periods: 7 / 14 / 28
+// ============================================================
+
+function ultimateOscillatorSignal(candles) {
+  if (candles.length < 29) {
+    return wait();
+  }
+
+  const bp = [];
+  const tr = [];
+
+  for (
+    let i = 1;
+    i < candles.length;
+    i++
+  ) {
+    const close =
+      num(candles[i].close);
+
+    const low =
+      num(candles[i].low);
+
+    const high =
+      num(candles[i].high);
+
+    const previousClose =
+      num(candles[i - 1].close);
+
+    const trueLow =
+      Math.min(
+        low,
+        previousClose
+      );
+
+    const trueHigh =
+      Math.max(
+        high,
+        previousClose
+      );
+
+    bp.push(
+      close -
+      trueLow
+    );
+
+    tr.push(
+      trueHigh -
+      trueLow
+    );
+  }
+
+  const average =
+    period => {
+      if (
+        bp.length < period ||
+        tr.length < period
+      ) {
+        return NaN;
+      }
+
+      const bpWindow =
+        bp.slice(-period);
+
+      const trWindow =
+        tr.slice(-period);
+
+      const bpSum =
+        bpWindow.reduce(
+          (sum, value) =>
+            sum + Number(value),
+          0
+        );
+
+      const trSum =
+        trWindow.reduce(
+          (sum, value) =>
+            sum + Number(value),
+          0
+        );
+
+      // Source uses neutral handling for flat TR.
+      return trSum === 0
+        ? 0.5
+        : bpSum / trSum;
+    };
+
+  const avg7 =
+    average(7);
+
+  const avg14 =
+    average(14);
+
+  const avg28 =
+    average(28);
+
+  if (
+    !finite(avg7) ||
+    !finite(avg14) ||
+    !finite(avg28)
+  ) {
+    return wait();
+  }
+
+  const value =
+    100 *
+    (
+      4 * avg7 +
+      2 * avg14 +
+      avg28
+    ) /
+    7;
+
+  if (
+    value > 55 &&
+    value < 70
+  ) {
+    return bullish(
+      value,
+      'Ultimate Oscillator bullish'
+    );
+  }
+
+  if (
+    value < 45 &&
+    value > 30
+  ) {
+    return bearish(
+      value,
+      'Ultimate Oscillator bearish'
+    );
+  }
+
+  return neutral(
+    value,
+    'Ultimate Oscillator neutral/extreme'
+  );
+}
+// ============================================================
+// ICHIMOKU CLOUD
+//
+// Defaults:
+// Conversion / Tenkan = 9
+// Base / Kijun       = 26
+// Leading Span B     = 52
+//
+// For the current signal we compare:
+// Price vs cloud + Tenkan vs Kijun.
+// ============================================================
+
+function ichimokuSignal(candles) {
+  if (candles.length < 52) {
+    return wait();
+  }
+
+  const midpoint = period => {
+    const window =
+      candles.slice(-period);
+
+    const hh =
+      Math.max(
+        ...window.map(
+          candle => num(candle.high)
+        )
+      );
+
+    const ll =
+      Math.min(
+        ...window.map(
+          candle => num(candle.low)
+        )
+      );
+
+    return (
+      finite(hh) &&
+      finite(ll)
+    )
+      ? (hh + ll) / 2
+      : NaN;
+  };
+
+  const tenkan =
+    midpoint(9);
+
+  const kijun =
+    midpoint(26);
+
+  const spanA =
+    (
+      tenkan +
+      kijun
+    ) / 2;
+
+  const spanB =
+    midpoint(52);
+
+  const close =
+    num(
+      candles.at(-1)?.close
+    );
+
+  if (
+    !finite(tenkan) ||
+    !finite(kijun) ||
+    !finite(spanA) ||
+    !finite(spanB) ||
+    !finite(close)
+  ) {
+    return wait();
+  }
+
+  const cloudTop =
+    Math.max(
+      spanA,
+      spanB
+    );
+
+  const cloudBottom =
+    Math.min(
+      spanA,
+      spanB
+    );
+
+  if (
+    close > cloudTop &&
+    tenkan > kijun
+  ) {
+    return bullish(
+      close,
+      'Ichimoku bullish cloud structure'
+    );
+  }
+
+  if (
+    close < cloudBottom &&
+    tenkan < kijun
+  ) {
+    return bearish(
+      close,
+      'Ichimoku bearish cloud structure'
+    );
+  }
+
+  return neutral(
+    close,
+    'Ichimoku mixed/cloud'
+  );
+}
+
+
+// ============================================================
+// RELATIVE VIGOR INDEX - RVI
+//
+// Default period = 10
+// Signal period  = 4
+//
+// Uses 1-2-2-1 FIR weighting.
+// ============================================================
+
+function rviSignal(candles) {
+  if (candles.length < 16) {
+    return wait();
+  }
+
+  const numerator = [];
+  const denominator = [];
+
+  for (
+    let i = 3;
+    i < candles.length;
+    i++
+  ) {
+    const c0 = candles[i];
+    const c1 = candles[i - 1];
+    const c2 = candles[i - 2];
+    const c3 = candles[i - 3];
+
+    const numValue =
+      (
+        (
+          num(c0.close) -
+          num(c0.open)
+        ) +
+        2 * (
+          num(c1.close) -
+          num(c1.open)
+        ) +
+        2 * (
+          num(c2.close) -
+          num(c2.open)
+        ) +
+        (
+          num(c3.close) -
+          num(c3.open)
+        )
+      ) / 6;
+
+    const denValue =
+      (
+        (
+          num(c0.high) -
+          num(c0.low)
+        ) +
+        2 * (
+          num(c1.high) -
+          num(c1.low)
+        ) +
+        2 * (
+          num(c2.high) -
+          num(c2.low)
+        ) +
+        (
+          num(c3.high) -
+          num(c3.low)
+        )
+      ) / 6;
+
+    numerator.push(numValue);
+    denominator.push(denValue);
+  }
+
+  const numSma =
+    smaSeries(
+      numerator,
+      10
+    );
+
+  const denSma =
+    smaSeries(
+      denominator,
+      10
+    );
+
+  const rvi = [];
+
+  for (
+    let i = 0;
+    i < numSma.length;
+    i++
+  ) {
+    if (
+      finite(numSma[i]) &&
+      finite(denSma[i]) &&
+      Number(denSma[i]) !== 0
+    ) {
+      rvi.push(
+        Number(numSma[i]) /
+        Number(denSma[i])
+      );
+    }
+  }
+
+  if (rvi.length < 4) {
+    return wait();
+  }
+
+  const value =
+    last(rvi);
+
+  const signal =
+    (
+      rvi.at(-1) +
+      2 * rvi.at(-2) +
+      2 * rvi.at(-3) +
+      rvi.at(-4)
+    ) / 6;
+
+  if (
+    !finite(value) ||
+    !finite(signal)
+  ) {
+    return wait();
+  }
+
+  if (value > signal) {
+    return bullish(
+      value,
+      'RVI above signal'
+    );
+  }
+
+  if (value < signal) {
+    return bearish(
+      value,
+      'RVI below signal'
+    );
+  }
+
+  return neutral(
+    value,
+    'RVI neutral'
+  );
+}
+
+
+// ============================================================
+// ELDER-RAY INDEX
+//
+// Default EMA = 13
+//
+// Bull Power = High - EMA
+// Bear Power = Low  - EMA
+// ============================================================
+
+function elderRaySignal(candles) {
+  if (candles.length < 13) {
+    return wait();
+  }
+
+  const closeValues =
+    closes(candles);
+
+  const ema =
+    emaSeries(
+      closeValues,
+      13
+    );
+
+  const currentEma =
+    last(ema);
+
+  const candle =
+    candles.at(-1);
+
+  if (
+    !finite(currentEma) ||
+    !candle
+  ) {
+    return wait();
+  }
+
+  const bullPower =
+    num(candle.high) -
+    Number(currentEma);
+
+  const bearPower =
+    num(candle.low) -
+    Number(currentEma);
+
+  if (
+    !finite(bullPower) ||
+    !finite(bearPower)
+  ) {
+    return wait();
+  }
+
+  const value = {
+    bullPower,
+    bearPower
+  };
+
+  if (
+    bullPower > 0 &&
+    bearPower >= 0
+  ) {
+    return bullish(
+      value,
+      'Elder-Ray bullish pressure'
+    );
+  }
+
+  if (
+    bearPower < 0 &&
+    bullPower <= 0
+  ) {
+    return bearish(
+      value,
+      'Elder-Ray bearish pressure'
+    );
+  }
+
+  return neutral(
+    value,
+    'Elder-Ray mixed pressure'
+  );
+}
+
+
+// ============================================================
+// CHAIKIN OSCILLATOR
+//
+// Fast EMA = 3
+// Slow EMA = 10
+//
+// Uses Accumulation / Distribution.
+// Invalid volume => WAIT.
+// ============================================================
+
+function chaikinSignal(candles) {
+  if (candles.length < 10) {
+    return wait();
+  }
+
+  let ad = 0;
+  const adSeries = [];
+
+  let validVolumeCount = 0;
+
+  for (const candle of candles) {
+    const high =
+      num(candle.high);
+
+    const low =
+      num(candle.low);
+
+    const close =
+      num(candle.close);
+
+    const volume =
+      num(candle.volume);
+
+    if (
+      !finite(high) ||
+      !finite(low) ||
+      !finite(close) ||
+      !finite(volume) ||
+      volume < 0
+    ) {
+      adSeries.push(NaN);
+      continue;
+    }
+
+    if (volume > 0) {
+      validVolumeCount++;
+    }
+
+    const range =
+      high - low;
+
+    const multiplier =
+      range === 0
+        ? 0
+        : (
+            (
+              close - low
+            ) -
+            (
+              high - close
+            )
+          ) / range;
+
+    ad +=
+      multiplier *
+      volume;
+
+    adSeries.push(ad);
+  }
+
+  if (validVolumeCount === 0) {
+    return wait(
+      null,
+      'Volume unavailable'
+    );
+  }
+
+  const fast =
+    emaSeries(
+      adSeries,
+      3
+    );
+
+  const slow =
+    emaSeries(
+      adSeries,
+      10
+    );
+
+  const fastValue =
+    last(fast);
+
+  const slowValue =
+    last(slow);
+
+  if (
+    !finite(fastValue) ||
+    !finite(slowValue)
+  ) {
+    return wait();
+  }
+
+  const value =
+    Number(fastValue) -
+    Number(slowValue);
+
+  if (value > 0) {
+    return bullish(
+      value,
+      'Chaikin accumulation pressure'
+    );
+  }
+
+  if (value < 0) {
+    return bearish(
+      value,
+      'Chaikin distribution pressure'
+    );
+  }
+
+  return neutral(
+    value,
+    'Chaikin neutral'
+  );
+}
+
+
+// ============================================================
+// FISHER TRANSFORM
+//
+// Close-only Fisher implementation.
+// Default lookback = 10.
+// ============================================================
+
+function fisherSignal(candles) {
+  const period = 10;
+
+  if (candles.length < period) {
+    return wait();
+  }
+
+  const values =
+    closes(candles);
+
+  const window =
+    values.slice(-period);
+
+  if (!window.every(finite)) {
+    return wait();
+  }
+
+  const minimum =
+    Math.min(...window);
+
+  const maximum =
+    Math.max(...window);
+
+  const range =
+    maximum -
+    minimum;
+
+  if (range === 0) {
+    return neutral(
+      0,
+      'Fisher flat range'
+    );
+  }
+
+  let x =
+    2 *
+    (
+      (
+        Number(last(window)) -
+        minimum
+      ) /
+      range
+    ) -
+    1;
+
+  x =
+    Math.max(
+      -0.999,
+      Math.min(
+        0.999,
+        x
+      )
+    );
+
+  const value =
+    0.5 *
+    Math.log(
+      (1 + x) /
+      (1 - x)
+    );
+
+  if (!finite(value)) {
+    return wait();
+  }
+
+  if (value > 0) {
+    return bullish(
+      value,
+      'Fisher positive'
+    );
+  }
+
+  if (value < 0) {
+    return bearish(
+      value,
+      'Fisher negative'
+    );
+  }
+
+  return neutral(
+    value,
+    'Fisher neutral'
+  );
+}
+
+
+// ============================================================
+// EHLERS FISHER TRANSFORM
+//
+// Canonical recursive version.
+// Default lookback = 10.
+// Median price = (High + Low) / 2
+// ============================================================
+
+function ehlersFisherSignal(candles) {
+  const period = 10;
+
+  if (candles.length < period) {
+    return wait();
+  }
+
+  const prices =
+    candles.map(
+      candle =>
+        (
+          num(candle.high) +
+          num(candle.low)
+        ) / 2
+    );
+
+  if (!prices.every(finite)) {
+    return wait();
+  }
+
+  let previousValue = 0;
+  let previousFisher = 0;
+  let currentFisher = NaN;
+
+  for (
+    let i = period - 1;
+    i < prices.length;
+    i++
+  ) {
+    const window =
+      prices.slice(
+        i - period + 1,
+        i + 1
+      );
+
+    const minimum =
+      Math.min(...window);
+
+    const maximum =
+      Math.max(...window);
+
+    const range =
+      maximum -
+      minimum;
+
+    let normalized =
+      range === 0
+        ? 0
+        : (
+            (
+              prices[i] -
+              minimum
+            ) /
+            range
+          ) - 0.5;
+
+    let value =
+      0.33 *
+      2 *
+      normalized +
+      0.67 *
+      previousValue;
+
+    value =
+      Math.max(
+        -0.999,
+        Math.min(
+          0.999,
+          value
+        )
+      );
+
+    currentFisher =
+      0.5 *
+      Math.log(
+        (1 + value) /
+        (1 - value)
+      ) *
+      0.5 +
+      0.5 *
+      previousFisher;
+
+    previousValue =
+      value;
+
+    previousFisher =
+      currentFisher;
+  }
+
+  if (!finite(currentFisher)) {
+    return wait();
+  }
+
+  if (currentFisher > 0) {
+    return bullish(
+      currentFisher,
+      'Ehlers Fisher positive'
+    );
+  }
+
+  if (currentFisher < 0) {
+    return bearish(
+      currentFisher,
+      'Ehlers Fisher negative'
+    );
+  }
+
+  return neutral(
+    currentFisher,
+    'Ehlers Fisher neutral'
+  );
+}
