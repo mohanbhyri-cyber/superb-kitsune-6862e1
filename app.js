@@ -13177,26 +13177,91 @@ function updateMarketMapPanel() {
   );
 
 
-  set(
-    '#market-map-action',
-    map.action,
-    map.action.startsWith(
-      'BUY'
-    )
-      ? 'up'
-      : map.action.startsWith(
-          'SELL'
-        )
-        ? 'down'
-        : 'muted'
+  // =========================================================
+// MARKET MAP — FINAL CONFIRMED TRADE
+// =========================================================
+
+const finalizer =
+  state.tradeFinalizer;
+
+const consensus =
+  state.allIndicatorsConsensus;
+
+const prime =
+  state.primeMarket;
+
+const finalTradeState =
+  String(
+    finalizer?.state ||
+    'NO TRADE'
+  )
+    .trim()
+    .toUpperCase();
+
+const finalTradeSide =
+  primeSide(finalTradeState);
+
+const consensusSide =
+  primeSide(
+    consensus?.signal
   );
 
+const primeSideValue =
+  Number(prime?.side) || 0;
 
-  set(
-    '#market-map-score',
-    map.confluence +
-    ' / 10'
-  );
+const finalTradeConfirmed =
+  finalizer?.primeConfirmed === true &&
+  finalTradeSide !== 0 &&
+  primeSideValue === finalTradeSide &&
+  consensusSide === finalTradeSide;
+
+const marketMapFinalTrade =
+  finalTradeConfirmed
+    ? finalTradeState
+    : 'NO TRADE';
+
+set(
+  '#market-map-action',
+  marketMapFinalTrade,
+  marketMapFinalTrade.includes('BUY')
+    ? 'up'
+    : marketMapFinalTrade.includes('SELL')
+      ? 'down'
+      : 'muted'
+);
+
+
+// =========================================================
+// FINAL CONFLUENCE SCORE
+// =========================================================
+
+const primeChecks =
+  Array.isArray(prime?.checks)
+    ? prime.checks
+    : [];
+
+const passedChecks =
+  primeChecks.filter(
+    check => check?.ok === true
+  ).length;
+
+const totalChecks =
+  primeChecks.length;
+
+const finalConfluence =
+  totalChecks > 0
+    ? Math.round(
+        (
+          passedChecks /
+          totalChecks
+        ) * 100
+      )
+    : 0;
+
+set(
+  '#market-map-score',
+  `${finalConfluence}%`
+);
 }
 
 
