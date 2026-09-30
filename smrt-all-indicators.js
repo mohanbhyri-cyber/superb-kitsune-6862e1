@@ -6,7 +6,7 @@
 //
 // RULES:
 // 1. Missing / WAIT / NOT READY never becomes BUY or SELL.
-// 2. Minimum 4 active groups.
+// 2. Minimum 6 active groups.
 // 3. Trade Finalizer must be actionable.
 // 4. MTF must be directional.
 // 5. Finalizer and MTF must agree.
@@ -276,6 +276,161 @@ export function analyseAllIndicators({
     1,
     globalWatch?.bias
   );
+  // ==========================================================
+// 8-11. ADVANCED TECHNICAL COMPOSITE GROUPS
+// ==========================================================
+
+const technical =
+  technicalIndicators &&
+  typeof technicalIndicators === 'object'
+    ? technicalIndicators
+    : {};
+
+const compositeSide = values => {
+  const list =
+    Array.isArray(values)
+      ? values
+      : [];
+
+  let bullish = 0;
+  let bearish = 0;
+
+  for (const value of list) {
+    const side =
+      typeof value === 'number'
+        ? (
+            value === 1 || value === -1
+              ? value
+              : 0
+          )
+        : sideFromText(
+            value?.signal ??
+            value?.state ??
+            value?.bias ??
+            value?.direction ??
+            value
+          );
+
+    if (side === 1) bullish++;
+    if (side === -1) bearish++;
+  }
+
+  const active =
+    bullish + bearish;
+
+  if (active < 2) {
+    return {
+      side: 0,
+      bullish,
+      bearish,
+      active
+    };
+  }
+
+  return {
+    side:
+      bullish > bearish
+        ? 1
+        : bearish > bullish
+          ? -1
+          : 0,
+
+    bullish,
+    bearish,
+    active
+  };
+};
+
+
+// ==========================================================
+// 8. TREND COMPOSITE
+// Ichimoku + Pring Special K + Coppock
+// ==========================================================
+
+const trendComposite =
+  compositeSide([
+    technical.ichimoku,
+    technical.specialK,
+    technical.coppock
+  ]);
+
+pushVote(
+  'Trend Composite',
+  trendComposite.side,
+  3,
+  `${trendComposite.bullish} bullish / ${trendComposite.bearish} bearish`
+);
+
+
+// ==========================================================
+// 9. MOMENTUM COMPOSITE
+// RSI + PPO + RVI + AO + UO +
+// Stochastic + Stoch RSI + Connors RSI
+// ==========================================================
+
+const momentumComposite =
+  compositeSide([
+    technical.rsi,
+    technical.ppo,
+    technical.rvi,
+    technical.awesomeOscillator,
+    technical.ultimateOscillator,
+    technical.stochastic,
+    technical.stochasticRsi,
+    technical.connorsRsi
+  ]);
+
+pushVote(
+  'Momentum Composite',
+  momentumComposite.side,
+  3,
+  `${momentumComposite.bullish} bullish / ${momentumComposite.bearish} bearish`
+);
+
+
+// ==========================================================
+// 10. REVERSAL COMPOSITE
+// TD Sequential + Williams %R +
+// Fisher + Ehlers Fisher
+// ==========================================================
+
+const reversalComposite =
+  compositeSide([
+    technical.tdSequential,
+    technical.williamsR,
+    technical.fisher,
+    technical.ehlersFisher
+  ]);
+
+pushVote(
+  'Reversal Composite',
+  reversalComposite.side,
+  2,
+  `${reversalComposite.bullish} bullish / ${reversalComposite.bearish} bearish`
+);
+
+
+// ==========================================================
+// 11. PRESSURE / VOLUME COMPOSITE
+// IBS + Qstick + Elder-Ray +
+// PVO + Chaikin
+// ==========================================================
+
+const pressureComposite =
+  compositeSide([
+    technical.ibs,
+    technical.qstick,
+    technical.elderRay,
+    technical.pvo,
+    technical.chaikin
+  ]);
+
+pushVote(
+  'Pressure / Volume Composite',
+  pressureComposite.side,
+  2,
+  `${pressureComposite.bullish} bullish / ${pressureComposite.bearish} bearish`
+);
 
   // ==========================================================
   // WEIGHTS
