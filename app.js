@@ -435,20 +435,40 @@ check(
     const mtfLastTime =
   Number(m.candles.at(-1)?.time);
 
-const mtfAge =
-  primeFinite(mtfLastTime)
-    ? now - (mtfLastTime + duration)
+const mainClosedTime =
+  Number(last.time);
+
+const mtfAlignment =
+  primeFinite(mtfLastTime) &&
+  primeFinite(mainClosedTime)
+    ? Math.abs(
+        mainClosedTime -
+        mtfLastTime
+      )
     : Infinity;
 
 const mtfFreshnessLimit =
-  Math.max(duration * 3, 900);
+  Math.max(
+    duration * 2,
+    seconds * 2
+  );
 
 const fresh =
   !m.error &&
-  m.candles.length > 0 &&
-  mtfAge >= 0 &&
-  mtfAge <= mtfFreshnessLimit;
-    const mtfError = m.error || t.error || (!fresh ? 'closed candle is stale' : null);
+  m.candles.length >= 220 &&
+  primeFinite(mtfLastTime) &&
+  primeFinite(mainClosedTime) &&
+  mtfAlignment <= mtfFreshnessLimit;
+    const mtfError =
+  m.error ||
+  t.error ||
+  (
+    m.candles.length < 220
+      ? `Technical warm-up ${m.candles.length}/220 closed candles`
+      : !fresh
+        ? 'closed candle is not aligned with main timeframe'
+        : null
+  );
     result.mtf[tf] = {
       side: t.side,
       structure: st?.direction || 0,
