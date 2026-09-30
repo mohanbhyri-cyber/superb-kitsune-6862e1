@@ -2467,7 +2467,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        60,
+        300,
         () => mtfHistory(url, token),
         context
       );
