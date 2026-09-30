@@ -839,10 +839,10 @@ export class UpstoxMarketAdapter {
         if (alive && !document.hidden) {
           const retryDelay =
   consecutiveFailures >= 3
-    ? 30000
+    ? 60000
     : consecutiveFailures > 0
-      ? 10000
-      : 5000;
+      ? 30000
+      : 15000;
 
 timer = setTimeout(
   tick,
