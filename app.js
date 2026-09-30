@@ -7572,12 +7572,18 @@ for (const timeframe of ['5m', '15m', '1h']) {
     const resultCandles =
       settled.map(
         result =>
-          result.status ===
-            'fulfilled'
+          result.status === 'fulfilled' &&
+          Array.isArray(result.value)
             ? result.value
             : []
       );
 
+    console.log('MTF HISTORY LOAD', {
+      symbol: requestedSymbol,
+      '5m': resultCandles[0]?.length || 0,
+      '15m': resultCandles[1]?.length || 0,
+      '1h': resultCandles[2]?.length || 0
+    });
 
     if (state.symbol !== requestedSymbol || state.replay.active) return;
     state.primeMtfSymbol = requestedSymbol;
@@ -8092,16 +8098,16 @@ if (
     updateTradingDate();
 
 
-  activateAllIndicators();
+    // Load 5m / 15m / 1h history BEFORE the first Prime/consensus calculation.
+    // This prevents Prime from receiving an empty mtfData object during startup.
+    await refreshMTF();
 
-refreshLiveTradeFinalizer();
+    activateAllIndicators();
 
-draw();
+    refreshLiveTradeFinalizer();
+
+    draw();
     summary();
-
-    refreshMTF().catch(
-      () => {}
-    );
 
     // Load previous trading session in the background so it never
     // blocks today's live chart or quote.
@@ -8223,10 +8229,8 @@ draw();
     );
 
 
-    refreshMTF().catch(
-      () => {}
-    );
-
+    // MTF was already loaded before the first Prime calculation.
+    // Avoid an immediate duplicate request (helps prevent Upstox 429 throttling).
     refreshExternalNifty().catch(
       () => {}
     );
