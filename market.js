@@ -559,7 +559,7 @@ export class UpstoxMarketAdapter {
         setTimeout(
           () =>
             controller.abort(),
-          8000
+          20000
         );
 
       const response =
