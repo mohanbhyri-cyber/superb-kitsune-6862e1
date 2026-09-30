@@ -505,27 +505,177 @@ function primeGate(candidate, prime, field = 'state') {
 }
 
 function refreshPrimeConfirmation() {
-  const now = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000;
-  try {const technicalIndicators =
-  analyseAdvancedIndicators(
-    state.data
-  );
+  const now = state.replay.active
+    ? Number(state.data.at(-1)?.time)
+    : Date.now() / 1000;
 
-console.log(
-  "SMRT ADVANCED INDICATORS",
-  technicalIndicators
-);
-    const consensus = analyseAllIndicators({
-  finalizer: state.rawTradeFinalizer,
-  edge: state.niftyEdge,
-  marketMap: state.marketMap,
-  mtf: state.mtf,
-  gainz: state.gainzSSL,
-  aiNifty: state.aiNifty,
-  globalWatch: state.globalWatch,
-  technicalIndicators
-  });
-    state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
+  try {
+    // ========================================================
+    // ADVANCED 20-INDICATOR ENGINE
+    // ========================================================
+
+    const technicalIndicators =
+      analyseAdvancedIndicators(
+        state.data
+      );
+
+    console.log(
+      'SMRT ADVANCED INDICATORS',
+      technicalIndicators
+    );
+
+
+    // ========================================================
+    // ALL INDICATORS CONSENSUS
+    // Existing 7 groups + 4 advanced composite groups
+    // ========================================================
+
+    const consensus =
+      analyseAllIndicators({
+        finalizer:
+          state.rawTradeFinalizer,
+
+        edge:
+          state.niftyEdge,
+
+        marketMap:
+          state.marketMap,
+
+        mtf:
+          state.mtf,
+
+        gainz:
+          state.gainzSSL,
+
+        aiNifty:
+          state.aiNifty,
+
+        globalWatch:
+          state.globalWatch,
+
+        technicalIndicators
+      });
+
+
+    // ========================================================
+    // PRIME MARKET CONFIRMATION
+    // ========================================================
+
+    state.primeMarket =
+      analysePrimeMarket({
+        data:
+          state.data,
+
+        seconds:
+          Number(
+            intervals[state.tf]
+          ),
+
+        now,
+
+        replay:
+          state.replay.active,
+
+        mtfData:
+          state.primeMtfSymbol ===
+          state.symbol
+            ? state.primeMtfData
+            : {},
+
+        legacy: {
+          edge:
+            state.niftyEdge,
+
+          marketMap:
+            state.marketMap,
+
+          scanner:
+            state.candleScanner,
+
+          candleSetup:
+            state.candleSetup,
+
+          gainz:
+            state.gainzSSL,
+
+          finalizer:
+            state.rawTradeFinalizer,
+
+          aiNifty:
+            state.aiNifty,
+
+          globalWatch:
+            state.globalWatch,
+
+          consensus
+        }
+      });
+
+
+    // ========================================================
+    // PRIME-GATED CONSENSUS
+    // ========================================================
+
+    state.allIndicatorsConsensus =
+      primeGate(
+        consensus,
+        state.primeMarket,
+        'signal'
+      );
+
+
+  } catch (error) {
+
+    // ========================================================
+    // FAIL CLOSED
+    // Never convert calculation errors into BUY / SELL
+    // ========================================================
+
+    console.warn(
+      'Prime confirmation failed closed:',
+      error
+    );
+
+    state.primeMarket = {
+      signal: 'NO TRADE',
+      side: 0,
+      checks: [],
+      reasons: [
+        'Indicator calculation unavailable'
+      ]
+    };
+
+    state.allIndicatorsConsensus =
+      primeGate(
+        state.allIndicatorsConsensus,
+        state.primeMarket,
+        'signal'
+      );
+  }
+
+
+  // ==========================================================
+  // FINAL TRADE FINALIZER GATE
+  // ==========================================================
+
+  state.tradeFinalizer =
+    primeGate(
+      state.rawTradeFinalizer,
+      state.primeMarket
+    );
+
+  state.liveTradeFinalizer =
+    state.tradeFinalizer;
+
+
+  // ==========================================================
+  // DISPLAY
+  // ==========================================================
+
+  renderPrimeMarket();
+  renderSmartMoneyTools();
+}
+state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
       replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
       legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
         candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
