@@ -675,22 +675,6 @@ function refreshPrimeConfirmation() {
   renderPrimeMarket();
   renderSmartMoneyTools();
 }
-state.primeMarket = analysePrimeMarket({ data: state.data, seconds: Number(intervals[state.tf]), now,
-      replay: state.replay.active, mtfData: state.primeMtfSymbol === state.symbol ? state.primeMtfData : {},
-      legacy: { edge: state.niftyEdge, marketMap: state.marketMap, scanner: state.candleScanner,
-        candleSetup: state.candleSetup, gainz: state.gainzSSL, finalizer: state.rawTradeFinalizer,
-        aiNifty: state.aiNifty, globalWatch: state.globalWatch, consensus } });
-    state.allIndicatorsConsensus = primeGate(consensus, state.primeMarket, 'signal');
-  } catch (error) {
-    console.warn('Prime confirmation failed closed:', error);
-    state.primeMarket = { signal: 'NO TRADE', side: 0, checks: [], reasons: ['Indicator calculation unavailable'] };
-    state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, 'signal');
-  }
-  state.tradeFinalizer = primeGate(state.rawTradeFinalizer, state.primeMarket);
-  state.liveTradeFinalizer = state.tradeFinalizer;
-  renderPrimeMarket();
-  renderSmartMoneyTools();
-}
 
 function renderSmartMoneyTools() {
   const samplePreview =
