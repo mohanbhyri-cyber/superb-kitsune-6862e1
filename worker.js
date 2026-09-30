@@ -1001,22 +1001,22 @@ async function mtfHistory(url, token) {
     SYMBOLS[symbol];
 
   const config = {
-    "5m": {
-      unit: "minutes",
-      interval: 5,
-      lookbackDays: 7,
-    },
-    "15m": {
-      unit: "minutes",
-      interval: 15,
-      lookbackDays: 10,
-    },
-    "1h": {
-      unit: "hours",
-      interval: 1,
-      lookbackDays: 45,
-    },
-  }[timeframe];
+  "5m": {
+    unit: "minutes",
+    interval: 5,
+    lookbackDays: 10,
+  },
+  "15m": {
+    unit: "minutes",
+    interval: 15,
+    lookbackDays: 18,
+  },
+  "1h": {
+    unit: "hours",
+    interval: 1,
+    lookbackDays: 60,
+  },
+}[timeframe];
 
   if (!instrumentKey || !config) {
     return json({
