@@ -70,13 +70,13 @@ export function analyseAllIndicators({
   mtf,
   gainz,
   aiNifty,
-  globalWatch
+  globalWatch,
+  technicalIndicators
 } = {}) {
-
   const votes = [];
 
-  const TOTAL_GROUPS = 7;
-  const MIN_ACTIVE_GROUPS = 4;
+  const TOTAL_GROUPS = 11;
+  const MIN_ACTIVE_GROUPS = 6;
 
   // ==========================================================
   // VOTE HELPER
