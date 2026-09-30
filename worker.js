@@ -855,13 +855,53 @@ async function intradayHistory(url, token) {
     }
 
     const todayCandles =
-      rows
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort((a, b) => a.time - b.time);
+  rows
+    .map(normalizeCandle)
+    .filter(Boolean)
+    .sort((a, b) => a.time - b.time);
 
-    let candles =
-      todayCandles.slice();
+// Prime / Advanced Engine requires 220 closed candles.
+// If today's session has fewer than 260 candles,
+// add the most recent previous trading session.
+let previousCandles = [];
+
+if (todayCandles.length < 260) {
+  try {
+    const previousSession =
+      await previousTradingSession(
+        instrumentKey,
+        interval,
+        token
+      );
+
+    if (
+      previousSession &&
+      Array.isArray(previousSession.candles)
+    ) {
+      previousCandles =
+        previousSession.candles;
+    }
+  } catch (error) {
+    if (
+      error?.rateLimited === true ||
+      error?.status === 429
+    ) {
+      throw error;
+    }
+
+    console.warn(
+      "Previous-session warm-up fetch failed",
+      error?.message || error
+    );
+  }
+}
+
+let candles = [
+  ...previousCandles,
+  ...todayCandles
+]
+  .sort((a, b) => a.time - b.time)
+  .slice(-260);
 
     const unique = [];
 
