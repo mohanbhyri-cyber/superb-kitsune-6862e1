@@ -723,15 +723,6 @@ async function intradayHistory(url, token) {
   const today =
     todayIST();
 
-  const lookbackDays = {
-    1: 10,
-    3: 20,
-    5: 30,
-    15: 60,
-  }[Number(interval)] || 30;
-
-  const fromDate = istDateMinusDays(lookbackDays);
-
   const historicalTodayEndpoint =
     "https://api.upstox.com/v3/historical-candle/" +
     encodeURIComponent(instrumentKey) +
@@ -740,35 +731,74 @@ async function intradayHistory(url, token) {
     "/" +
     today +
     "/" +
-    fromDate;
+    today;
 
   try {
-    const rows = [];
+    let rows = [];
 
     try {
-      const historicalTodayBody = await upstoxFetch(
-        historicalTodayEndpoint,
-        token
-      );
+      const intradayBody =
+        await upstoxFetch(
+          intradayEndpoint,
+          token
+        );
 
-      if (Array.isArray(historicalTodayBody?.data?.candles)) {
-        rows.push(...historicalTodayBody.data.candles);
+      if (
+        Array.isArray(
+          intradayBody?.data?.candles
+        )
+      ) {
+        rows =
+          intradayBody.data.candles;
       }
-    } catch (error) {
-      if (error?.rateLimited === true || error?.status === 429) throw error;
-      console.warn("Historical candle fetch failed", error?.message || error);
-    }
+   } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
+    console.warn(
+      "Upstox 429 - stopping intraday history fallback"
+    );
+    throw error;
+  }
 
+  console.warn(
+    "Primary intraday candle fetch failed",
+    error?.message || error
+  );
+}
     if (!rows.length) {
       try {
-        const intradayBody = await upstoxFetch(intradayEndpoint, token);
-        if (Array.isArray(intradayBody?.data?.candles)) {
-          rows.push(...intradayBody.data.candles);
+        const historicalTodayBody =
+          await upstoxFetch(
+            historicalTodayEndpoint,
+            token
+          );
+
+        if (
+          Array.isArray(
+            historicalTodayBody?.data?.candles
+          )
+        ) {
+          rows =
+            historicalTodayBody.data.candles;
         }
-      } catch (error) {
-        if (error?.rateLimited === true || error?.status === 429) throw error;
-        console.warn("Intraday candle fallback failed", error?.message || error);
-      }
+       } catch (error) {
+  if (
+    error?.rateLimited === true ||
+    error?.status === 429
+  ) {
+    console.warn(
+      "Upstox 429 - stopping today historical fallback"
+    );
+    throw error;
+  }
+
+  console.warn(
+    "Today historical-candle fallback failed",
+    error?.message || error
+  );
+}
     }
 
     if (!rows.length) {
@@ -824,17 +854,14 @@ async function intradayHistory(url, token) {
       });
     }
 
-    const allCandles =
+    const todayCandles =
       rows
-        .map(normalizeRegularSessionCandle)
+        .map(normalizeCandle)
         .filter(Boolean)
         .sort((a, b) => a.time - b.time);
 
-    const todayCandles = allCandles.filter(candle =>
-      isTodayFrom0915(Number(candle.time) * 1000)
-    );
-
-    let candles = allCandles;
+    let candles =
+      todayCandles.slice();
 
     const unique = [];
 
@@ -853,7 +880,7 @@ async function intradayHistory(url, token) {
       }
     }
 
-    candles = unique.slice(-500);
+    candles = unique;
 
     if (!candles.length) {
       return json({
@@ -883,9 +910,7 @@ async function intradayHistory(url, token) {
       currentSessionCount:
         todayCandles.length,
       historyMode:
-        "merged-intraday-and-historical",
-      requestedCount: 500,
-      historyComplete: candles.length >= 500,
+        "intraday-with-historical-fallback",
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
@@ -979,17 +1004,17 @@ async function mtfHistory(url, token) {
     "5m": {
       unit: "minutes",
       interval: 5,
-      lookbackDays: 20,
+      lookbackDays: 7,
     },
     "15m": {
       unit: "minutes",
       interval: 15,
-      lookbackDays: 28,
+      lookbackDays: 10,
     },
     "1h": {
       unit: "hours",
       interval: 1,
-      lookbackDays: 90,
+      lookbackDays: 45,
     },
   }[timeframe];
 
@@ -2434,7 +2459,7 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        300,
+        60,
         () => mtfHistory(url, token),
         context
       );
