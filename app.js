@@ -1387,7 +1387,65 @@ function renderPrimeMarket() {
   const p = state.primeMarket, s = p?.structure;
   panel.replaceChildren();
   const row = (tag, text) => { const el = document.createElement(tag); el.textContent = text; panel.append(el); };
-  row('h3', 'Prime Market Engine · ' + (p?.signal || 'NO TRADE'));
+  const adv =
+  window.SMRTAdvancedIndicators || {};
+
+const advStatus =
+  window.SMRTAdvancedIndicatorStatus || {};
+
+const closedCount =
+  Number(advStatus.closedCount || 0);
+
+const sourceCount =
+  Number(advStatus.sourceCount || 0);
+
+const activeCount =
+  Number(adv.activeCount || 0);
+
+const bullishCount =
+  Number(adv.bullishCount || 0);
+
+const bearishCount =
+  Number(adv.bearishCount || 0);
+
+const waitingCount =
+  Number(adv.waitingCount || 0);
+
+const advancedReady =
+  advStatus.ready === true &&
+  closedCount >= 220;
+
+row(
+  'p',
+  'Advanced Engine: ' +
+    (advancedReady ? 'READY' : 'WARMING') +
+    ' · Closed Candles ' +
+    closedCount +
+    '/220' +
+    ' · Source ' +
+    sourceCount
+);
+
+row(
+  'p',
+  '20 Indicators: Active ' +
+    activeCount +
+    '/20' +
+    ' · Bullish ' +
+    bullishCount +
+    ' · Bearish ' +
+    bearishCount +
+    ' · Wait ' +
+    waitingCount
+);
+
+if (advStatus.error) {
+  row(
+    'p',
+    'Advanced Engine Error: ' +
+      advStatus.error
+  );
+}
   row('p', 'Original price-action rules · closed candles only · ' + (p?.time ? formatISTTime(p.time * 1000) : 'Waiting for history'));
   if (s) {
     row('p', 'Structure: ' + (s.direction === 1 ? 'BULLISH' : s.direction === -1 ? 'BEARISH' : 'UNCONFIRMED') +
