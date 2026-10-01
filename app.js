@@ -13304,8 +13304,76 @@ function renderTradeFinalizer() {
     }
   }
 
+  const m = f.mandatory;
+
+  const diagnosticChecklist =
+    m
+      ? [
+          'EMA ' +
+            (
+              m.emaBull || m.emaBear
+                ? '✓'
+                : '✕'
+            ),
+          'Supertrend ' +
+            (
+              m.supertrendBull || m.supertrendBear
+                ? '✓'
+                : '✕'
+            ),
+          'ADX/DMI ' +
+            (
+              m.dmiBull || m.dmiBear
+                ? '✓'
+                : '✕'
+            ) +
+            (
+              Number.isFinite(Number(m.adx))
+                ? ' (' +
+                  Number(m.adx).toFixed(1) +
+                  ')'
+                : ''
+            ),
+          'RSI ' +
+            (
+              m.rsiBull || m.rsiBear
+                ? '✓'
+                : '✕'
+            ) +
+            (
+              Number.isFinite(Number(m.rsi))
+                ? ' (' +
+                  Number(m.rsi).toFixed(1) +
+                  ')'
+                : ''
+            ),
+          'MACD ' +
+            (
+              m.macdBull || m.macdBear
+                ? '✓'
+                : '✕'
+            ) +
+            (
+              Number.isFinite(Number(m.macdHistogram))
+                ? ' (' +
+                  Number(m.macdHistogram).toFixed(2) +
+                  ')'
+                : ''
+            ),
+          'MTF ' +
+            (
+              m.mtfSide === 1
+                ? '✓ BULLISH'
+                : m.mtfSide === -1
+                  ? '✓ BEARISH'
+                  : '✕ WAITING'
+            )
+        ].join(' | ')
+      : '';
+
   const reasonText =
     [
+      diagnosticChecklist,
       ...(Array.isArray(f.reasons)
         ? f.reasons
         : []),
@@ -13317,7 +13385,7 @@ function renderTradeFinalizer() {
   set(
     '#finalizer-reasons',
     reasonText ||
-      'Waiting for confirmed closed-candle confluence'
+      'WAITING · mandatory closed-candle confirmation is incomplete'
   );
 }
 
