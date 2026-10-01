@@ -1127,16 +1127,25 @@ function renderSmartMoneyTools() {
   // 4. Form within 3 closed candles
   // =========================================================
 
+  // Use the newest matching FVG, not the first historical match.
+  // A stale older gap must not hide a newer valid sweep/FVG setup.
   const sweepFvg =
     recentSweep
-      ? gaps.find(
-          z =>
-            z.active === true &&
-            z.side === sweep.side &&
-            Number.isInteger(z.created) &&
-            z.created >= sweep.index &&
-            z.created - sweep.index <= 3
-        )
+      ? gaps
+          .filter(
+            z =>
+              z.active === true &&
+              z.side === sweep.side &&
+              Number.isInteger(z.created) &&
+              z.created >= sweep.index &&
+              z.created - sweep.index <= 3
+          )
+          .slice()
+          .sort(
+            (a, b) =>
+              Number(b.created) -
+              Number(a.created)
+          )[0] || null
       : null;
 
   const sweepFvgTouched =
@@ -1217,19 +1226,36 @@ function renderSmartMoneyTools() {
   // =========================================================
 
   else {
+    // Display the newest active FVG on each side.
     const activeBullFvg =
-      gaps.find(
-        z =>
-          z.active === true &&
-          z.side === 1
-      );
+      gaps
+        .filter(
+          z =>
+            z.active === true &&
+            z.side === 1 &&
+            Number.isInteger(z.created)
+        )
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(b.created) -
+            Number(a.created)
+        )[0] || null;
 
     const activeBearFvg =
-      gaps.find(
-        z =>
-          z.active === true &&
-          z.side === -1
-      );
+      gaps
+        .filter(
+          z =>
+            z.active === true &&
+            z.side === -1 &&
+            Number.isInteger(z.created)
+        )
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(b.created) -
+            Number(a.created)
+        )[0] || null;
 
     if (
       activeBullFvg &&
