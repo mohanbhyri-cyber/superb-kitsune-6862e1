@@ -2130,9 +2130,9 @@ async function globalMarketWatch() {
       role: "risk"
     },
     {
-      key: "gift_nifty",
-      name: "GIFT NIFTY",
-      symbol: "NIFTY50.NS",
+      key: "gift_nifty_reference",
+      name: "NIFTY 50 Reference",
+      symbol: "^NSEI",
       role: "context"
     }
   ];
