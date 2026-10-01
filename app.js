@@ -1,5 +1,6 @@
 import { momentumSignals } from './momentum.js';
 import { trendIndicators } from './trend-indicators.js';
+import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
@@ -1767,6 +1768,8 @@ const state = {
   calc: null,
 
   trend: null,
+
+  efficiencyEngine: null,
 
   niftyEdge: null,
 
@@ -4626,6 +4629,11 @@ function draw() {
     );
 
   state.trend = trendIndicators(indicatorData);
+
+  state.efficiencyEngine = analyseEfficiencyEngine(
+    indicatorData,
+    state.trend
+  );
 
 
   state.scalps =
@@ -14504,6 +14512,32 @@ const breadthBias =
     breadth?.bias ||
     'UNAVAILABLE'
   ).toUpperCase();
+
+const efficiency = state.efficiencyEngine || null;
+
+set(
+  '#market-map-efficiency',
+  efficiency?.ready === true
+    ? efficiency.quality + ' · ' + efficiency.score + '/100'
+    : 'WARMING UP',
+  efficiency?.quality === 'HIGH'
+    ? 'up'
+    : efficiency?.quality === 'LOW'
+      ? 'down'
+      : 'muted'
+);
+
+set(
+  '#market-map-noise',
+  efficiency?.ready === true
+    ? efficiency.noise + ' · ' + efficiency.regime
+    : 'WARMING UP',
+  efficiency?.noise === 'LOW'
+    ? 'up'
+    : efficiency?.noise === 'HIGH'
+      ? 'down'
+      : 'muted'
+);
 
 set(
   '#market-map-breadth',
