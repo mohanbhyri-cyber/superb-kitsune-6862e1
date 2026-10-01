@@ -11989,8 +11989,54 @@ function renderAllIndicatorsConsensus() {
     $('#all-indicators-votes');
 
   if (list) {
-    list.innerHTML =
-      result.votes
+    const activeVotes =
+      Array.isArray(result.votes)
+        ? result.votes
+        : [];
+
+    const activeNames =
+      new Set(
+        activeVotes.map(
+          vote => vote.name
+        )
+      );
+
+    const groupStatus = [
+      ['Trade Finalizer',
+        state.tradeFinalizer?.state ||
+        state.liveTradeFinalizer?.state ||
+        'WAITING'],
+      ['NIFTY EDGE',
+        state.niftyEdge?.latest?.signal ||
+        state.niftyEdge?.latest?.strength ||
+        'WAITING'],
+      ['Market Map',
+        state.marketMap?.action ||
+        state.marketMap?.trend ||
+        'WAITING'],
+      ['MTF 5m/15m/1h',
+        state.mtf?.overall ||
+        'WAITING'],
+      ['SSL + QQE',
+        state.gainzSSL?.latest?.signal ||
+        state.gainzSSL?.latest?.state ||
+        'WAITING'],
+      ['AI NIFTY',
+        state.aiNifty?.signal ||
+        state.aiNifty?.bias ||
+        'WAITING'],
+      ['Global Watch',
+        state.globalWatch?.signal ||
+        state.globalWatch?.bias ||
+        'WAITING'],
+      ['Advanced Trend', 'WAITING'],
+      ['Advanced Momentum', 'WAITING'],
+      ['Advanced Reversal', 'WAITING'],
+      ['Advanced Pressure / Volume', 'WAITING']
+    ];
+
+    const activeHtml =
+      activeVotes
         .map(
           vote => {
             const cls =
@@ -12017,6 +12063,30 @@ function renderAllIndicatorsConsensus() {
           }
         )
         .join('');
+
+    const inactiveHtml =
+      groupStatus
+        .filter(
+          ([name]) =>
+            !activeNames.has(name)
+        )
+        .map(
+          ([name, status]) =>
+            '<div class="all-indicator-vote">' +
+              '<span>' +
+                name +
+              '</span>' +
+              '<strong class="muted">' +
+                'WAITING · ' +
+                String(status || 'NO CONFIRMATION') +
+              '</strong>' +
+            '</div>'
+        )
+        .join('');
+
+    list.innerHTML =
+      activeHtml +
+      inactiveHtml;
   }
 
 
@@ -13186,13 +13256,68 @@ function renderTradeFinalizer() {
   );
 
 
+  const mandatoryBlockers = [];
+
+  if (
+    f.state === 'NO TRADE' &&
+    f.mandatory
+  ) {
+    const m = f.mandatory;
+
+    if (!m.emaBull && !m.emaBear) {
+      mandatoryBlockers.push('EMA 9/21/50 mixed');
+    }
+
+    if (!m.supertrendBull && !m.supertrendBear) {
+      mandatoryBlockers.push('Supertrend not directional');
+    }
+
+    if (!m.dmiBull && !m.dmiBear) {
+      mandatoryBlockers.push(
+        Number.isFinite(Number(m.adx))
+          ? 'ADX/DMI not aligned (ADX ' +
+            Number(m.adx).toFixed(1) +
+            ')'
+          : 'ADX/DMI unavailable'
+      );
+    }
+
+    if (!m.rsiBull && !m.rsiBear) {
+      mandatoryBlockers.push(
+        Number.isFinite(Number(m.rsi))
+          ? 'RSI outside Prime regime (' +
+            Number(m.rsi).toFixed(1) +
+            ')'
+          : 'RSI unavailable'
+      );
+    }
+
+    if (!m.macdBull && !m.macdBear) {
+      mandatoryBlockers.push('MACD histogram neutral/unavailable');
+    }
+
+    if (
+      m.mtfSide !== 1 &&
+      m.mtfSide !== -1
+    ) {
+      mandatoryBlockers.push('MTF 5m/15m/1h not confirmed');
+    }
+  }
+
+  const reasonText =
+    [
+      ...(Array.isArray(f.reasons)
+        ? f.reasons
+        : []),
+      ...mandatoryBlockers
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
   set(
     '#finalizer-reasons',
-    f.reasons?.length
-      ? f.reasons.join(
-          ' · '
-        )
-      : 'Waiting for confirmed closed-candle confluence'
+    reasonText ||
+      'Waiting for confirmed closed-candle confluence'
   );
 }
 
