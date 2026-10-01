@@ -60,6 +60,30 @@ const sourceSide = source => {
     return 0;
   }
 
+  if (
+    source.name === 'Moneycontrol' ||
+    source.name === 'Trendlyne'
+  ) {
+    const rating =
+      String(
+        source.technicalRating || ''
+      ).toUpperCase();
+
+    if (
+      rating.includes('BULLISH')
+    ) {
+      return 1;
+    }
+
+    if (
+      rating.includes('BEARISH')
+    ) {
+      return -1;
+    }
+
+    return 0;
+  }
+
   const change =
     Number(
       source.changePercent
