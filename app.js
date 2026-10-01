@@ -2656,7 +2656,10 @@ function renderProSuiteSummary() {
   // =========================================================
   const confidenceRaw = samplePreview
     ? Number(edgeLatest?.score) * 10
-    : Number(consensus?.confidence);
+    : displaySignal === 'NO TRADE' &&
+      Number.isFinite(Number(edgeLatest?.score))
+      ? Number(edgeLatest.score) * 10
+      : Number(consensus?.confidence);
 
   const confidence =
     Number.isFinite(confidenceRaw)
@@ -2707,9 +2710,21 @@ function renderProSuiteSummary() {
   // =========================================================
   // STRENGTH
   // =========================================================
-  let strength = samplePreview
-    ? edgeLatest?.strength || "WAIT"
-    : "WAIT";
+  // Keep the final signal fail-closed, but expose the native
+  // NIFTY EDGE state so NO TRADE does not look like a dead panel.
+  const edgeNativeSignal =
+    String(
+      edgeLatest?.signal ||
+      edgeLatest?.strength ||
+      'WAIT'
+    ).toUpperCase();
+
+  let strength =
+    samplePreview
+      ? edgeLatest?.strength || edgeNativeSignal
+      : displaySignal === 'NO TRADE'
+        ? 'EDGE ' + edgeNativeSignal
+        : 'WAIT';
 
   if (
     displaySignal === "STRONG BUY" ||
