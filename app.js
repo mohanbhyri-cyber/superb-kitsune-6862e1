@@ -1780,6 +1780,8 @@ const state = {
 
   riskEngine: null,
 
+  triggerSignal: null,
+
   niftyEdge: null,
 
   niftyEdgeBacktest: null,
@@ -2660,6 +2662,209 @@ function refreshProSuite() {
   state.proBacktest =
     null;
 }
+
+function analyseSmrtTriggerSignal(data, calc, trend, momentum, marketMap, futuresVWAP) {
+  const wait = (reason = 'Waiting for closed-candle confirmation') => ({
+    signal: 'WAIT',
+    side: 0,
+    score: 0,
+    reason
+  });
+
+  if (!Array.isArray(data) || data.length < 55) {
+    return wait('Warming up');
+  }
+
+  // The last item is the forming/synthetic candle. Trigger only from
+  // the latest completed candle so this layer never introduces lookahead.
+  const i = data.length - 2;
+  const candle = data[i];
+
+  const values = {
+    close: Number(candle?.close),
+    e9: Number(calc?.e9?.[i]),
+    e21: Number(calc?.e21?.[i]),
+    e50: Number(calc?.e50?.[i]),
+    rsi: Number(calc?.rsi?.[i]),
+    hist: Number(calc?.hist?.[i]),
+    st: Number(trend?.direction?.[i]),
+    adx: Number(trend?.adx?.[i]),
+    plusDI: Number(trend?.plusDI?.[i]),
+    minusDI: Number(trend?.minusDI?.[i])
+  };
+
+  if (!Object.values(values).every(Number.isFinite)) {
+    return wait('Indicators warming up');
+  }
+
+  let bull = 0;
+  let bear = 0;
+  const bullReasons = [];
+  const bearReasons = [];
+
+  if (values.e9 > values.e21 && values.e21 > values.e50) {
+    bull += 2;
+    bullReasons.push('EMA trend');
+  } else if (values.e9 < values.e21 && values.e21 < values.e50) {
+    bear += 2;
+    bearReasons.push('EMA trend');
+  }
+
+  if (values.st === 1) {
+    bull += 2;
+    bullReasons.push('Supertrend');
+  } else if (values.st === -1) {
+    bear += 2;
+    bearReasons.push('Supertrend');
+  }
+
+  if (values.adx >= 20 && values.plusDI > values.minusDI) {
+    bull += 2;
+    bullReasons.push('DMI/ADX');
+  } else if (values.adx >= 20 && values.minusDI > values.plusDI) {
+    bear += 2;
+    bearReasons.push('DMI/ADX');
+  }
+
+  if (values.rsi >= 52 && values.rsi <= 72) {
+    bull += 1;
+    bullReasons.push('RSI');
+  } else if (values.rsi <= 48 && values.rsi >= 28) {
+    bear += 1;
+    bearReasons.push('RSI');
+  }
+
+  if (values.hist > 0) {
+    bull += 1;
+    bullReasons.push('MACD');
+  } else if (values.hist < 0) {
+    bear += 1;
+    bearReasons.push('MACD');
+  }
+
+  if (values.close > values.e9 && values.close > values.e21) {
+    bull += 1;
+    bullReasons.push('Price');
+  } else if (values.close < values.e9 && values.close < values.e21) {
+    bear += 1;
+    bearReasons.push('Price');
+  }
+
+  const vwap = Number(futuresVWAP);
+  if (Number.isFinite(vwap)) {
+    if (values.close > vwap) {
+      bull += 1;
+      bullReasons.push('Futures VWAP');
+    } else if (values.close < vwap) {
+      bear += 1;
+      bearReasons.push('Futures VWAP');
+    }
+  }
+
+  const momentumLatest =
+    Array.isArray(momentum)
+      ? momentum.filter(Boolean).at(-1)
+      : null;
+
+  if (Number(momentumLatest?.side) === 1) {
+    bull += 1;
+    bullReasons.push('Momentum');
+  } else if (Number(momentumLatest?.side) === -1) {
+    bear += 1;
+    bearReasons.push('Momentum');
+  }
+
+  const mapAction = String(
+    marketMap?.action ||
+    marketMap?.signal ||
+    marketMap?.trend ||
+    ''
+  ).toUpperCase();
+
+  if (mapAction.includes('BUY') || mapAction.includes('BULL')) {
+    bull += 1;
+    bullReasons.push('Market Map');
+  } else if (mapAction.includes('SELL') || mapAction.includes('BEAR')) {
+    bear += 1;
+    bearReasons.push('Market Map');
+  }
+
+  const total = 11;
+  const bullPct = Math.round(bull / total * 100);
+  const bearPct = Math.round(bear / total * 100);
+
+  // This trigger is intentionally faster than the strict Finalizer,
+  // but still needs a clear directional majority and core trend alignment.
+  const buy =
+    bull >= 7 &&
+    bull - bear >= 4 &&
+    values.e9 > values.e21 &&
+    values.st === 1 &&
+    values.plusDI > values.minusDI;
+
+  const sell =
+    bear >= 7 &&
+    bear - bull >= 4 &&
+    values.e9 < values.e21 &&
+    values.st === -1 &&
+    values.minusDI > values.plusDI;
+
+  if (buy) {
+    return {
+      signal: 'BUY',
+      side: 1,
+      score: bullPct,
+      reason: bullReasons.join(' · ')
+    };
+  }
+
+  if (sell) {
+    return {
+      signal: 'SELL',
+      side: -1,
+      score: bearPct,
+      reason: bearReasons.join(' · ')
+    };
+  }
+
+  return {
+    signal: 'WAIT',
+    side: 0,
+    score: Math.max(bullPct, bearPct),
+    reason: 'Directional confirmation incomplete'
+  };
+}
+
+
+function renderSmrtTriggerSignal() {
+  const trigger = state.triggerSignal || {
+    signal: 'WAIT',
+    score: 0,
+    reason: 'Warming up'
+  };
+
+  const el = document.getElementById('smrt-trigger-signal');
+  if (el) {
+    el.textContent =
+      trigger.signal +
+      (trigger.signal === 'WAIT'
+        ? ''
+        : ' · ' + trigger.score + '%');
+
+    el.className =
+      trigger.side === 1
+        ? 'up'
+        : trigger.side === -1
+          ? 'down'
+          : 'muted';
+  }
+
+  setText(
+    '#smrt-trigger-reason',
+    trigger.reason || 'Waiting for confirmation'
+  );
+}
+
 
 function renderProSuiteSummary() {
   const edgeLatest = state.niftyEdge?.latest || null;
@@ -4702,6 +4907,18 @@ function draw() {
           state.futuresVWAP
       }
     );
+
+  state.triggerSignal =
+    analyseSmrtTriggerSignal(
+      indicatorData,
+      state.calc,
+      state.trend,
+      state.momentum,
+      state.marketMap,
+      state.futuresVWAP
+    );
+
+  renderSmrtTriggerSignal();
 
 
   state.candleScanner =
