@@ -1924,10 +1924,122 @@ async function externalNiftySources() {
       };
     })();
 
+  const moneycontrolTask =
+    (async () => {
+      const response = await fetch(
+        "https://www.moneycontrol.com/markets/technicals/",
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Accept: "text/html"
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Moneycontrol HTTP " +
+          response.status
+        );
+      }
+
+      const html =
+        await response.text();
+
+      const match =
+        html.match(
+          /NIFTY\s*50[\s\S]{0,3000}?(VERY\s+BULLISH|VERY\s+BEARISH|BULLISH|BEARISH|NEUTRAL)/i
+        );
+
+      if (!match) {
+        throw new Error(
+          "Moneycontrol NIFTY technical rating unavailable"
+        );
+      }
+
+      return {
+        name: "Moneycontrol",
+        live: true,
+        technicalRating:
+          String(match[1])
+            .replace(/\s+/g, " ")
+            .toUpperCase(),
+        price: null
+      };
+    })();
+
+  const trendlyneTask =
+    (async () => {
+      const response = await fetch(
+        "https://trendlyne.com/equity/technical-analysis/NIFTY/1887/nifty-50/",
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Accept: "text/html"
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Trendlyne HTTP " +
+          response.status
+        );
+      }
+
+      const html =
+        await response.text();
+
+      const bullishMatch =
+        html.match(
+          /Bullish Moving Averages\s*([0-9]+)/i
+        );
+
+      const bearishMatch =
+        html.match(
+          /Bearish Moving Averages\s*([0-9]+)/i
+        );
+
+      const bullish =
+        Number(
+          bullishMatch?.[1]
+        );
+
+      const bearish =
+        Number(
+          bearishMatch?.[1]
+        );
+
+      if (
+        !Number.isFinite(bullish) ||
+        !Number.isFinite(bearish)
+      ) {
+        throw new Error(
+          "Trendlyne NIFTY technical counts unavailable"
+        );
+      }
+
+      return {
+        name: "Trendlyne",
+        live: true,
+        bullishCount: bullish,
+        bearishCount: bearish,
+        technicalRating:
+          bullish > bearish
+            ? "BULLISH"
+            : bearish > bullish
+              ? "BEARISH"
+              : "NEUTRAL",
+        price: null
+      };
+    })();
+
   const results =
     await Promise.allSettled([
       yahooTask,
-      tradingViewTask
+      tradingViewTask,
+      moneycontrolTask,
+      trendlyneTask
     ]);
 
   for (
