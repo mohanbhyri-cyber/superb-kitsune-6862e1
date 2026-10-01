@@ -2256,6 +2256,7 @@ async function refreshFuturesVWAP() {
   ) {
     state.futuresVWAP = null;
     state.futuresVWAPUpdated = 0;
+    state.futuresVWAPReason = 'VWAP is only available for NIFTY futures.';
     return;
   }
 
@@ -2300,6 +2301,11 @@ async function refreshFuturesVWAP() {
         ? 0
         : Date.now();
 
+    state.futuresVWAPReason =
+      state.futuresVWAP === null
+        ? String(data?.reason || 'Genuine NIFTY futures VWAP is unavailable.')
+        : '';
+
   } catch (error) {
 
     console.warn(
@@ -2309,6 +2315,7 @@ async function refreshFuturesVWAP() {
 
     state.futuresVWAP = null;
     state.futuresVWAPUpdated = 0;
+    state.futuresVWAPReason = error?.message || 'Unable to load genuine NIFTY futures VWAP.';
   }
 }
 
@@ -6070,7 +6077,9 @@ function draw() {
         ? 'VWAP · session'
         : fallbackVWAP !== null
           ? 'VWAP · NIFTY FUT'
-          : 'VWAP · unavailable';
+          : state.symbol === 'NIFTY'
+            ? 'VWAP · NIFTY FUT unavailable'
+            : 'VWAP · unavailable';
 
 
     $('#levels').innerHTML = `
