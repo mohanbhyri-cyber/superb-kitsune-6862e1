@@ -95,7 +95,8 @@ export function finalizeTrade({
   calc,
   trend,
   data,
-  futuresVWAP
+  futuresVWAP,
+  efficiency
 }) {
 
   // ==========================================================
@@ -359,6 +360,38 @@ export function finalizeTrade({
       : -1;
 
   // ==========================================================
+  // TREND QUALITY / NOISE GATE
+  // ==========================================================
+  // Efficiency is context-only and never creates direction.
+  // A clearly low-quality/choppy regime can veto an otherwise
+  // aligned setup; unavailable/warming data does not invent a pass.
+  if (
+    efficiency?.ready === true &&
+    (
+      Number(efficiency.score) < 35 ||
+      String(efficiency.noise || '').toUpperCase() === 'HIGH' ||
+      String(efficiency.regime || '').toUpperCase() === 'CHOPPY'
+    )
+  ) {
+    return noTrade({
+      reason:
+        'Trend quality too low / market too choppy',
+      time,
+      mandatory: {
+        ...mandatory,
+        efficiencyScore:
+          Number(efficiency.score),
+        efficiencyQuality:
+          efficiency.quality || null,
+        efficiencyNoise:
+          efficiency.noise || null,
+        efficiencyRegime:
+          efficiency.regime || null
+      }
+    });
+  }
+
+    // ==========================================================
   // WEIGHTED CONFLUENCE
   // ==========================================================
 
