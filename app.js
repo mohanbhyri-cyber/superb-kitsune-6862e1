@@ -8854,16 +8854,49 @@ if (
             if (
               Number.isFinite(closedTime)
             ) {
-              if (closedTime % 300 === 0) {
-                framesDue.push('5m');
-              }
+              // NSE intraday candles are session-anchored at 09:15 IST.
+              // Use IST minutes from the session open instead of UTC epoch
+              // modulo, otherwise 15m/1h refreshes can occur on wrong bars.
+              const parts =
+                new Intl.DateTimeFormat(
+                  'en-GB',
+                  {
+                    timeZone: 'Asia/Kolkata',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                  }
+                ).formatToParts(
+                  new Date(closedTime * 1000)
+                );
 
-              if (closedTime % 900 === 0) {
-                framesDue.push('15m');
-              }
+              const part =
+                type =>
+                  parts.find(
+                    item => item.type === type
+                  )?.value;
 
-              if (closedTime % 3600 === 0) {
-                framesDue.push('1h');
+              const minutes =
+                Number(part('hour')) * 60 +
+                Number(part('minute'));
+
+              const sessionMinutes =
+                minutes - (9 * 60 + 15);
+
+              if (
+                sessionMinutes >= 0
+              ) {
+                if (sessionMinutes % 5 === 0) {
+                  framesDue.push('5m');
+                }
+
+                if (sessionMinutes % 15 === 0) {
+                  framesDue.push('15m');
+                }
+
+                if (sessionMinutes % 60 === 0) {
+                  framesDue.push('1h');
+                }
               }
             }
 
