@@ -12168,10 +12168,22 @@ function renderAllIndicatorsConsensus() {
         state.globalWatch?.signal ||
         state.globalWatch?.bias ||
         'WAITING'],
-      ['Advanced Trend', 'WAITING'],
-      ['Advanced Momentum', 'WAITING'],
-      ['Advanced Reversal', 'WAITING'],
-      ['Advanced Pressure / Volume', 'WAITING']
+      ['Trend Composite',
+        window.SMRTAdvancedIndicators?.ready
+          ? 'NO DIRECTIONAL CONSENSUS'
+          : 'WAITING'],
+      ['Momentum Composite',
+        window.SMRTAdvancedIndicators?.ready
+          ? 'NO DIRECTIONAL CONSENSUS'
+          : 'WAITING'],
+      ['Reversal Composite',
+        window.SMRTAdvancedIndicators?.ready
+          ? 'NO DIRECTIONAL CONSENSUS'
+          : 'WAITING'],
+      ['Pressure / Volume Composite',
+        window.SMRTAdvancedIndicators?.ready
+          ? 'NO DIRECTIONAL CONSENSUS'
+          : 'WAITING']
     ];
 
     const activeHtml =
