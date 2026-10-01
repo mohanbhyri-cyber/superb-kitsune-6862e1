@@ -7640,25 +7640,26 @@ for (const timeframe of ['5m', '15m', '1h']) {
       0;
 
 
+    // MTF is an independent confirmation group.
+    // Do not require NIFTY EDGE to be actionable before MTF can report
+    // its genuine 5m/15m/1h alignment.
     if (
-      signalSide === 1 &&
       s5 === 1 &&
       s15 === 1 &&
       s1h === 1
     ) {
 
       state.mtf.overall =
-        'HIGH-CONFIDENCE BUY+';
+        'MTF BULLISH';
 
     } else if (
-      signalSide === -1 &&
       s5 === -1 &&
       s15 === -1 &&
       s1h === -1
     ) {
 
       state.mtf.overall =
-        'HIGH-CONFIDENCE SELL+';
+        'MTF BEARISH';
 
     } else if (
       [
@@ -7675,10 +7676,19 @@ for (const timeframe of ['5m', '15m', '1h']) {
       state.mtf.overall =
         'DATA UNAVAILABLE';
 
+    } else if (
+      s5 !== 0 ||
+      s15 !== 0 ||
+      s1h !== 0
+    ) {
+
+      state.mtf.overall =
+        'MTF MIXED';
+
     } else {
 
       state.mtf.overall =
-        'NO TRADE';
+        'MTF WARMING UP';
     }
 
 
@@ -11886,7 +11896,9 @@ function recomputeAllIndicatorsConsensus() {
       aiNifty:
         state.aiNifty,
       globalWatch:
-        state.globalWatch
+        state.globalWatch,
+      technicalIndicators:
+        window.SMRTAdvancedIndicators
     });
 
   state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, 'signal');
