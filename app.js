@@ -14010,6 +14010,268 @@ set(
   '#market-map-score',
   `${finalConfluence}%`
 );
+
+// Premium NIFTY filters: informational/risk gates only.
+// They never manufacture a BUY or SELL signal.
+const closedForPremium =
+  state.data
+    .filter(
+      candle =>
+        candle &&
+        Number.isFinite(Number(candle.time)) &&
+        Number.isFinite(Number(candle.high)) &&
+        Number.isFinite(Number(candle.low)) &&
+        Number.isFinite(Number(candle.close))
+    );
+
+const latestClosed =
+  closedForPremium.at(-2) ||
+  closedForPremium.at(-1) ||
+  null;
+
+const atrValue =
+  Number(
+    state.trend?.atr?.at(-2) ??
+    state.trend?.atr?.at(-1) ??
+    map.atr
+  );
+
+const adxValue =
+  Number(
+    state.trend?.adx?.at(-2) ??
+    state.trend?.adx?.at(-1)
+  );
+
+let premiumRegime =
+  'WARMING UP';
+
+if (
+  Number.isFinite(adxValue) &&
+  Number.isFinite(atrValue) &&
+  latestClosed
+) {
+  const atrPct =
+    latestClosed.close > 0
+      ? atrValue / latestClosed.close * 100
+      : 0;
+
+  premiumRegime =
+    adxValue >= 25
+      ? 'TRENDING'
+      : atrPct >= 0.45
+        ? 'HIGH VOLATILITY'
+        : adxValue < 18
+          ? 'RANGE'
+          : 'TRANSITION';
+}
+
+set(
+  '#market-map-regime',
+  premiumRegime,
+  premiumRegime === 'TRENDING'
+    ? bullish
+      ? 'up'
+      : bearish
+        ? 'down'
+        : 'muted'
+    : 'muted'
+);
+
+const istParts =
+  candle => {
+    const parts =
+      new Intl.DateTimeFormat(
+        'en-CA',
+        {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }
+      ).formatToParts(
+        new Date(Number(candle.time) * 1000)
+      );
+
+    const get =
+      type =>
+        parts.find(
+          part => part.type === type
+        )?.value || '';
+
+    return {
+      date:
+        get('year') + '-' +
+        get('month') + '-' +
+        get('day'),
+      minutes:
+        Number(get('hour')) * 60 +
+        Number(get('minute'))
+    };
+  };
+
+const dated =
+  closedForPremium.map(
+    candle => ({
+      candle,
+      ...istParts(candle)
+    })
+  );
+
+const tradingDates =
+  [...new Set(
+    dated.map(row => row.date)
+  )];
+
+const currentDate =
+  tradingDates.at(-1);
+
+const previousDate =
+  tradingDates.at(-2);
+
+const openingRows =
+  dated.filter(
+    row =>
+      row.date === currentDate &&
+      row.minutes >= 9 * 60 + 15 &&
+      row.minutes < 9 * 60 + 30
+  );
+
+if (openingRows.length) {
+  const openingHigh =
+    Math.max(
+      ...openingRows.map(row => Number(row.candle.high))
+    );
+
+  const openingLow =
+    Math.min(
+      ...openingRows.map(row => Number(row.candle.low))
+    );
+
+  set(
+    '#market-map-opening-range',
+    '₹' + fmt(openingHigh) +
+    ' / ₹' + fmt(openingLow)
+  );
+} else {
+  set(
+    '#market-map-opening-range',
+    '—'
+  );
+}
+
+const previousRows =
+  dated.filter(
+    row =>
+      row.date === previousDate
+  );
+
+if (previousRows.length) {
+  const previousHigh =
+    Math.max(
+      ...previousRows.map(row => Number(row.candle.high))
+    );
+
+  const previousLow =
+    Math.min(
+      ...previousRows.map(row => Number(row.candle.low))
+    );
+
+  set(
+    '#market-map-prev-day',
+    '₹' + fmt(previousHigh) +
+    ' / ₹' + fmt(previousLow)
+  );
+} else {
+  set(
+    '#market-map-prev-day',
+    '—'
+  );
+}
+
+const finalPlan =
+  finalizer?.plan ||
+  null;
+
+const entry =
+  Number(finalPlan?.entry);
+
+const stop =
+  Number(
+    finalPlan?.stopLoss ??
+    finalPlan?.stop
+  );
+
+const riskPoints =
+  Number.isFinite(entry) &&
+  Number.isFinite(stop)
+    ? Math.abs(entry - stop)
+    : Number.isFinite(atrValue)
+      ? atrValue
+      : null;
+
+set(
+  '#market-map-atr-risk',
+  Number.isFinite(riskPoints)
+    ? '₹' + fmt(riskPoints) +
+      (
+        Number.isFinite(atrValue)
+          ? ' · ATR ₹' + fmt(atrValue)
+          : ''
+      )
+    : '—'
+);
+
+const backtest =
+  state.proBacktest ||
+  state.niftyEdgeBacktest ||
+  null;
+
+const trades =
+  Number(
+    backtest?.trades ??
+    backtest?.totalTrades
+  );
+
+const profitFactor =
+  Number(
+    backtest?.profitFactor ??
+    backtest?.pf
+  );
+
+const winRate =
+  Number(
+    backtest?.winRate ??
+    backtest?.winrate
+  );
+
+const backtestHealth =
+  Number.isFinite(trades) &&
+  trades > 0
+    ? (
+        'Trades ' + trades +
+        (
+          Number.isFinite(winRate)
+            ? ' · WR ' + winRate.toFixed(1) + '%'
+            : ''
+        ) +
+        (
+          Number.isFinite(profitFactor)
+            ? ' · PF ' + profitFactor.toFixed(2)
+            : ''
+        )
+      )
+    : 'WAITING';
+
+set(
+  '#market-map-backtest-health',
+  backtestHealth,
+  backtestHealth === 'WAITING'
+    ? 'muted'
+    : ''
+);
 }
 
 
