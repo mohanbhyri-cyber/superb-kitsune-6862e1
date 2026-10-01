@@ -1446,6 +1446,83 @@ function renderPrimeMarket() {
   const p = state.primeMarket, s = p?.structure;
   panel.replaceChildren();
   const row = (tag, text) => { const el = document.createElement(tag); el.textContent = text; panel.append(el); };
+
+  // NSE NIFTY 50 regular equity session: 09:15–15:30 IST.
+  // This is a display/status guard only. It never relaxes candle freshness.
+  const nowIstParts =
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(new Date());
+
+  const istPart = type =>
+    nowIstParts.find(part => part.type === type)?.value;
+
+  const istWeekday = istPart('weekday');
+  const istMinutes =
+    Number(istPart('hour')) * 60 +
+    Number(istPart('minute'));
+
+  const regularWeekday =
+    !['Sat', 'Sun'].includes(istWeekday);
+
+  const regularSessionOpen =
+    regularWeekday &&
+    istMinutes >= 9 * 60 + 15 &&
+    istMinutes < 15 * 60 + 30;
+
+  const latestClosedTime =
+    Number(p?.time);
+
+  const closedAgeMinutes =
+    primeFinite(latestClosedTime)
+      ? Math.max(
+          0,
+          Math.round(
+            (
+              Date.now() / 1000 -
+              latestClosedTime
+            ) / 60
+          )
+        )
+      : null;
+
+  const staleClosedCandle =
+    Number.isFinite(closedAgeMinutes) &&
+    closedAgeMinutes >
+      Math.max(
+        Math.round(
+          Number(intervals[state.tf] || 60) /
+          60
+        ) * 3,
+        15
+      );
+
+  const status =
+    document.createElement('div');
+
+  status.style.cssText =
+    'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
+
+  status.textContent =
+    !regularSessionOpen
+      ? 'MARKET CLOSED · Historical/closed-candle analysis only · NO LIVE TRADE'
+      : staleClosedCandle
+        ? 'STALE DATA · Last closed candle ' +
+          closedAgeMinutes +
+          ' min old · NO LIVE TRADE'
+        : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT';
+
+  status.className =
+    regularSessionOpen &&
+    !staleClosedCandle
+      ? 'up'
+      : 'muted';
+
+  panel.append(status);
   const adv =
   window.SMRTAdvancedIndicators || {};
 
