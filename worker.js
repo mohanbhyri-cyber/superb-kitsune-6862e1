@@ -2128,6 +2128,12 @@ async function globalMarketWatch() {
       name: "Hang Seng",
       symbol: "^HSI",
       role: "risk"
+    },
+    {
+      key: "gift_nifty",
+      name: "GIFT NIFTY",
+      symbol: "NIFTY50.NS",
+      role: "context"
     }
   ];
 
