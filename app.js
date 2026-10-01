@@ -14379,6 +14379,33 @@ const premiumSide =
     ? finalTradeSide
     : 0;
 
+// Single CALL / PUT decision for the map.
+// 80% is a confluence threshold, not a claim of 80% predictive accuracy.
+const consensusConfidence =
+  Number(consensus?.confidence);
+
+const singleSignalQualified =
+  premiumSide !== 0 &&
+  Number.isFinite(consensusConfidence) &&
+  consensusConfidence >= 80 &&
+  finalConfluence >= 80 &&
+  state.riskEngine?.quality !== 'BLOCK' &&
+  !(
+    state.efficiencyEngine?.ready === true &&
+    (
+      Number(state.efficiencyEngine?.score) < 35 ||
+      String(state.efficiencyEngine?.noise || '').toUpperCase() === 'HIGH' ||
+      String(state.efficiencyEngine?.regime || '').toUpperCase() === 'CHOPPY'
+    )
+  );
+
+const singleOptionSignal =
+  singleSignalQualified
+    ? premiumSide === 1
+      ? 'CALL'
+      : 'PUT'
+    : 'NO TRADE';
+
 set(
   '#market-map-premium-bias',
   premiumSide === 1
@@ -14389,6 +14416,20 @@ set(
   premiumSide === 1
     ? 'up'
     : premiumSide === -1
+      ? 'down'
+      : 'muted'
+);
+
+set(
+  '#market-map-single-option',
+  singleOptionSignal === 'CALL'
+    ? 'CALL · ' + Math.min(100, Math.round(Math.min(consensusConfidence, finalConfluence))) + '% CONFLUENCE'
+    : singleOptionSignal === 'PUT'
+      ? 'PUT · ' + Math.min(100, Math.round(Math.min(consensusConfidence, finalConfluence))) + '% CONFLUENCE'
+      : 'NO TRADE',
+  singleOptionSignal === 'CALL'
+    ? 'up'
+    : singleOptionSignal === 'PUT'
       ? 'down'
       : 'muted'
 );
