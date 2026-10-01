@@ -3,6 +3,7 @@ import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
 import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
 import { analyseSessionQuality } from './smrt-session-quality.js';
+import { analyseRisk } from './smrt-risk-engine.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
@@ -1776,6 +1777,8 @@ const state = {
   liquidityTrap: null,
 
   sessionQuality: null,
+
+  riskEngine: null,
 
   niftyEdge: null,
 
@@ -4740,6 +4743,18 @@ function draw() {
 
 
   state.tradeFinalizer = state.rawTradeFinalizer;
+
+  state.riskEngine = analyseRisk(
+    state.tradeFinalizer?.plan,
+    {
+      side:
+        Number(state.tradeFinalizer?.side || 0),
+      atr:
+        state.trend?.atr?.[
+          Math.max(0, indicatorData.length - 2)
+        ]
+    }
+  );
 
   state.gainzSSL =
     analyseGainzSSL(
@@ -14521,6 +14536,21 @@ set(
   risk > 0
     ? '1 : ' + (reward / risk).toFixed(2)
     : '—'
+);
+
+const riskEngine =
+  state.riskEngine || null;
+
+set(
+  '#market-map-risk-engine',
+  riskEngine?.ready === true
+    ? riskEngine.state + ' · ' + riskEngine.score + '/100'
+    : riskEngine?.state || 'NO ACTIVE PLAN',
+  riskEngine?.quality === 'GOOD'
+    ? 'up'
+    : riskEngine?.quality === 'BLOCK'
+      ? 'down'
+      : 'muted'
 );
 
 // Premium context placeholders are fail-closed until genuine live
