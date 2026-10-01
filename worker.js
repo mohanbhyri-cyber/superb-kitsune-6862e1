@@ -1102,7 +1102,9 @@ async function mtfHistory(url, token) {
     const results = [];
 
 try {
-  // First request only historical data.
+  // Historical V3 can lag the current trading session.
+  // Load historical candles for warm-up, then append today's
+  // intraday candles so the latest MTF candle stays current.
   const historicalBody = await upstoxFetch(
     historicalEndpoint,
     token
@@ -1111,6 +1113,17 @@ try {
   results.push({
     status: "fulfilled",
     value: historicalBody
+  });
+
+  // Keep requests sequential to reduce Upstox 429 pressure.
+  const intradayBody = await upstoxFetch(
+    intradayEndpoint,
+    token
+  );
+
+  results.push({
+    status: "fulfilled",
+    value: intradayBody
   });
 } catch (error) {
   // Never make another Upstox request after HTTP 429.
@@ -1122,33 +1135,36 @@ try {
   }
 
   console.warn(
-    "MTF historical fetch failed; trying intraday fallback",
+    "MTF history/intraday merge fetch failed",
     error?.message || error
   );
 
-  // Intraday is fallback only — not a simultaneous request.
-  try {
-    const intradayBody = await upstoxFetch(
-      intradayEndpoint,
-      token
-    );
+  // If historical failed before intraday was loaded, make one
+  // intraday fallback request. Existing fulfilled data is kept.
+  if (!results.length) {
+    try {
+      const intradayBody = await upstoxFetch(
+        intradayEndpoint,
+        token
+      );
 
-    results.push({
-      status: "fulfilled",
-      value: intradayBody
-    });
-  } catch (fallbackError) {
-    if (
-      fallbackError?.rateLimited === true ||
-      fallbackError?.status === 429
-    ) {
-      throw fallbackError;
+      results.push({
+        status: "fulfilled",
+        value: intradayBody
+      });
+    } catch (fallbackError) {
+      if (
+        fallbackError?.rateLimited === true ||
+        fallbackError?.status === 429
+      ) {
+        throw fallbackError;
+      }
+
+      console.warn(
+        "MTF intraday fallback failed",
+        fallbackError?.message || fallbackError
+      );
     }
-
-    console.warn(
-      "MTF intraday fallback failed",
-      fallbackError?.message || fallbackError
-    );
   }
 }
     const rows = [];
