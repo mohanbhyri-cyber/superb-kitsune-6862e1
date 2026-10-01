@@ -4713,7 +4713,9 @@ function draw() {
       data:
         indicatorData,
       futuresVWAP:
-        state.futuresVWAP
+        state.futuresVWAP,
+      efficiency:
+        state.efficiencyEngine
     });
 
 
