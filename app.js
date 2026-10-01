@@ -14272,6 +14272,197 @@ set(
     ? 'muted'
     : ''
 );
+
+// Premium Map summary. Display-only: final trade still requires
+// Prime + Trade Finalizer + Consensus confirmation.
+const premiumSide =
+  finalTradeConfirmed
+    ? finalTradeSide
+    : 0;
+
+set(
+  '#market-map-premium-bias',
+  premiumSide === 1
+    ? 'BUY'
+    : premiumSide === -1
+      ? 'SELL'
+      : 'NO TRADE',
+  premiumSide === 1
+    ? 'up'
+    : premiumSide === -1
+      ? 'down'
+      : 'muted'
+);
+
+const mtfRowsPremium =
+  ['5m', '15m', '1h'].map(
+    tf => state.mtf?.[tf]?.side
+  );
+
+const mtfTextPremium =
+  mtfRowsPremium.every(side => side === 1)
+    ? 'BULLISH'
+    : mtfRowsPremium.every(side => side === -1)
+      ? 'BEARISH'
+      : mtfRowsPremium.some(side => side === 1 || side === -1)
+        ? 'MIXED'
+        : 'WAITING';
+
+set(
+  '#market-map-mtf',
+  mtfTextPremium,
+  mtfTextPremium === 'BULLISH'
+    ? 'up'
+    : mtfTextPremium === 'BEARISH'
+      ? 'down'
+      : 'muted'
+);
+
+const structureText =
+  String(
+    state.primeMarket?.structure ||
+    map.structure ||
+    'WAITING'
+  ).toUpperCase();
+
+set(
+  '#market-map-structure',
+  structureText,
+  structureText.includes('BULL')
+    ? 'up'
+    : structureText.includes('BEAR')
+      ? 'down'
+      : 'muted'
+);
+
+const smartMoney =
+  state.primeMarket?.smartMoney ||
+  state.smartMoney ||
+  null;
+
+const liquidityText =
+  String(
+    smartMoney?.liquidityFvg?.state ||
+    smartMoney?.liquidityFvg ||
+    'WAITING'
+  ).toUpperCase();
+
+set(
+  '#market-map-liquidity',
+  liquidityText,
+  liquidityText.includes('BULL')
+    ? 'up'
+    : liquidityText.includes('BEAR')
+      ? 'down'
+      : 'muted'
+);
+
+const momentumSignal =
+  String(
+    state.momentum?.filter(Boolean).at(-1)?.signal ||
+    state.momentum?.filter(Boolean).at(-1)?.state ||
+    'WAITING'
+  ).toUpperCase();
+
+set(
+  '#market-map-momentum',
+  momentumSignal,
+  momentumSignal.includes('BUY') ||
+  momentumSignal.includes('BULL')
+    ? 'up'
+    : momentumSignal.includes('SELL') ||
+      momentumSignal.includes('BEAR')
+      ? 'down'
+      : 'muted'
+);
+
+const futuresVwap =
+  Number(state.futuresVWAP);
+
+const currentPrice =
+  Number(
+    quote() ??
+    latestClosed?.close
+  );
+
+const vwapRelation =
+  Number.isFinite(futuresVwap) &&
+  Number.isFinite(currentPrice)
+    ? currentPrice > futuresVwap
+      ? 'ABOVE · ₹' + fmt(futuresVwap)
+      : currentPrice < futuresVwap
+        ? 'BELOW · ₹' + fmt(futuresVwap)
+        : 'AT · ₹' + fmt(futuresVwap)
+    : 'UNAVAILABLE';
+
+set(
+  '#market-map-vwap',
+  vwapRelation,
+  vwapRelation.startsWith('ABOVE')
+    ? 'up'
+    : vwapRelation.startsWith('BELOW')
+      ? 'down'
+      : 'muted'
+);
+
+const planEntry =
+  Number(finalPlan?.entry);
+
+const planStop =
+  Number(
+    finalPlan?.stopLoss ??
+    finalPlan?.stop
+  );
+
+const target1 =
+  Number(finalPlan?.target1);
+
+const target2 =
+  Number(finalPlan?.target2);
+
+const target3 =
+  Number(finalPlan?.target3);
+
+set(
+  '#market-map-entry-stop',
+  Number.isFinite(planEntry) &&
+  Number.isFinite(planStop)
+    ? '₹' + fmt(planEntry) +
+      ' / ₹' + fmt(planStop)
+    : '—'
+);
+
+set(
+  '#market-map-targets',
+  [target1, target2, target3]
+    .every(Number.isFinite)
+      ? '₹' + fmt(target1) +
+        ' / ₹' + fmt(target2) +
+        ' / ₹' + fmt(target3)
+      : '—'
+);
+
+const reward =
+  Number.isFinite(planEntry) &&
+  Number.isFinite(planStop) &&
+  Number.isFinite(target1)
+    ? Math.abs(target1 - planEntry)
+    : null;
+
+const risk =
+  Number.isFinite(planEntry) &&
+  Number.isFinite(planStop)
+    ? Math.abs(planEntry - planStop)
+    : null;
+
+set(
+  '#market-map-rr',
+  Number.isFinite(reward) &&
+  Number.isFinite(risk) &&
+  risk > 0
+    ? '1 : ' + (reward / risk).toFixed(2)
+    : '—'
+);
 }
 
 
