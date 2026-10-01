@@ -11538,11 +11538,13 @@ function renderSignalAlerts() {
   }
 
 
+  // Keep this panel compact: show only the latest signal.
+  // Full signal processing/history remains unchanged internally.
   for (
     const alert of
     signalHistory.slice(
       0,
-      20
+      1
     )
   ) {
 
