@@ -5754,6 +5754,134 @@ function draw() {
   );
 
 
+  // Additional chart-only CALL / PUT marker.
+  // This does not replace or modify any existing indicator markers.
+  const chartConsensus =
+    state.allIndicatorsConsensus;
+
+  const chartFinalizer =
+    state.tradeFinalizer;
+
+  const chartPrime =
+    state.primeMarket;
+
+  const chartFinalSide =
+    primeSide(
+      chartFinalizer?.state
+    );
+
+  const chartConsensusSide =
+    primeSide(
+      chartConsensus?.signal
+    );
+
+  const chartPrimeSide =
+    Number(chartPrime?.side) || 0;
+
+  const chartPrimeChecks =
+    Array.isArray(chartPrime?.checks)
+      ? chartPrime.checks
+      : [];
+
+  const chartPrimeConfluence =
+    chartPrimeChecks.length
+      ? Math.round(
+          chartPrimeChecks.filter(
+            check => check?.ok === true
+          ).length /
+          chartPrimeChecks.length *
+          100
+        )
+      : 0;
+
+  const chartConsensusConfidence =
+    Number(chartConsensus?.confidence);
+
+  const chartOptionQualified =
+    chartFinalizer?.primeConfirmed === true &&
+    chartFinalSide !== 0 &&
+    chartPrimeSide === chartFinalSide &&
+    chartConsensusSide === chartFinalSide &&
+    Number.isFinite(chartConsensusConfidence) &&
+    chartConsensusConfidence >= 80 &&
+    chartPrimeConfluence >= 80 &&
+    state.riskEngine?.quality !== 'BLOCK' &&
+    !(
+      state.efficiencyEngine?.ready === true &&
+      (
+        Number(state.efficiencyEngine?.score) < 35 ||
+        String(state.efficiencyEngine?.noise || '').toUpperCase() === 'HIGH' ||
+        String(state.efficiencyEngine?.regime || '').toUpperCase() === 'CHOPPY'
+      )
+    );
+
+  if (chartOptionQualified) {
+    const markerCandle =
+      state.data[
+        lastClosedCandleIndex(
+          state.data,
+          Number(intervals[state.tf]),
+          state.replay.active
+            ? Number(state.data.at(-1)?.time)
+            : Date.now() / 1000
+        )
+      ];
+
+    const markerIndex =
+      markerCandle
+        ? state.data.findIndex(
+            candle =>
+              candle.time === markerCandle.time
+          ) - start
+        : -1;
+
+    if (
+      markerCandle &&
+      markerIndex >= 0 &&
+      markerIndex < end - start
+    ) {
+      const label =
+        chartFinalSide === 1
+          ? 'CALL'
+          : 'PUT';
+
+      const markerY =
+        chartFinalSide === 1
+          ? y(markerCandle.low) + 18
+          : y(markerCandle.high) - 28;
+
+      const markerX =
+        Math.max(
+          4,
+          Math.min(
+            plot - 58,
+            x(markerIndex) - 24
+          )
+        );
+
+      ctx.save();
+      ctx.fillStyle =
+        chartFinalSide === 1
+          ? up
+          : down;
+      ctx.fillRect(
+        markerX,
+        markerY,
+        54,
+        20
+      );
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px system-ui';
+      ctx.fillText(
+        label,
+        markerX + 10,
+        markerY + 14
+      );
+      ctx.restore();
+    }
+  }
+
+
   renderSignalStatus();
 
 
