@@ -14492,6 +14492,80 @@ set(
     ? '1 : ' + (reward / risk).toFixed(2)
     : '—'
 );
+
+// Premium context placeholders are fail-closed until genuine live
+// constituent breadth / derivatives data is connected.
+const breadth =
+  state.niftyBreadth ||
+  null;
+
+const breadthBias =
+  String(
+    breadth?.bias ||
+    'UNAVAILABLE'
+  ).toUpperCase();
+
+set(
+  '#market-map-breadth',
+  breadth?.live === true
+    ? breadthBias +
+      ' · ' +
+      Number(breadth.advances || 0) +
+      'A/' +
+      Number(breadth.declines || 0) +
+      'D'
+    : 'UNAVAILABLE',
+  breadthBias === 'BULLISH'
+    ? 'up'
+    : breadthBias === 'BEARISH'
+      ? 'down'
+      : 'muted'
+);
+
+const options =
+  state.niftyOptions ||
+  null;
+
+const optionsBias =
+  String(
+    options?.bias ||
+    'UNAVAILABLE'
+  ).toUpperCase();
+
+set(
+  '#market-map-options',
+  options?.live === true
+    ? optionsBias +
+      (
+        options.expiry
+          ? ' · ' + options.expiry
+          : ''
+      )
+    : 'UNAVAILABLE',
+  optionsBias === 'BULLISH'
+    ? 'up'
+    : optionsBias === 'BEARISH'
+      ? 'down'
+      : 'muted'
+);
+
+set(
+  '#market-map-pcr',
+  options?.live === true &&
+  Number.isFinite(Number(options.pcr))
+    ? Number(options.pcr).toFixed(2)
+    : '—'
+);
+
+set(
+  '#market-map-oi-walls',
+  options?.live === true &&
+  Number.isFinite(Number(options.putWall)) &&
+  Number.isFinite(Number(options.callWall))
+    ? 'P ' + fmt(options.putWall) +
+      ' / C ' + fmt(options.callWall)
+    : '—'
+);
 }
 
 
