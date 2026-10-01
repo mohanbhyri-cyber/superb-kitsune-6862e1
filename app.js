@@ -2,6 +2,7 @@ import { momentumSignals } from './momentum.js';
 import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
 import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
+import { analyseSessionQuality } from './smrt-session-quality.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
@@ -1773,6 +1774,8 @@ const state = {
   efficiencyEngine: null,
 
   liquidityTrap: null,
+
+  sessionQuality: null,
 
   niftyEdge: null,
 
@@ -4646,6 +4649,10 @@ function draw() {
           Math.max(0, indicatorData.length - 2)
         ]
     }
+  );
+
+  state.sessionQuality = analyseSessionQuality(
+    indicatorData
   );
 
 
@@ -14527,6 +14534,20 @@ const breadthBias =
     breadth?.bias ||
     'UNAVAILABLE'
   ).toUpperCase();
+
+const sessionQuality = state.sessionQuality || null;
+
+set(
+  '#market-map-session-quality',
+  sessionQuality?.ready === true
+    ? sessionQuality.state + ' · ' + sessionQuality.score + '/100'
+    : 'WARMING UP',
+  sessionQuality?.quality === 'GOOD'
+    ? 'up'
+    : sessionQuality?.quality === 'CAUTION'
+      ? 'down'
+      : 'muted'
+);
 
 const trap = state.liquidityTrap || null;
 
