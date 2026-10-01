@@ -1373,7 +1373,9 @@ async function findNearestNiftyFutureViaSearch(token) {
     "https://api.upstox.com/v2/instruments/search" +
     "?query=NIFTY" +
     "&exchanges=NSE" +
-    "&segments=FUT" +
+    "&segments=FO" +
+    "&instrument_types=FUT" +
+    "&expiry=current_month" +
     "&page_number=1" +
     "&records=30";
 
@@ -1424,7 +1426,8 @@ async function findNearestNiftyFutureViaSearch(token) {
           segment === "NSE_FO" &&
           (
             underlying === "NIFTY" ||
-            symbol.startsWith("NIFTY ")
+            symbol.startsWith("NIFTY ") ||
+            symbol.startsWith("NIFTY FUT")
           ) &&
           !symbol.startsWith("BANKNIFTY") &&
           Number.isFinite(expiry) &&
