@@ -1,6 +1,7 @@
 import { momentumSignals } from './momentum.js';
 import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
+import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
 import { proScalper } from './pro-scalper.js';
 import { SignalAlertTracker } from './signal-alerts.js';
 import { priceAction } from './price-action.js';
@@ -1770,6 +1771,8 @@ const state = {
   trend: null,
 
   efficiencyEngine: null,
+
+  liquidityTrap: null,
 
   niftyEdge: null,
 
@@ -4633,6 +4636,16 @@ function draw() {
   state.efficiencyEngine = analyseEfficiencyEngine(
     indicatorData,
     state.trend
+  );
+
+  state.liquidityTrap = analyseLiquidityTrap(
+    indicatorData,
+    {
+      atr:
+        state.trend?.atr?.[
+          Math.max(0, indicatorData.length - 2)
+        ]
+    }
   );
 
 
@@ -14514,6 +14527,25 @@ const breadthBias =
     breadth?.bias ||
     'UNAVAILABLE'
   ).toUpperCase();
+
+const trap = state.liquidityTrap || null;
+
+set(
+  '#market-map-trap',
+  trap?.ready === true
+    ? trap.state +
+      (
+        Number(trap.score) > 0
+          ? ' · ' + trap.score + '/100'
+          : ''
+      )
+    : 'WARMING UP',
+  Number(trap?.side) === 1
+    ? 'up'
+    : Number(trap?.side) === -1
+      ? 'down'
+      : 'muted'
+);
 
 const efficiency = state.efficiencyEngine || null;
 
