@@ -7876,8 +7876,11 @@ function renderMTF() {
 }
 
 
-async function refreshMTF() {
+async function refreshMTF(requestedFrames = ['5m', '15m', '1h']) {
   const requestedSymbol = state.symbol;
+  const frames = ['5m', '15m', '1h'].filter(
+    timeframe => requestedFrames.includes(timeframe)
+  );
 
   if (
     state.replay.active ||
@@ -7897,7 +7900,7 @@ async function refreshMTF() {
 
    const settled = [];
 
-for (const timeframe of ['5m', '15m', '1h']) {
+for (const timeframe of frames) {
   try {
     const candles =
       await market.mtfHistory(
@@ -7923,43 +7926,49 @@ for (const timeframe of ['5m', '15m', '1h']) {
   }
 }
 
-    const resultCandles =
-      settled.map(
-        result =>
-          result.status === 'fulfilled' &&
+    const loaded = {};
+
+    frames.forEach(
+      (timeframe, index) => {
+        const result = settled[index];
+        loaded[timeframe] =
+          result?.status === 'fulfilled' &&
           Array.isArray(result.value)
             ? result.value
-            : []
-      );
+            : null;
+      }
+    );
 
     console.log('MTF HISTORY LOAD', {
       symbol: requestedSymbol,
-      '5m': resultCandles[0]?.length || 0,
-      '15m': resultCandles[1]?.length || 0,
-      '1h': resultCandles[2]?.length || 0
+      frames,
+      '5m': loaded['5m']?.length || 0,
+      '15m': loaded['15m']?.length || 0,
+      '1h': loaded['1h']?.length || 0
     });
 
     if (state.symbol !== requestedSymbol || state.replay.active) return;
     state.primeMtfSymbol = requestedSymbol;
-    state.primeMtfData = { '5m': resultCandles[0], '15m': resultCandles[1], '1h': resultCandles[2] };
 
-    state.mtf['5m'] =
-      timeframeTrend(
-        resultCandles[0],
-        300
-      );
+    for (const timeframe of frames) {
+      const candles = loaded[timeframe];
 
-    state.mtf['15m'] =
-      timeframeTrend(
-        resultCandles[1],
-        900
-      );
+      // Preserve the last confirmed timeframe on a transient request
+      // failure instead of blanking the map while the feed catches up.
+      if (!Array.isArray(candles) || !candles.length) continue;
 
-    state.mtf['1h'] =
-      timeframeTrend(
-        resultCandles[2],
-        3600
-      );
+      state.primeMtfData[timeframe] = candles;
+
+      state.mtf[timeframe] =
+        timeframeTrend(
+          candles,
+          timeframe === '5m'
+            ? 300
+            : timeframe === '15m'
+              ? 900
+              : 3600
+        );
+    }
 
 
     const edge =
@@ -8829,9 +8838,40 @@ if (
 
             processMomentumAlerts();
 
-            refreshMTF().catch(
-              () => {}
-            );
+            // Recalculate the map immediately from the newly closed local
+            // candle. Refresh only MTF frames whose boundary has actually
+            // closed; keep cached confirmed higher-timeframe values between
+            // boundaries. This avoids three sequential network calls on
+            // every chart candle without changing any indicator rule.
+            lastAnalysisKey = null;
+            scheduleLiveRender(true);
+
+            const closedTime =
+              Number(last?.time);
+
+            const framesDue = [];
+
+            if (
+              Number.isFinite(closedTime)
+            ) {
+              if (closedTime % 300 === 0) {
+                framesDue.push('5m');
+              }
+
+              if (closedTime % 900 === 0) {
+                framesDue.push('15m');
+              }
+
+              if (closedTime % 3600 === 0) {
+                framesDue.push('1h');
+              }
+            }
+
+            if (framesDue.length) {
+              refreshMTF(framesDue).catch(
+                () => {}
+              );
+            }
           }
 
           checkAlerts();
