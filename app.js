@@ -4560,6 +4560,35 @@ function draw() {
     ] ||
     state.data.at(-1);
 
+  // Normalize every legacy indicator engine to the same completed candle.
+  // These engines intentionally analyse data.length - 2 because the final
+  // element is treated as live/forming. When the feed contains only closed
+  // candles (common after market close/history), append a synthetic forming
+  // placeholder copied from the latest close. This keeps length - 2 pointing
+  // at the true latest completed candle without introducing future data.
+  const indicatorData =
+    closedIndex === state.data.length - 1
+      ? [
+          ...state.data,
+          {
+            ...closedCandle,
+            time:
+              Number(closedCandle.time) +
+              Number(intervals[state.tf]),
+            open:
+              Number(closedCandle.close),
+            high:
+              Number(closedCandle.close),
+            low:
+              Number(closedCandle.close),
+            close:
+              Number(closedCandle.close),
+            volume: 0,
+            syntheticForming: true
+          }
+        ]
+      : state.data;
+
   const analysisKey = [
     state.data.length,
     state.data[0]?.time,
@@ -4581,33 +4610,33 @@ function draw() {
     lastAnalysisKey = analysisKey;
   state.pa =
     priceAction(
-      state.data
+      indicatorData
     );
 
 
   state.momentum =
     momentumSignals(
-      state.data
+      indicatorData
     );
 
 
   state.calc =
     indicators(
-      state.data
+      indicatorData
     );
 
-  state.trend = trendIndicators(state.data);
+  state.trend = trendIndicators(indicatorData);
 
 
   state.scalps =
     proScalper(
-      state.data
+      indicatorData
     );
 
 
   state.signals =
     strideSignals(
-      state.data,
+      indicatorData,
       {
         multiplier: {
           fast: 1.5,
@@ -4622,7 +4651,7 @@ function draw() {
 
   state.niftyEdge =
     analyseNiftyEdge(
-      state.data,
+      indicatorData,
       {
         futuresVWAP:
           state.futuresVWAP
@@ -4636,7 +4665,7 @@ function draw() {
 
   state.marketMap =
     analyseMarketMap(
-      state.data,
+      indicatorData,
       {
         futuresVWAP:
           state.futuresVWAP
@@ -4646,7 +4675,7 @@ function draw() {
 
   state.candleScanner =
     scanCandles(
-      state.data
+      indicatorData
     );
 
 
@@ -4674,7 +4703,7 @@ function draw() {
       trend:
         state.trend,
       data:
-        state.data,
+        indicatorData,
       futuresVWAP:
         state.futuresVWAP
     });
@@ -4684,7 +4713,7 @@ function draw() {
 
   state.gainzSSL =
     analyseGainzSSL(
-      state.data,
+      indicatorData,
       {
         finalizer:
           state.tradeFinalizer,
@@ -4699,7 +4728,7 @@ function draw() {
   state.chartConsensus =
     analyseChartConsensus({
       candles:
-        state.data,
+        indicatorData,
       calc:
         state.calc,
       trend:
