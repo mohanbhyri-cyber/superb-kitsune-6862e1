@@ -4756,6 +4756,31 @@ function draw() {
     }
   );
 
+  // Final risk veto: risk never creates direction. It can only block
+  // an otherwise actionable setup when the generated plan is invalid
+  // or has materially poor risk characteristics.
+  if (
+    Number(state.tradeFinalizer?.side || 0) !== 0 &&
+    state.riskEngine?.ready === true &&
+    state.riskEngine?.quality === 'BLOCK'
+  ) {
+    const blocked = state.tradeFinalizer;
+
+    state.tradeFinalizer = {
+      ...blocked,
+      state: 'NO TRADE',
+      side: 0,
+      plan: null,
+      reasons: [
+        ...(Array.isArray(blocked.reasons) ? blocked.reasons : []),
+        'Risk Engine veto: ' +
+          String(state.riskEngine.state || 'poor risk setup')
+      ].slice(0, 10),
+      invalidation:
+        'Risk Engine blocked the trade plan'
+    };
+  }
+
   state.gainzSSL =
     analyseGainzSSL(
       indicatorData,
