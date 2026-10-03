@@ -132,6 +132,42 @@ function lastClosedCandleIndex(data, seconds, now = Date.now() / 1000) {
   return -1;
 }
 
+function nseSessionMinutesFromEpoch(seconds) {
+  const time = Number(seconds);
+  if (!Number.isFinite(time)) return null;
+
+  // NSE intraday candles are session-anchored at 09:15 IST.
+  // Boundaries must be checked against the candle END time, supplied by caller.
+  const parts = new Intl.DateTimeFormat(
+    'en-GB',
+    {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }
+  ).formatToParts(
+    new Date(time * 1000)
+  );
+
+  const part =
+    type =>
+      parts.find(
+        item => item.type === type
+      )?.value;
+
+  const minutes =
+    Number(part('hour')) * 60 +
+    Number(part('minute'));
+
+  const sessionMinutes =
+    minutes - (9 * 60 + 15);
+
+  return Number.isFinite(sessionMinutes)
+    ? sessionMinutes
+    : null;
+}
+
 function primeStructure(candles) {
   const swings = [], events = [], blocks = [], gaps = [], sweeps = [];
   let high = null, low = null, direction = 0, atr = null;
@@ -9066,41 +9102,23 @@ if (
             const closedTime =
               Number(last?.time);
 
+            const closedEndTime =
+              Number.isFinite(closedTime)
+                ? closedTime + Number(seconds)
+                : NaN;
+
             const framesDue = [];
 
             if (
-              Number.isFinite(closedTime)
+              Number.isFinite(closedEndTime)
             ) {
-              // NSE intraday candles are session-anchored at 09:15 IST.
-              // Use IST minutes from the session open instead of UTC epoch
-              // modulo, otherwise 15m/1h refreshes can occur on wrong bars.
-              const parts =
-                new Intl.DateTimeFormat(
-                  'en-GB',
-                  {
-                    timeZone: 'Asia/Kolkata',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                  }
-                ).formatToParts(
-                  new Date(closedTime * 1000)
+              const sessionMinutes =
+                nseSessionMinutesFromEpoch(
+                  closedEndTime
                 );
 
-              const part =
-                type =>
-                  parts.find(
-                    item => item.type === type
-                  )?.value;
-
-              const minutes =
-                Number(part('hour')) * 60 +
-                Number(part('minute'));
-
-              const sessionMinutes =
-                minutes - (9 * 60 + 15);
-
               if (
+                Number.isFinite(sessionMinutes) &&
                 sessionMinutes >= 0
               ) {
                 if (sessionMinutes % 5 === 0) {
