@@ -1510,9 +1510,8 @@ function renderPrimeMarket() {
     panel.style.cssText = 'padding:16px;margin:12px 0;border:1px solid var(--line,#445);border-radius:10px';
     anchor.before(panel);
   }
-  const p = state.primeMarket, s = p?.structure;
+  const p = state.primeMarket;
   panel.replaceChildren();
-  const row = (tag, text) => { const el = document.createElement(tag); el.textContent = text; panel.append(el); };
 
   // NSE NIFTY 50 regular equity session: 09:15–15:30 IST.
   // This is a display/status guard only. It never relaxes candle freshness.
@@ -1590,107 +1589,6 @@ function renderPrimeMarket() {
       : 'muted';
 
   panel.append(status);
-  const adv =
-  window.SMRTAdvancedIndicators || {};
-
-const advStatus =
-  window.SMRTAdvancedIndicatorStatus || {};
-
-const closedCount =
-  Number(advStatus.closedCount || 0);
-
-const sourceCount =
-  Number(advStatus.sourceCount || 0);
-
-const activeCount =
-  Number(adv.activeCount || 0);
-
-const bullishCount =
-  Number(adv.bullishCount || 0);
-
-const bearishCount =
-  Number(adv.bearishCount || 0);
-
-const waitingCount =
-  Number(adv.waitingCount || 0);
-
-const advancedReady =
-  advStatus.ready === true &&
-  closedCount >= 220;
-
-row(
-  'p',
-  'Advanced Engine: ' +
-    (advancedReady ? 'READY' : 'WARMING') +
-    ' · Closed Candles ' +
-    closedCount +
-    '/220' +
-    ' · Source ' +
-    sourceCount
-);
-
-row(
-  'p',
-  '20 Indicators: Active ' +
-    activeCount +
-    '/20' +
-    ' · Bullish ' +
-    bullishCount +
-    ' · Bearish ' +
-    bearishCount +
-    ' · Wait ' +
-    waitingCount
-);
-
-if (advStatus.error) {
-  row(
-    'p',
-    'Advanced Engine Error: ' +
-      advStatus.error
-  );
-}
-  row('p', 'Original price-action rules · closed candles only · ' + (p?.time ? formatISTTime(p.time * 1000) : 'Waiting for history'));
-  if (s) {
-    row('p', 'Structure: ' + (s.direction === 1 ? 'BULLISH' : s.direction === -1 ? 'BEARISH' : 'UNCONFIRMED') +
-      ' · ' + [s.high?.label, s.low?.label].filter(Boolean).join(' / ') + ' · ' + s.zone +
-      ' · Equilibrium ' + (primeFinite(s.equilibrium) ? fmt(s.equilibrium) : '—'));
-    row('p', 'Recent events: ' + (s.events.slice(-4).map(e => e.type + ' ' + (e.side === 1 ? '↑' : '↓') + ' ' + fmt(e.level)).join(' · ') || 'None'));
-    row('p', 'Liquidity sweeps: ' + (s.sweeps.slice(-3).map(e => (e.side === 1 ? 'Low' : 'High') + ' sweep ' + fmt(e.price)).join(' · ') || 'None'));
-    for (const z of [...s.blocks, ...s.gaps].filter(z => z.active).slice(-6)) {
-      row('p', z.kind + ' ' + (z.side === 1 ? '↑' : '↓') + ' ' + fmt(z.low) + '–' + fmt(z.high) + ' · ' + z.status);
-    }
-    row('p', p.volume?.available ? 'OHLCV pressure proxy: ' + (p.volume.pressure * 100).toFixed(1) + '% · Relative volume ' + p.volume.relative.toFixed(2) + '×'
-      : 'Volume unavailable — confirmation blocked');
-   row(
-  'p',
-  Object.entries(p.mtf)
-    .map(([tf, m]) => {
-      const hasData =
-        primeFinite(m?.time);
-
-      if (!hasData) {
-        return tf + ': MISSING';
-      }
-
-      if (!m.fresh) {
-        return tf + ': STALE';
-      }
-
-      if (m.side === 1) {
-        return tf + ': BULLISH';
-      }
-
-      if (m.side === -1) {
-        return tf + ': BEARISH';
-      }
-
-      return tf + ': MIXED / NEUTRAL';
-    })
-    .join(' · ')
-);
-  }
-  row('p', (p?.checks || []).filter(c => c.ok).length + ' / ' + (p?.checks?.length || 0) + ' checks passed (not a probability)');
-  row('p', (p?.reasons || ['Waiting for history']).join(' · '));
 }
 
 function setText(selector, value) {
