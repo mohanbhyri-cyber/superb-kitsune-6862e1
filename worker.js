@@ -3,6 +3,8 @@
 // Real Upstox data only. No demo/random fallback.
 
 import { regularNseHours, summarizeOptions } from './options-context.js';
+import { summarizeBreadth } from './breadth-context.js';
+import { parse } from 'csv-parse/sync';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -2498,6 +2500,46 @@ async function niftyDailyHistory(url, token) {
 // ----------------------------------------------------
 
 let optionsPending = null;
+let breadthPending = null;
+let breadthCached = null;
+let breadthCachedAt = 0;
+let constituentKeys = null;
+let constituentDate = null;
+
+async function niftyBreadth(token) {
+  if (!regularNseHours()) return json({ live: false, reason: 'MARKET CLOSED' });
+  if (breadthCached && Date.now() - breadthCachedAt < 60000) return json(breadthCached);
+  if (!breadthPending) {
+    breadthPending = (async () => {
+      try {
+        if (!constituentKeys || constituentDate !== todayIST()) {
+          const response = await fetch('https://niftyindices.com/IndexConstituent/ind_nifty50list.csv',
+            { signal: AbortSignal.timeout(15000) });
+          if (!response.ok) throw new Error('Official constituent list unavailable');
+          const rows = parse(await response.text(), { columns: true, bom: true, skip_empty_lines: true, trim: true });
+          const keys = rows.map(row => row['ISIN Code']);
+          if (rows.length !== 50 || new Set(keys).size !== 50 ||
+              rows.some(row => row.Series !== 'EQ') || keys.some(key => !/^INE[A-Z0-9]{9}$/.test(key))) {
+            throw new Error('Official constituent list invalid');
+          }
+          constituentKeys = keys.map(key => 'NSE_EQ|' + key);
+          constituentDate = todayIST();
+        }
+        const quotes = await upstoxFetch('https://api.upstox.com/v3/market-quote/quotes?instrument_key=' +
+          encodeURIComponent(constituentKeys.join(',')), token);
+        return summarizeBreadth(quotes.data, constituentKeys);
+      } catch (error) {
+        return { live: false, reason: error.message };
+      }
+    })().then(result => {
+      breadthCached = result;
+      breadthCachedAt = Date.now();
+      return result;
+    }).finally(() => { breadthPending = null; });
+  }
+  return json(await breadthPending);
+}
+
 let optionsCached = null;
 let optionsCachedAt = 0;
 let optionsExpiry = null;
@@ -2648,6 +2690,10 @@ export default {
 
     if (url.pathname === '/api/nifty-options') {
       return cachedApiResponse(request, 60, () => niftyOptions(token), context);
+    }
+
+    if (url.pathname === '/api/nifty-breadth') {
+      return cachedApiResponse(request, 60, () => niftyBreadth(token), context);
     }
 
     if (

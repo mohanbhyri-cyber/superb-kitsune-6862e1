@@ -1,5 +1,8 @@
 {
   "name": "smrt-algo-pro",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "csv-parse": "^7.0.3"
+  }
 }

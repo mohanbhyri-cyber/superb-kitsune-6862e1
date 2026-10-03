@@ -9532,6 +9532,32 @@ async function refreshOptionsContext() {
   }
 }
 refreshOptionsContext();
+let breadthBusy = false;
+let breadthRequestedAt = 0;
+async function refreshBreadthContext() {
+  if (state.symbol !== 'NIFTY' || !regularNseHours()) {
+    state.niftyBreadth = null;
+    updateMarketMapPanel();
+    return;
+  }
+  if (breadthBusy || Date.now() - breadthRequestedAt < 60000) return;
+  breadthBusy = true;
+  breadthRequestedAt = Date.now();
+  try {
+    const response = await fetch(API_BASE + '/api/nifty-breadth', { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    if (!response.ok) throw new Error('Breadth unavailable');
+    const payload = await response.json();
+    state.niftyBreadth = payload.live === true ? payload : null;
+  } catch {
+    state.niftyBreadth = null;
+  } finally {
+    breadthBusy = false;
+    updateMarketMapPanel();
+  }
+}
+refreshBreadthContext();
+setInterval(() => { if (!document.hidden) refreshBreadthContext(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBreadthContext(); });
 setInterval(() => { if (!document.hidden) refreshOptionsContext(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOptionsContext(); });
 
@@ -14385,6 +14411,7 @@ function updateMarketMapPanel() {
 
   if (!map) {
 
+    set('#market-map-breadth', 'UNAVAILABLE', 'muted');
     set('#market-map-options', 'UNAVAILABLE', 'muted');
     set('#market-map-pcr', '—');
     set('#market-map-oi-walls', '—');
@@ -15126,14 +15153,16 @@ set(
 
 set(
   '#market-map-breadth',
-  breadth?.live === true
+  state.symbol === 'NIFTY' && regularNseHours() && breadth?.live === true &&
+    breadth.coverage === 50 && Date.now() - breadth.oldestQuoteAt >= 0 &&
+    Date.now() - breadth.oldestQuoteAt < 120000
     ? breadthBias +
       ' · ' +
       Number(breadth.advances || 0) +
       'A/' +
       Number(breadth.declines || 0) +
-      'D'
-    : 'UNAVAILABLE',
+      'D/' + Number(breadth.unchanged || 0) + 'U · 50/50'
+    : regularNseHours() ? 'UNAVAILABLE' : 'MARKET CLOSED',
   breadthBias === 'BULLISH'
     ? 'up'
     : breadthBias === 'BEARISH'
