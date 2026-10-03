@@ -2,6 +2,8 @@
 // PRO SCALPER - CLOUDFLARE WORKER
 // Real Upstox data only. No demo/random fallback.
 
+import { regularNseHours, summarizeOptions } from './options-context.js';
+
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
   BANKNIFTY: "NSE_INDEX|Nifty Bank",
@@ -2495,6 +2497,42 @@ async function niftyDailyHistory(url, token) {
 // WORKER ROUTER
 // ----------------------------------------------------
 
+let optionsPending = null;
+let optionsCached = null;
+let optionsCachedAt = 0;
+let optionsExpiry = null;
+let optionsExpiryDate = null;
+
+async function niftyOptions(token) {
+  if (!regularNseHours()) return json({ available: false, live: false, reason: 'MARKET CLOSED' });
+  if (optionsCached && Date.now() - optionsCachedAt < 60000) return json(optionsCached);
+  if (!optionsPending) {
+    optionsPending = (async () => {
+      try {
+        const today = todayIST();
+        if (!optionsExpiry || optionsExpiryDate !== today) {
+          const contracts = await upstoxFetch('https://api.upstox.com/v2/option/contract?instrument_key=' +
+            encodeURIComponent(SYMBOLS.NIFTY), token);
+          optionsExpiry = [...new Set((contracts.data || []).map(row => row.expiry))]
+            .filter(expiry => /^\d{4}-\d{2}-\d{2}$/.test(expiry) && expiry >= today).sort()[0];
+          optionsExpiryDate = today;
+        }
+        if (!optionsExpiry) throw new Error('No current NIFTY expiry available');
+        const chain = await upstoxFetch('https://api.upstox.com/v2/option/chain?instrument_key=' +
+          encodeURIComponent(SYMBOLS.NIFTY) + '&expiry_date=' + optionsExpiry, token);
+        return summarizeOptions(chain.data, optionsExpiry);
+      } catch (error) {
+        return { available: false, live: false, reason: error.message };
+      }
+    })().then(result => {
+      optionsCached = result;
+      optionsCachedAt = Date.now();
+      return result;
+    }).finally(() => { optionsPending = null; });
+  }
+  return json(await optionsPending);
+}
+
 export default {
   async fetch(request, env, context) {
     const url =
@@ -2606,6 +2644,10 @@ export default {
         reason:
           "Upstox token is not configured. Add UPSTOX_EXTENDED_TOKEN or today's UPSTOX_ANALYTICS_TOKEN in Cloudflare secrets.",
       }, 503);
+    }
+
+    if (url.pathname === '/api/nifty-options') {
+      return cachedApiResponse(request, 60, () => niftyOptions(token), context);
     }
 
     if (

@@ -1,4 +1,5 @@
 import { momentumSignals } from './momentum.js';
+import { regularNseHours } from './options-context.js';
 import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
 import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
@@ -9506,6 +9507,34 @@ setChartView(
 runSmrtDiagnostics();
 
 
+let optionsBusy = false;
+let optionsRequestedAt = 0;
+async function refreshOptionsContext() {
+  if (state.symbol !== 'NIFTY' || !regularNseHours()) {
+    state.niftyOptions = null;
+    updateMarketMapPanel();
+    return;
+  }
+  if (optionsBusy || Date.now() - optionsRequestedAt < 60000) return;
+  optionsBusy = true;
+  optionsRequestedAt = Date.now();
+  try {
+    const response = await fetch(API_BASE + '/api/nifty-options', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error('Options feed unavailable');
+    const payload = await response.json();
+    const age = Date.now() - Number(payload.fetchedAt);
+    state.niftyOptions = payload.available === true && age >= 0 && age < 120000 ? payload : null;
+  } catch {
+    state.niftyOptions = null;
+  } finally {
+    optionsBusy = false;
+    updateMarketMapPanel();
+  }
+}
+refreshOptionsContext();
+setInterval(() => { if (!document.hidden) refreshOptionsContext(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOptionsContext(); });
+
 refreshGlobalWatch().catch(
   () => {}
 );
@@ -14356,6 +14385,10 @@ function updateMarketMapPanel() {
 
   if (!map) {
 
+    set('#market-map-options', 'UNAVAILABLE', 'muted');
+    set('#market-map-pcr', '—');
+    set('#market-map-oi-walls', '—');
+
     set(
       '#market-map-support',
       '—'
@@ -15166,16 +15199,20 @@ const optionsBias =
     'UNAVAILABLE'
   ).toUpperCase();
 
+const optionsAvailable = state.symbol === 'NIFTY' && regularNseHours() &&
+  options?.available === true && Date.now() - Number(options.fetchedAt) >= 0 &&
+  Date.now() - Number(options.fetchedAt) < 120000;
+
 set(
   '#market-map-options',
-  options?.live === true
-    ? optionsBias +
+  optionsAvailable
+    ? 'OI SNAPSHOT' +
       (
         options.expiry
           ? ' · ' + options.expiry
           : ''
       )
-    : 'UNAVAILABLE',
+    : regularNseHours() ? 'UNAVAILABLE' : 'MARKET CLOSED',
   optionsBias === 'BULLISH'
     ? 'up'
     : optionsBias === 'BEARISH'
@@ -15185,7 +15222,7 @@ set(
 
 set(
   '#market-map-pcr',
-  options?.live === true &&
+  optionsAvailable &&
   Number.isFinite(Number(options.pcr))
     ? Number(options.pcr).toFixed(2)
     : '—'
@@ -15193,7 +15230,7 @@ set(
 
 set(
   '#market-map-oi-walls',
-  options?.live === true &&
+  optionsAvailable && options.putWall !== null && options.callWall !== null &&
   Number.isFinite(Number(options.putWall)) &&
   Number.isFinite(Number(options.callWall))
     ? 'P ' + fmt(options.putWall) +
