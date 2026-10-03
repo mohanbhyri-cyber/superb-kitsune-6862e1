@@ -6,6 +6,7 @@
 // ============================================================
 
 import { indicators } from './market.js';
+import { closedDonchian } from './donchian.js';
 import { trendIndicators } from './trend-indicators.js';
 
 const finite = v =>
@@ -288,6 +289,7 @@ export function analyseMarketMap(candles, options = {}) {
     close,
     atr,
     atrVolatility,
+    donchian: closedDonchian(candles),
     nearestSupport,
     nearestResistance,
     supports: supportZones

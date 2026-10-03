@@ -132,6 +132,10 @@
   margin-top: 16px;
 }
 
+#all-indicators-panel {
+  border-top: 3px solid var(--green);
+}
+
 .analysis-layout-grid > .panel {
   margin-top: 0 !important;
   margin-bottom: 16px;

@@ -14310,6 +14310,11 @@ function updateMarketMapPanel() {
 
 
   const volatility = map?.atrVolatility;
+  const channel = map?.donchian;
+  set('#market-map-donchian', channel
+    ? channel.state + ' / ' + fmt(channel.lower) + ' - ' + fmt(channel.upper) +
+      ' / Mid ' + fmt(channel.middle)
+    : 'WARMING UP', 'muted');
   set(
     '#market-map-atr-volatility',
     volatility && Number.isFinite(volatility.points) &&
