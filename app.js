@@ -13000,6 +13000,10 @@ function renderAiNifty() {
 
 
   if (!ai) {
+    for (const field of ['entry', 'stop', 'tp1', 'tp2', 'tp3']) {
+      set('#ai-nifty-' + field, 'NO TRADE');
+    }
+    set('#ai-nifty-reasons', 'No confirmed trade plan. Waiting for market data.');
     set(
       '#ai-nifty-signal',
       'WAIT',
@@ -13020,12 +13024,20 @@ function renderAiNifty() {
   }
 
 
+  const marketOpen = regularNseHours();
+  const plan = marketOpen && ['BUY', 'SELL'].includes(ai.signal) &&
+    ai.plan && ['entry', 'stop', 'target1', 'target2', 'target3'].every(
+      key => ai.plan[key] !== null && ai.plan[key] !== undefined &&
+        Number.isFinite(Number(ai.plan[key])) && Number(ai.plan[key]) > 0
+    ) ? ai.plan : null;
+  const displaySignal = plan ? ai.signal : 'NO TRADE';
+
   set(
     '#ai-nifty-signal',
-    ai.signal,
-    ai.signal === 'BUY'
+    displaySignal,
+    displaySignal === 'BUY'
       ? 'up'
-      : ai.signal === 'SELL'
+      : displaySignal === 'SELL'
         ? 'down'
         : 'muted'
   );
@@ -13068,7 +13080,7 @@ function renderAiNifty() {
 
   set(
     '#ai-nifty-price-agreement',
-    Number.isFinite(
+    ai.priceAgreement !== null && ai.priceAgreement !== undefined && Number.isFinite(
       Number(
         ai.priceAgreement
       )
@@ -13085,66 +13097,67 @@ function renderAiNifty() {
 
   set(
     '#ai-nifty-entry',
-    ai.plan
+    plan
       ? '₹' +
         fmt(
-          ai.plan.entry
+          plan.entry
         )
-      : '—'
+      : 'NO TRADE'
   );
 
 
   set(
     '#ai-nifty-stop',
-    ai.plan
+    plan
       ? '₹' +
         fmt(
-          ai.plan.stop
+          plan.stop
         )
-      : '—'
+      : 'NO TRADE'
   );
 
 
   set(
     '#ai-nifty-tp1',
-    ai.plan
+    plan
       ? '₹' +
         fmt(
-          ai.plan.target1
+          plan.target1
         )
-      : '—'
+      : 'NO TRADE'
   );
 
 
   set(
     '#ai-nifty-tp2',
-    ai.plan
+    plan
       ? '₹' +
         fmt(
-          ai.plan.target2
+          plan.target2
         )
-      : '—'
+      : 'NO TRADE'
   );
 
 
   set(
     '#ai-nifty-tp3',
-    ai.plan
+    plan
       ? '₹' +
         fmt(
-          ai.plan.target3
+          plan.target3
         )
-      : '—'
+      : 'NO TRADE'
   );
 
 
   set(
     '#ai-nifty-reasons',
-    ai.reasons?.length
+    (!marketOpen ? 'Market closed. No live trade plan. ' :
+      !plan ? 'No confirmed trade plan. ' : '') + (ai.reasons?.length
       ? ai.reasons.join(
           ' · '
         )
-      : 'Waiting for external market confirmation'
+      : 'Waiting for external market confirmation')
   );
 }
 
