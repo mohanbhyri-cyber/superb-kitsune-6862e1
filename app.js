@@ -14343,6 +14343,17 @@ function updateMarketMapPanel() {
     };
 
 
+  const volatility = map?.atrVolatility;
+  set(
+    '#market-map-atr-volatility',
+    volatility && Number.isFinite(volatility.points) &&
+      Number.isFinite(volatility.percent) && Number.isFinite(volatility.percentile)
+      ? fmt(volatility.points) + ' pts / ' + volatility.percent.toFixed(2) +
+        '% / P' + volatility.percentile + ' (100 candles)'
+      : 'WARMING UP',
+    'muted'
+  );
+
   if (!map) {
 
     set(

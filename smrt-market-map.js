@@ -127,6 +127,16 @@ export function analyseMarketMap(candles, options = {}) {
   );
 
   const close = Number(candles[closedIndex].close);
+  const volatilityWindow = atr14.slice(closedIndex - 99, closedIndex + 1);
+  const volatilityReady = closedIndex >= 219 && close > 0 &&
+    volatilityWindow.length === 100 &&
+    volatilityWindow.every(value => finite(value) && Number(value) > 0);
+  const atrVolatility = volatilityReady ? {
+    points: atr,
+    percent: atr / close * 100,
+    percentile: volatilityWindow.filter(value => value <= atr).length,
+    time: candles[closedIndex].time
+  } : null;
   const prevClose = Number(candles[closedIndex - 1]?.close);
   const e9 = Number(calc.e9?.[closedIndex]);
   const e21 = Number(calc.e21?.[closedIndex]);
@@ -277,6 +287,7 @@ export function analyseMarketMap(candles, options = {}) {
     time: candles[closedIndex].time,
     close,
     atr,
+    atrVolatility,
     nearestSupport,
     nearestResistance,
     supports: supportZones
