@@ -14796,12 +14796,7 @@ const riskPoints =
 set(
   '#market-map-atr-risk',
   Number.isFinite(riskPoints)
-    ? '₹' + fmt(riskPoints) +
-      (
-        Number.isFinite(atrValue)
-          ? ' · ATR ₹' + fmt(atrValue)
-          : ''
-      )
+    ? '₹' + fmt(riskPoints)
     : '—'
 );
 
@@ -14916,30 +14911,6 @@ set(
       : 'muted'
 );
 
-const mtfRowsPremium =
-  ['5m', '15m', '1h'].map(
-    tf => state.mtf?.[tf]?.side
-  );
-
-const mtfTextPremium =
-  mtfRowsPremium.every(side => side === 1)
-    ? 'BULLISH'
-    : mtfRowsPremium.every(side => side === -1)
-      ? 'BEARISH'
-      : mtfRowsPremium.some(side => side === 1 || side === -1)
-        ? 'MIXED'
-        : 'WAITING';
-
-set(
-  '#market-map-mtf',
-  mtfTextPremium,
-  mtfTextPremium === 'BULLISH'
-    ? 'up'
-    : mtfTextPremium === 'BEARISH'
-      ? 'down'
-      : 'muted'
-);
-
 const structureText =
   String(
     state.primeMarket?.structure ||
@@ -14975,25 +14946,6 @@ set(
   liquidityText.includes('BULL')
     ? 'up'
     : liquidityText.includes('BEAR')
-      ? 'down'
-      : 'muted'
-);
-
-const momentumSignal =
-  String(
-    state.momentum?.filter(Boolean).at(-1)?.signal ||
-    state.momentum?.filter(Boolean).at(-1)?.state ||
-    'WAITING'
-  ).toUpperCase();
-
-set(
-  '#market-map-momentum',
-  momentumSignal,
-  momentumSignal.includes('BUY') ||
-  momentumSignal.includes('BULL')
-    ? 'up'
-    : momentumSignal.includes('SELL') ||
-      momentumSignal.includes('BEAR')
       ? 'down'
       : 'muted'
 );
