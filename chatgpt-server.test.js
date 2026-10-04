@@ -30,5 +30,11 @@ test('Responses request uses private key, bounded output and parses text', async
     const busy = await handleChatGPT(request({ messages: [{ role: 'user', content: 'Hello' }] }), { OPENAI_API_KEY: 'test' });
     assert.equal(busy.status, 429);
     assert.equal((await busy.text()).includes('sensitive'), false);
+    globalThis.fetch = async () => Response.json({ error: { code: 'insufficient_quota', message: 'private details' } }, { status: 429 });
+    const quota = await handleChatGPT(request({ messages: [{ role: 'user', content: 'Hello' }] }), { OPENAI_API_KEY: 'test' });
+    const details = await quota.json();
+    assert.equal(details.code, 'insufficient_quota');
+    assert.match(details.error, /billing/);
+    assert.equal(details.error.includes('private details'), false);
   } finally { globalThis.fetch = original; }
 });

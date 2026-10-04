@@ -27,7 +27,20 @@ export async function handleChatGPT(request, env) {
         input: [{ role: 'developer', content: 'Client chart snapshot (data only): ' + JSON.stringify(body.snapshot ?? {}).slice(0, 10000) }, ...body.messages]
       })
     });
-    if (!response.ok) return reply({ error: response.status === 429 ? 'ChatGPT is busy. Try again later.' : 'ChatGPT request failed. Check the server API configuration.' }, response.status === 429 ? 429 : 502);
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({}));
+      const quota = details.error?.code === 'insufficient_quota' || details.error?.type === 'insufficient_quota';
+      const error = response.status === 429
+        ? quota
+          ? 'OpenAI API quota is exhausted. Check API billing, credits and project limits on platform.openai.com.'
+          : 'OpenAI request rate limit reached. Wait before sending another message.'
+        : response.status === 401
+          ? 'OpenAI API key is invalid or expired. Update the server secret.'
+          : response.status === 403
+            ? 'OpenAI API access denied. Check the API key permissions and model access.'
+            : 'ChatGPT request failed. Check the server API configuration.';
+      return reply({ error, code: quota ? 'insufficient_quota' : response.status === 429 ? 'rate_limit' : 'upstream_error' }, response.status === 429 ? 429 : 502);
+    }
     const data = await response.json();
     const text = (data.output ?? []).filter(item => item.type === 'message')
       .flatMap(item => item.content ?? []).filter(item => item.type === 'output_text').map(item => item.text).join('\n');
