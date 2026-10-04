@@ -3,7 +3,7 @@ import { indicators } from './market.js';
 export function indicatorReadout(candles, technical) {
   const waiting = { bands: 'WAIT', stochastic: 'WAIT', cloud: 'WAIT' };
   if (!Array.isArray(candles) || candles.length < 220) return waiting;
-  if (candles.some(c => ['high', 'low', 'close'].some(k => c?.[k] == null || !Number.isFinite(Number(c[k]))))) return waiting;
+  if (candles.some(c => ['time', 'high', 'low', 'close'].some(k => c?.[k] == null || !Number.isFinite(Number(c[k]))))) return waiting;
   const number = value => Number.isFinite(value) ? value.toFixed(2) : 'Unavailable';
   const bands = indicators(candles).bb.at(-1);
   const midpoint = (end, period) => {
