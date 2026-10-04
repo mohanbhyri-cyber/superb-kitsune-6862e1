@@ -5,6 +5,7 @@
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
 import { parse } from 'csv-parse/sync';
+import { handleChatGPT } from './chatgpt-server.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -2579,6 +2580,8 @@ export default {
   async fetch(request, env, context) {
     const url =
       new URL(request.url);
+
+    if (url.pathname === '/api/chatgpt') return handleChatGPT(request, env);
 
     if (
       request.method === "OPTIONS" &&
