@@ -1,4 +1,5 @@
 import { momentumSignals } from './momentum.js';
+import { renderIndicatorReadout } from './indicator-readout.js';
 import { regularNseHours } from './options-context.js';
 import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
@@ -639,6 +640,8 @@ const technicalIndicators =
 
 window.SMRTAdvancedIndicators =
   technicalIndicators;
+
+renderIndicatorReadout(advancedCandles, technicalIndicators);
 
 window.SMRTAdvancedIndicatorStatus = {
   sourceCount:
