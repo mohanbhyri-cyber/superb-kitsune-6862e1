@@ -25,6 +25,9 @@ import {
   analyseSmrtAiNifty
 } from './smrt-ai-nifty.js';
 import {
+  analyseSmrtAiIndicator
+} from './smrt-ai-indicator.js';
+import {
   analyseGlobalWatch
 } from './smrt-global-watch.js';
 import {
@@ -803,12 +806,12 @@ if (advancedCandles.length > 0) {
   state.liveTradeFinalizer =
     state.tradeFinalizer;
 
-
   // ==========================================================
   // DISPLAY
   // ==========================================================
 
   renderPrimeMarket();
+  renderAiIndicator();
   renderSmartMoneyTools();
 }
 
@@ -1732,6 +1735,10 @@ const state = {
   liveTradeFinalizer: null,
 
   aiNifty: null,
+
+  aiIndicator: null,
+
+  aiIndicatorCandles: null,
 
   externalNifty: null,
 
@@ -4181,6 +4188,63 @@ function buildTradingViewMarkers() {
     previousSide = side;
   });
 
+  const ai =
+    state.aiIndicator;
+
+  if (
+    ai?.marker === true &&
+    (ai.side === 1 || ai.side === -1) &&
+    ai.time !== null &&
+    ai.time !== undefined
+  ) {
+    const time =
+      Number(ai.time);
+
+    const index =
+      state.data.findIndex(
+        candle =>
+          Number(candle?.time) === time
+      );
+
+    const exists =
+      markers.some(
+        marker =>
+          Number(marker.time) === time &&
+          String(marker.text || '').startsWith('AI ')
+      );
+
+    if (
+      Number.isFinite(time) &&
+      index >= 0 &&
+      index < state.data.length - 1 &&
+      !exists
+    ) {
+      const isCall =
+        ai.side === 1;
+
+      markers.push({
+        time,
+        position:
+          isCall
+            ? 'belowBar'
+            : 'aboveBar',
+        color:
+          isCall
+            ? '#19c37d'
+            : '#ff5c7a',
+        shape:
+          isCall
+            ? 'arrowUp'
+            : 'arrowDown',
+        text:
+          isCall
+            ? 'AI CALL'
+            : 'AI PUT',
+        size: 2
+      });
+    }
+  }
+
   return markers.sort((a, b) => a.time - b.time);
 }
 
@@ -4965,6 +5029,10 @@ function draw() {
   refreshProSuite();
   }
   refreshPrimeConfirmation();
+  state.aiIndicatorCandles = indicatorData;
+  recomputeAiIndicator(
+    indicatorData
+  );
 
 
   syncTradingViewLiteChart();
@@ -6027,6 +6095,75 @@ function draw() {
       ctx.fillText(
         label,
         markerX + 10,
+        markerY + 14
+      );
+      ctx.restore();
+    }
+  }
+
+  const aiChart =
+    state.aiIndicator;
+
+  if (
+    aiChart?.marker === true &&
+    (aiChart.side === 1 || aiChart.side === -1)
+  ) {
+    const aiMarkerCandle =
+      state.data.find(
+        candle =>
+          Number(candle?.time) ===
+          Number(aiChart.time)
+      );
+
+    const aiMarkerIndex =
+      aiMarkerCandle
+        ? state.data.findIndex(
+            candle =>
+              candle.time ===
+              aiMarkerCandle.time
+          ) - start
+        : -1;
+
+    if (
+      aiMarkerCandle &&
+      aiMarkerIndex >= 0 &&
+      aiMarkerIndex < end - start
+    ) {
+      const label =
+        aiChart.side === 1
+          ? 'AI CALL'
+          : 'AI PUT';
+
+      const markerY =
+        aiChart.side === 1
+          ? y(aiMarkerCandle.low) + 42
+          : y(aiMarkerCandle.high) - 52;
+
+      const markerX =
+        Math.max(
+          4,
+          Math.min(
+            plot - 76,
+            x(aiMarkerIndex) - 34
+          )
+        );
+
+      ctx.save();
+      ctx.fillStyle =
+        aiChart.side === 1
+          ? '#19c37d'
+          : '#ff5c7a';
+      ctx.fillRect(
+        markerX,
+        markerY,
+        72,
+        20
+      );
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px system-ui';
+      ctx.fillText(
+        label,
+        markerX + 8,
         markerY + 14
       );
       ctx.restore();
@@ -8321,6 +8458,8 @@ async function loadData() {
   state.tradeFinalizer = null;
   state.liveTradeFinalizer = null;
   state.allIndicatorsConsensus = null;
+  state.aiIndicator = null;
+  state.aiIndicatorCandles = null;
 
   // Reset Prime safely before loading fresh history.
   state.primeMarket = null;
@@ -9190,6 +9329,7 @@ function runSmrtDiagnostics() {
     'all-indicators-panel',
     'all-indicators-chat-panel',
     'global-watch-panel',
+    'ai-indicator-panel',
     'ai-nifty-panel',
     'trade-finalizer-panel',
     'gainz-ssl-panel',
@@ -12491,6 +12631,43 @@ function renderGainzSSLPanel() {
 function refreshLiveTradeFinalizer() {
   // Quotes may refresh the display, but cannot close the current candle.
   refreshPrimeConfirmation();
+  recomputeAiIndicator();
+}
+
+function recomputeAiIndicator(
+  candles = null
+) {
+  state.aiIndicator =
+    analyseSmrtAiIndicator({
+      candles:
+        candles ||
+        state.aiIndicatorCandles ||
+        state.data,
+      calc:
+        state.calc,
+      trend:
+        state.trend,
+      mtf:
+        state.mtf,
+      marketMap:
+        state.marketMap,
+      liquidity:
+        state.liquidityTrap,
+      niftyEdge:
+        state.niftyEdge,
+      momentum:
+        state.momentum,
+      efficiency:
+        state.efficiencyEngine,
+      finalizer:
+        state.tradeFinalizer,
+      consensus:
+        state.allIndicatorsConsensus,
+      futuresVWAP:
+        state.futuresVWAP
+    });
+
+  renderAiIndicator();
 }
 
 
@@ -12519,6 +12696,7 @@ function recomputeAllIndicatorsConsensus() {
     });
 
   state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, 'signal');
+  recomputeAiIndicator();
   renderAllIndicatorsConsensus();
   renderTradeFinalizer();
   renderProSuiteSummary();
@@ -12964,6 +13142,114 @@ async function refreshGlobalWatch() {
 
     recomputeAllIndicatorsConsensus();
   }
+}
+
+
+function renderAiIndicator() {
+
+  const ai =
+    state.aiIndicator;
+
+  const set =
+    (
+      selector,
+      value,
+      className
+    ) => {
+      const el =
+        $(selector);
+
+      if (!el) {
+        return;
+      }
+
+      el.textContent =
+        value;
+
+      if (
+        className !==
+        undefined
+      ) {
+        el.className =
+          className;
+      }
+    };
+
+  if (!ai) {
+    set(
+      '#ai-indicator-signal',
+      'AI WAIT',
+      'muted'
+    );
+
+    set(
+      '#ai-indicator-score',
+      '0 / 100 confluence'
+    );
+
+    set(
+      '#ai-indicator-regime',
+      'WARMING UP'
+    );
+
+    set(
+      '#ai-indicator-time',
+      'Closed candle —'
+    );
+
+    set(
+      '#ai-indicator-reasons',
+      'Waiting for confirmed closed-candle confluence.'
+    );
+
+    return;
+  }
+
+  set(
+    '#ai-indicator-signal',
+    ai.signal,
+    ai.side === 1
+      ? 'up'
+      : ai.side === -1
+        ? 'down'
+        : 'muted'
+  );
+
+  set(
+    '#ai-indicator-score',
+    Number(ai.score || 0) +
+      ' / 100 confluence'
+  );
+
+  set(
+    '#ai-indicator-regime',
+    ai.regime ||
+      'UNCONFIRMED'
+  );
+
+  set(
+    '#ai-indicator-time',
+    ai.time
+      ? 'Closed candle ' +
+        new Date(
+          Number(ai.time) * 1000
+        ).toLocaleTimeString(
+          'en-IN',
+          {
+            hour: '2-digit',
+            minute: '2-digit'
+          }
+        )
+      : 'Closed candle —'
+  );
+
+  set(
+    '#ai-indicator-reasons',
+    Array.isArray(ai.reasons) &&
+      ai.reasons.length
+      ? ai.reasons.join(' · ')
+      : 'AI WAIT: inputs are missing, stale, conflicting, or below threshold.'
+  );
 }
 
 

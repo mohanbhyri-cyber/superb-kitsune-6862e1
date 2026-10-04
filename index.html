@@ -1825,6 +1825,82 @@
 
   <section
     class="panel"
+    id="ai-indicator-panel"
+    style="margin-top:0"
+  >
+
+    <div class="panel-heading">
+      <h2>
+        SMRT AI Indicator
+        <span class="tag">META CONFIRMATION</span>
+      </h2>
+
+      <span class="muted">
+        Closed-candle confluence · no predictive accuracy claim
+      </span>
+    </div>
+
+    <div class="pro-suite-grid">
+
+      <div class="pro-suite-card">
+        <small>AI Decision</small>
+
+        <strong
+          id="ai-indicator-signal"
+          class="muted"
+        >
+          AI WAIT
+        </strong>
+
+        <span id="ai-indicator-score">
+          0 / 100 confluence
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Market Regime</small>
+
+        <strong id="ai-indicator-regime">
+          WARMING UP
+        </strong>
+
+        <span id="ai-indicator-time">
+          Closed candle —
+        </span>
+      </div>
+
+      <div class="pro-suite-card">
+        <small>Fail-Closed Rules</small>
+
+        <strong>
+          AI WAIT on missing data
+        </strong>
+
+        <span class="muted">
+          stale · warming · conflicting · unavailable
+        </span>
+      </div>
+
+    </div>
+
+    <p
+      id="ai-indicator-reasons"
+      class="pa-note"
+      style="margin-top:10px"
+    >
+      Waiting for confirmed closed-candle confluence.
+    </p>
+
+    <p class="disclaimer">
+      The AI score is only a 0–100 confluence score. It is not trading
+      accuracy, win probability, or a price prediction.
+    </p>
+
+  </section>
+
+
+  <section
+    class="panel"
     id="ai-nifty-panel"
     style="margin-top:0"
   >
@@ -2298,7 +2374,7 @@
 
 <script
   type="module"
-  src="app.js?v=88"
+  src="app.js?v=89"
 ></script>
 
 </body>
