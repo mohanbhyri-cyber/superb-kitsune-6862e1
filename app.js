@@ -1,5 +1,4 @@
 import { momentumSignals } from './momentum.js';
-import { setupChatGPT } from './chatgpt.js';
 import { regularNseHours } from './options-context.js';
 import { trendIndicators } from './trend-indicators.js';
 import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
@@ -9441,7 +9440,6 @@ let checkAlerts =
 loadData();
 
 setupAllIndicatorsChat();
-setupChatGPT(() => ({ ...allIndicatorsChatSnapshot(), aiIndicator: state.aiIndicator, capturedAt: new Date().toISOString() }));
 
 
 // TradingView-style chart controls.
