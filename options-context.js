@@ -30,6 +30,13 @@ export function summarizeOptions(rows, expiry, fetchedAt = Date.now()) {
     else if (put === putMax) putWall = null;
   }
   if (calls <= 0 || puts <= 0 || !Number.isFinite(calls + puts)) return unavailable;
-  return { available: true, live: false, expiry, fetchedAt, pcr: puts / calls,
-    callWall, putWall, callOI: calls, putOI: puts, strikeCount: strikes.size };
+  const pcr = puts / calls;
+  const bias =
+    pcr >= 1.15 && putWall !== null && callWall !== null && Number(putWall) <= Number(callWall)
+      ? 'BULLISH'
+      : pcr <= 0.85 && putWall !== null && callWall !== null && Number(callWall) >= Number(putWall)
+        ? 'BEARISH'
+        : 'NEUTRAL';
+  return { available: true, live: false, expiry, fetchedAt, pcr,
+    callWall, putWall, callOI: calls, putOI: puts, strikeCount: strikes.size, bias };
 }

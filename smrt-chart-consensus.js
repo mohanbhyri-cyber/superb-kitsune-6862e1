@@ -116,6 +116,18 @@ export function analyseChartConsensus({
 
     let bull = 0;
     let bear = 0;
+    const grouped = {
+      trend: { bull: 0, bear: 0, cap: 5 },
+      momentum: { bull: 0, bear: 0, cap: 2 },
+      vwap: { bull: 0, bear: 0, cap: 1 },
+      smrt: { bull: 0, bear: 0, cap: 5 }
+    };
+
+    const addGroup = (group, side, weight) => {
+      if (!grouped[group] || (side !== 1 && side !== -1)) return;
+      if (side === 1) grouped[group].bull += weight;
+      if (side === -1) grouped[group].bear += weight;
+    };
 
     const reasons = [];
 
@@ -138,6 +150,7 @@ export function analyseChartConsensus({
       ) {
 
         bull += 2;
+        addGroup('trend', 1, 2);
 
         reasons.push(
           'EMA bullish'
@@ -151,6 +164,7 @@ export function analyseChartConsensus({
       ) {
 
         bear += 2;
+        addGroup('trend', -1, 2);
 
         reasons.push(
           'EMA bearish'
@@ -167,6 +181,7 @@ export function analyseChartConsensus({
     if (st === 1) {
 
       bull += 2;
+      addGroup('trend', 1, 2);
 
       reasons.push(
         'Supertrend bullish'
@@ -177,6 +192,7 @@ export function analyseChartConsensus({
     ) {
 
       bear += 2;
+      addGroup('trend', -1, 2);
 
       reasons.push(
         'Supertrend bearish'
@@ -203,6 +219,7 @@ export function analyseChartConsensus({
       ) {
 
         bull += 2;
+        addGroup('trend', 1, 2);
 
         reasons.push(
           'ADX/DMI bullish'
@@ -214,6 +231,7 @@ export function analyseChartConsensus({
       ) {
 
         bear += 2;
+        addGroup('trend', -1, 2);
 
         reasons.push(
           'ADX/DMI bearish'
@@ -234,6 +252,7 @@ export function analyseChartConsensus({
       ) {
 
         bull += 1;
+        addGroup('momentum', 1, 1);
 
         reasons.push(
           'RSI bullish'
@@ -244,6 +263,7 @@ export function analyseChartConsensus({
       ) {
 
         bear += 1;
+        addGroup('momentum', -1, 1);
 
         reasons.push(
           'RSI bearish'
@@ -264,6 +284,7 @@ export function analyseChartConsensus({
       ) {
 
         bull += 1;
+        addGroup('momentum', 1, 1);
 
         reasons.push(
           'MACD positive'
@@ -274,6 +295,7 @@ export function analyseChartConsensus({
       ) {
 
         bear += 1;
+        addGroup('momentum', -1, 1);
 
         reasons.push(
           'MACD negative'
@@ -298,6 +320,7 @@ export function analyseChartConsensus({
       ) {
 
         bull += 1;
+        addGroup('vwap', 1, 1);
 
         reasons.push(
           'Above VWAP'
@@ -309,6 +332,7 @@ export function analyseChartConsensus({
       ) {
 
         bear += 1;
+        addGroup('vwap', -1, 1);
 
         reasons.push(
           'Below VWAP'
@@ -339,6 +363,7 @@ export function analyseChartConsensus({
     ) {
 
       bull += 3;
+      addGroup('smrt', 1, 3);
 
       reasons.push(
         'NIFTY EDGE buy'
@@ -353,6 +378,7 @@ export function analyseChartConsensus({
     ) {
 
       bear += 3;
+      addGroup('smrt', -1, 3);
 
       reasons.push(
         'NIFTY EDGE sell'
@@ -376,6 +402,7 @@ export function analyseChartConsensus({
     ) {
 
       bull += 2;
+      addGroup('smrt', 1, 2);
 
       reasons.push(
         'SSL+QQE long'
@@ -386,6 +413,7 @@ export function analyseChartConsensus({
     ) {
 
       bear += 2;
+      addGroup('smrt', -1, 2);
 
       reasons.push(
         'SSL+QQE short'
@@ -396,6 +424,15 @@ export function analyseChartConsensus({
     // ========================================================
     // DIRECTION
     // ========================================================
+
+    bull = Object.values(grouped).reduce(
+      (sum, group) => sum + Math.min(group.bull, group.cap),
+      0
+    );
+    bear = Object.values(grouped).reduce(
+      (sum, group) => sum + Math.min(group.bear, group.cap),
+      0
+    );
 
     const side =
       bull > bear

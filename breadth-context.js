@@ -18,6 +18,14 @@ export function summarizeBreadth(data, keys, now = Date.now()) {
     else if (q.last_price < q.prev_close_price) declines++;
     else unchanged++;
   }
+  const spread = advances - declines;
+  const bias =
+    advances >= 30 && spread >= 8
+      ? 'BULLISH'
+      : declines >= 30 && spread <= -8
+        ? 'BEARISH'
+        : 'NEUTRAL';
+
   return { live: true, advances, declines, unchanged, coverage: 50, fetchedAt: now,
-    oldestQuoteAt: oldest, bias: 'SNAPSHOT' };
+    oldestQuoteAt: oldest, bias };
 }

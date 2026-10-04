@@ -326,6 +326,24 @@ function istDateMinusDays(days) {
 
 // Cooldowns are shared by credential within this Worker instance.
 const upstoxCooldowns = new Map();
+const upstoxResponseCache = new Map();
+const upstoxInFlight = new Map();
+
+function cloneJson(value) {
+  return value == null
+    ? value
+    : JSON.parse(JSON.stringify(value));
+}
+
+function upstoxCacheTtl(endpoint) {
+  if (endpoint.includes('/market-quote/quotes')) return 15000;
+  if (endpoint.includes('/option/chain')) return 60000;
+  if (endpoint.includes('/option/contract')) return 6 * 60 * 60 * 1000;
+  if (endpoint.includes('/historical-candle/')) return 30000;
+  if (endpoint.includes('/instruments/search')) return 6 * 60 * 60 * 1000;
+  return 10000;
+}
+
 function upstoxCooldownError(until) {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
@@ -334,50 +352,70 @@ function upstoxCooldownError(until) {
   return error;
 }
 async function upstoxFetch(endpoint, token) {
+  const cacheKey = token + '|' + endpoint;
+  const cached = upstoxResponseCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cloneJson(cached.body);
+  upstoxResponseCache.delete(cacheKey);
+
+  const pending = upstoxInFlight.get(cacheKey);
+  if (pending) return cloneJson(await pending);
+
   const until = upstoxCooldowns.get(token) || 0;
   if (until > Date.now()) throw upstoxCooldownError(until);
   upstoxCooldowns.delete(token);
-  const response = await fetch(endpoint, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
+  const request = (async () => {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+
+      console.error(
+        "Upstox error",
+        response.status,
+        details
+      );
+
+      const error = new Error(
+        `Upstox returned HTTP ${response.status}.`
+      );
+
+      // Preserve HTTP status for all callers
+      error.status = response.status;
+
+      // Special handling for Upstox rate limit
+      error.rateLimited = response.status === 429;
+
+      // Respect Retry-After when Upstox provides it.
+      const retryHeader = response.headers.get('retry-after');
+      const seconds = retryHeader && Number.isFinite(Number(retryHeader))
+        ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
+      error.retryAfterMs = response.status === 429
+        ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
+      if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
+
+      error.details = details;
+
+      throw error;
+    }
+
+    const body = await response.json();
+    upstoxResponseCache.set(cacheKey, {
+      body,
+      expiresAt: Date.now() + upstoxCacheTtl(endpoint)
+    });
+    return body;
+  })().finally(() => {
+    upstoxInFlight.delete(cacheKey);
   });
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-
-    console.error(
-      "Upstox error",
-      response.status,
-      details
-    );
-
-    const error = new Error(
-      `Upstox returned HTTP ${response.status}.`
-    );
-
-    // Preserve HTTP status for all callers
-    error.status = response.status;
-
-    // Special handling for Upstox rate limit
-    error.rateLimited = response.status === 429;
-
-    // Respect Retry-After when Upstox provides it.
-    const retryHeader = response.headers.get('retry-after');
-    const seconds = retryHeader && Number.isFinite(Number(retryHeader))
-      ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
-    error.retryAfterMs = response.status === 429
-      ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
-    if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
-
-    error.details = details;
-
-    throw error;
-  }
-
-  return response.json();
+  upstoxInFlight.set(cacheKey, request);
+  return cloneJson(await request);
 }
 // ----------------------------------------------------
 // LIVE QUOTE
