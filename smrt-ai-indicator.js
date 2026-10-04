@@ -369,14 +369,18 @@ export function analyseSmrtAiIndicator({
     mandatory: true
   });
 
+  const momentumOutput = Array.isArray(momentum) ? momentum[closed] : momentum?.latest ?? momentum;
   const momentumSide =
-    sideFromText(momentum?.latest?.signal) ||
+    sideFromText(momentumOutput?.signal) ||
     sideFromText(momentum?.signal) ||
     sideFromText(momentum?.state);
 
   addVote(votes, blockers, {
     name: 'Momentum',
     side: momentumSide,
+    mandatory: true,
+    requiredTime: time,
+    sourceTime: momentumOutput?.time ?? null,
     weight: 4,
     reason:
       momentumSide === 1
@@ -385,6 +389,7 @@ export function analyseSmrtAiIndicator({
   });
 
   const liquiditySide =
+    (liquidity?.ready === true && [1, -1].includes(liquidity?.side) ? liquidity.side : 0) ||
     sideFromText(liquidity?.signal) ||
     sideFromText(liquidity?.setup) ||
     sideFromText(liquidity?.bias);
@@ -392,6 +397,8 @@ export function analyseSmrtAiIndicator({
   addVote(votes, blockers, {
     name: 'Liquidity/FVG',
     side: liquiditySide,
+    requiredTime: time,
+    sourceTime: liquidity?.time ?? null,
     weight: 4,
     reason:
       liquiditySide === 1
@@ -400,6 +407,11 @@ export function analyseSmrtAiIndicator({
   });
 
   const efficiencyReady = efficiency?.ready === true;
+  if (!efficiencyReady || !finite(efficiency?.score)) {
+    blockers.push('Efficiency inputs unavailable or warming up');
+  } else if (!sameTime(efficiency, time)) {
+    blockers.push('Efficiency stale');
+  }
   const efficiencyScore = Number(efficiency?.score);
   const efficiencyBlocked =
     efficiencyReady &&
