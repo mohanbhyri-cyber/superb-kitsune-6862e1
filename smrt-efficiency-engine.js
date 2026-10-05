@@ -1,80 +1,37 @@
-// smrt-efficiency-engine.js
-// Closed-candle trend-quality / noise filter for NIFTY.
-// Context only: it does not create BUY or SELL orders.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { analyseSmrtAiIndicator as analyse } from './smrt-ai-indicator.js';
 
-const finite = v => Number.isFinite(Number(v));
-
-function trueRange(c, p) {
-  if (!c) return null;
-  const h = Number(c.high), l = Number(c.low);
-  if (!finite(h) || !finite(l)) return null;
-  if (!p || !finite(p.close)) return h - l;
-  const pc = Number(p.close);
-  return Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+function fixture() {
+  const series = value => Array(221).fill(value);
+  return {
+    candles: Array.from({ length: 221 }, (_, time) => ({ time, close: 110 })),
+    calc: { e9: series(108), e21: series(106), e50: series(104), e200: series(100), rsi: series(60), hist: series(1), vwap: series(105) },
+    trend: { direction: series(1), adx: series(30), plusDI: series(30), minusDI: series(10) },
+    mtf: { overall: 'BULLISH' }, marketMap: { action: 'BUY' },
+    niftyEdge: { latest: { signal: 'BUY', side: 1, time: 219 } },
+    finalizer: { state: 'CALL', primeConfirmed: true, time: 219 },
+    consensus: { signal: 'BUY', confidence: 90 },
+    momentum: series({ signal: 'BUY', time: 219 }),
+    liquidity: { ready: true, side: 1, state: 'BULLISH', time: 219 },
+    efficiency: { ready: true, score: 80, regime: 'TRENDING', time: 219 }
+  };
 }
-
-function kaufmanER(candles, end, period = 10) {
-  if (end < period) return null;
-  const change = Math.abs(Number(candles[end].close) - Number(candles[end-period].close));
-  let noise = 0;
-  for (let i=end-period+1;i<=end;i++) noise += Math.abs(Number(candles[i].close)-Number(candles[i-1].close));
-  return noise > 0 ? change / noise : 0;
-}
-
-function choppiness(candles, end, period = 14) {
-  if (end < period) return null;
-  let trSum=0, high=-Infinity, low=Infinity;
-  for(let i=end-period+1;i<=end;i++){
-    const tr=trueRange(candles[i],candles[i-1]);
-    if(!finite(tr)) return null;
-    trSum+=tr;
-    high=Math.max(high,Number(candles[i].high));
-    low=Math.min(low,Number(candles[i].low));
+test('closed-candle momentum array and liquidity side participate', () => {
+  const data = fixture();
+  assert.equal(analyse(data).signal, 'AI CALL');
+  data.momentum[220] = { signal: 'SELL', time: 220 };
+  assert.equal(analyse(data).signal, 'AI CALL');
+  data.liquidity.side = -1;
+  assert.equal(analyse(data).signal, 'AI WAIT');
+});
+test('missing, warming, stale and conflicting inputs fail closed', () => {
+  for (const change of [d => d.efficiency = null, d => d.efficiency.ready = false,
+    d => d.efficiency.time = 218, d => d.momentum[219] = null,
+    d => d.momentum[219] = { signal: 'SELL', time: 219 },
+    d => d.momentum[219] = { signal: 'BUY', time: 218 },
+    d => d.candles.pop(), d => d.finalizer.primeConfirmed = false]) {
+    const data = fixture(); change(data);
+    assert.equal(analyse(data).signal, 'AI WAIT');
   }
-  const range=high-low;
-  if(!(range>0) || !(trSum>0)) return 100;
-  return 100*Math.log10(trSum/range)/Math.log10(period);
-}
-
-function atr(candles,end,period=14){
-  if(end<period) return null;
-  let sum=0;
-  for(let i=end-period+1;i<=end;i++){
-    const tr=trueRange(candles[i],candles[i-1]);
-    if(!finite(tr)) return null;
-    sum+=tr;
-  }
-  return sum/period;
-}
-
-export function analyseEfficiencyEngine(candles, trend) {
-  if(!Array.isArray(candles) || candles.length<30) {
-    return {ready:false,quality:'WARMING UP',score:0,reason:'Need at least 30 candles'};
-  }
-  // indicatorData deliberately contains a synthetic forming placeholder when
-  // the raw feed contains only completed candles.
-  const end=Math.max(0,candles.length-2);
-  const er=kaufmanER(candles,end,10);
-  const chop=choppiness(candles,end,14);
-  const a=atr(candles,end,14);
-  const close=Number(candles[end]?.close);
-  const move=Math.abs(close-Number(candles[Math.max(0,end-14)]?.close));
-  const atrMove=finite(a)&&a>0 ? move/(a*14) : null;
-  const adx=Number(trend?.adx?.[end]);
-
-  if(![er,chop,a,close].every(finite)) {
-    return {ready:false,quality:'WARMING UP',score:0,reason:'Efficiency inputs unavailable'};
-  }
-
-  const erScore=Math.max(0,Math.min(100,er*100));
-  const chopScore=Math.max(0,Math.min(100,(61.8-chop)/(61.8-38.2)*100));
-  const adxScore=finite(adx)?Math.max(0,Math.min(100,(adx-15)/25*100)):50;
-  const moveScore=finite(atrMove)?Math.max(0,Math.min(100,atrMove*100)):50;
-  const score=Math.round(erScore*.35+chopScore*.30+adxScore*.25+moveScore*.10);
-
-  const quality=score>=75?'HIGH':score>=55?'GOOD':score>=35?'MIXED':'LOW';
-  const noise=chop>=61.8?'HIGH':chop<=38.2?'LOW':'MEDIUM';
-  const regime=er>=0.45&&chop<50?'CLEAN TREND':chop>=61.8?'CHOPPY':'TRANSITION';
-
-  return {ready:true,score,quality,noise,regime,er,choppiness:chop,adx:finite(adx)?adx:null,atrNormalizedMove:atrMove,time:candles[end]?.time};
-}
+});

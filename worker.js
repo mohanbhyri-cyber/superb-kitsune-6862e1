@@ -1409,85 +1409,99 @@ function findNearestNiftyFuture(instruments) {
 }
 
 async function findNearestNiftyFutureViaSearch(token) {
-  const endpoint =
-    "https://api.upstox.com/v2/instruments/search" +
-    "?query=NIFTY" +
-    "&exchanges=NSE" +
-    "&segments=FO" +
-    "&instrument_types=FUT" +
-    "&expiry=current_month" +
-    "&page_number=1" +
-    "&records=30";
+  // Expiry filters are used as a first pass, with broader fallbacks for
+  // rollover/contract-list timing issues. Upstox limits search results to 30.
+  const expiryModes = ["current_month", "near_month", null];
+  let lastError = null;
 
-  const body =
-    await upstoxFetch(
-      endpoint,
-      token
-    );
+  for (const expiryMode of expiryModes) {
+    const params = new URLSearchParams({
+      query: "NIFTY",
+      exchanges: "NSE",
+      segments: "FO",
+      instrument_types: "FUT",
+      page_number: "1",
+      records: "30",
+    });
 
-  const rows =
-    Array.isArray(body?.data)
-      ? body.data
-      : [];
+    if (expiryMode) params.set("expiry", expiryMode);
 
-  const now =
-    Date.now();
+    try {
+      const endpoint =
+        "https://api.upstox.com/v2/instruments/search?" +
+        params.toString();
 
-  const candidates =
-    rows
-      .filter((item) => {
-        const type =
-          String(
-            item?.instrument_type || ""
-          ).toUpperCase();
+      const body = await upstoxFetch(endpoint, token);
 
-        const segment =
-          String(
-            item?.segment || ""
-          ).toUpperCase();
+      const rows =
+        Array.isArray(body?.data)
+          ? body.data
+          : [];
 
-        const underlying =
-          String(
-            item?.underlying_symbol || ""
-          ).toUpperCase();
+      const now = Date.now();
 
-        const symbol =
-          String(
-            item?.trading_symbol || ""
-          ).toUpperCase();
+      const candidates =
+        rows
+          .filter((item) => {
+            const type =
+              String(item?.instrument_type || "").toUpperCase();
+            const segment =
+              String(item?.segment || "").toUpperCase();
+            const underlying =
+              String(
+                item?.underlying_symbol ||
+                item?.asset_symbol ||
+                ""
+              ).toUpperCase();
+            const symbol =
+              String(
+                item?.trading_symbol ||
+                item?.tradingsymbol ||
+                item?.name ||
+                ""
+              ).toUpperCase();
+            const expiry = expiryMs(item?.expiry);
 
-        const expiry =
-          expiryMs(
-            item?.expiry
+            const isNifty =
+              underlying === "NIFTY" ||
+              symbol.startsWith("NIFTY ");
+
+            const isBankNifty =
+              underlying === "BANKNIFTY" ||
+              symbol.startsWith("BANKNIFTY");
+
+            return (
+              type === "FUT" &&
+              segment === "NSE_FO" &&
+              isNifty &&
+              !isBankNifty &&
+              Number.isFinite(expiry) &&
+              expiry >= now &&
+              item?.instrument_key
+            );
+          })
+          .sort(
+            (a, b) => expiryMs(a.expiry) - expiryMs(b.expiry)
           );
 
-        return (
-          type === "FUT" &&
-          segment === "NSE_FO" &&
-          (
-            underlying === "NIFTY" ||
-            symbol.startsWith("NIFTY ") ||
-            symbol.startsWith("NIFTY FUT")
-          ) &&
-          !symbol.startsWith("BANKNIFTY") &&
-          Number.isFinite(expiry) &&
-          expiry >= now &&
-          item?.instrument_key
-        );
-      })
-      .sort(
-        (a, b) =>
-          expiryMs(a.expiry) -
-          expiryMs(b.expiry)
-      );
+      if (candidates.length) return candidates[0];
+    } catch (error) {
+      lastError = error;
 
-  if (!candidates.length) {
-    throw new Error(
-      "No active NIFTY futures contract found from Upstox instrument search."
-    );
+      // A rate limit is not recoverable by immediately issuing another
+      // request; let the shared cooldown protect the API and surface it.
+      if (error?.rateLimited || error?.status === 429) {
+        throw error;
+      }
+    }
   }
 
-  return candidates[0];
+  throw (
+    lastError ||
+    new Error(
+      "No active NIFTY futures contract found from Upstox instrument search."
+    )
+  );
 }
 
 // ----------------------------------------------------

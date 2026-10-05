@@ -1,184 +1,500 @@
-// smrt-candle-scanner.js
+// trend-indicators.js
 // ============================================================
-// SMRT CANDLE SCANNER
-// Original closed-candle candlestick scanner for NIFTY 50.
+// NIFTY 50 TREND ENGINE
+// Supertrend + Wilder ATR + DMI / ADX
+//
+// DESIGN:
+// - Closed-candle compatible.
+// - Missing OHLC never becomes zero.
+// - Safer Supertrend initialization.
+// - Wilder smoothing for ATR / DMI / ADX.
+// - Exposes ATR and DX for other engines.
+// - No BUY / SELL generation here.
 // ============================================================
 
-const finite = v =>
-  v !== null &&
-  v !== undefined &&
-  v !== '' &&
-  Number.isFinite(Number(v));
+const finite = value =>
+  value !== null &&
+  value !== undefined &&
+  value !== '' &&
+  Number.isFinite(Number(value));
 
-function shape(c) {
-  const open = Number(c.open);
-  const high = Number(c.high);
-  const low = Number(c.low);
-  const close = Number(c.close);
-  const body = Math.abs(close - open);
-  const range = Math.max(0.0001, high - low);
-  const upper = high - Math.max(open, close);
-  const lower = Math.min(open, close) - low;
-  const bull = close > open;
-  const bear = close < open;
-  return { open, high, low, close, body, range, upper, lower, bull, bear,
-    bodyPct: body / range, upperPct: upper / range, lowerPct: lower / range };
-}
+export function trendIndicators(
+  candles,
+  atrPeriod = 10,
+  multiplier = 3,
+  dmiPeriod = 14
+) {
+  const n = Array.isArray(candles)
+    ? candles.length
+    : 0;
 
-function near(a, b, tolerance) {
-  return Math.abs(a - b) <= tolerance;
-}
+  const supertrend = Array(n).fill(null);
+  const direction = Array(n).fill(0);
 
-export function scanCandles(candles) {
-  if (!Array.isArray(candles) || candles.length < 5) {
-    return { rows: [], latest: null, latestStrong: null };
-  }
+  const atr = Array(n).fill(null);
 
-  const rows = Array(candles.length).fill(null);
-  const lastClosed = Math.max(0, candles.length - 2);
+  const plusDI = Array(n).fill(null);
+  const minusDI = Array(n).fill(null);
 
-  for (let i = 2; i <= lastClosed; i++) {
-    const a = shape(candles[i - 2]);
-    const b = shape(candles[i - 1]);
-    const c = shape(candles[i]);
-    const avgRange = [a.range, b.range, c.range].reduce((x, y) => x + y, 0) / 3;
-    const tolerance = avgRange * 0.12;
-    const patterns = [];
+  const dx = Array(n).fill(null);
+  const adx = Array(n).fill(null);
 
-    const push = (name, side = 0, strength = 1) =>
-      patterns.push({ name, side, strength });
-
-    // Single-candle patterns
-    if (c.bodyPct <= 0.08) push('Doji', 0, 1);
-    if (c.bodyPct <= 0.10 && c.lowerPct >= 0.60 && c.upperPct <= 0.15) push('Dragonfly Doji', 1, 2);
-    if (c.bodyPct <= 0.10 && c.upperPct >= 0.60 && c.lowerPct <= 0.15) push('Gravestone Doji', -1, 2);
-    if (c.bodyPct <= 0.10 && c.upperPct >= 0.35 && c.lowerPct >= 0.35) push('Long-legged Doji', 0, 1);
-
-    if (c.bodyPct <= 0.35 && c.lower >= c.body * 2 && c.upper <= c.body * 0.7) push('Hammer', 1, 2);
-    if (c.bodyPct <= 0.35 && c.upper >= c.body * 2 && c.lower <= c.body * 0.7) push('Inverted Hammer', 1, 2);
-    if (c.bodyPct <= 0.35 && c.upper >= c.body * 2 && c.lower <= c.body * 0.7) push('Shooting Star', -1, 2);
-    if (c.bodyPct <= 0.35 && c.lower >= c.body * 2 && c.upper <= c.body * 0.7) push('Hanging Man', -1, 2);
-
-    if (c.bodyPct >= 0.80 && c.bull) push('Bullish Marubozu', 1, 2);
-    if (c.bodyPct >= 0.80 && c.bear) push('Bearish Marubozu', -1, 2);
-    if (c.bodyPct <= 0.30 && c.upperPct >= 0.20 && c.lowerPct >= 0.20) push('Spinning Top', 0, 1);
-
-    if (c.lower >= c.body * 2.5 && c.upper <= c.body && c.bull) push('Bullish Pin Bar', 1, 2);
-    if (c.upper >= c.body * 2.5 && c.lower <= c.body && c.bear) push('Bearish Pin Bar', -1, 2);
-
-    if (c.lowerPct >= 0.55 && c.close > (c.low + c.range * 0.65)) push('Bullish Rejection', 1, 2);
-    if (c.upperPct >= 0.55 && c.close < (c.low + c.range * 0.35)) push('Bearish Rejection', -1, 2);
-
-    // Two-candle patterns
-    if (b.bear && c.bull && c.open <= b.close && c.close >= b.open) push('Bullish Engulfing', 1, 3);
-    if (b.bull && c.bear && c.open >= b.close && c.close <= b.open) push('Bearish Engulfing', -1, 3);
-
-    if (b.bear && c.bull && c.open < b.close && c.close > (b.open + b.close) / 2 && c.close < b.open)
-      push('Piercing Line', 1, 3);
-
-    if (b.bull && c.bear && c.open > b.close && c.close < (b.open + b.close) / 2 && c.close > b.open)
-      push('Dark Cloud Cover', -1, 3);
-
-    if (c.high < b.high && c.low > b.low) push('Inside Bar', 0, 1);
-    if (c.high > b.high && c.low < b.low) push('Outside Bar', c.bull ? 1 : c.bear ? -1 : 0, 2);
-
-    if (b.bear && c.body < b.body && Math.max(c.open, c.close) < b.open && Math.min(c.open, c.close) > b.close)
-      push('Bullish Harami', 1, 2);
-
-    if (b.bull && c.body < b.body && Math.max(c.open, c.close) < b.close && Math.min(c.open, c.close) > b.open)
-      push('Bearish Harami', -1, 2);
-
-    if (b.bodyPct > 0.55 && c.bodyPct <= 0.10 && Math.max(c.open, c.close) < Math.max(b.open, b.close) &&
-        Math.min(c.open, c.close) > Math.min(b.open, b.close))
-      push('Harami Cross', b.bear ? 1 : b.bull ? -1 : 0, 2);
-
-    if (near(b.low, c.low, tolerance) && b.bear && c.bull) push('Tweezer Bottom', 1, 3);
-    if (near(b.high, c.high, tolerance) && b.bull && c.bear) push('Tweezer Top', -1, 3);
-
-    // Three-candle patterns
-    const aMid = (a.open + a.close) / 2;
-    if (a.bear && b.bodyPct <= 0.35 && c.bull && c.close > aMid) push('Morning Star', 1, 4);
-    if (a.bull && b.bodyPct <= 0.35 && c.bear && c.close < aMid) push('Evening Star', -1, 4);
-
-    if (a.bull && b.bull && c.bull && b.close > a.close && c.close > b.close &&
-        b.open > a.open && c.open > b.open) push('Three White Soldiers', 1, 4);
-
-    if (a.bear && b.bear && c.bear && b.close < a.close && c.close < b.close &&
-        b.open < a.open && c.open < b.open) push('Three Black Crows', -1, 4);
-
-    // Breakout candle
-    const prior = candles.slice(Math.max(0, i - 8), i);
-    const priorHigh = Math.max(...prior.map(x => Number(x.high)));
-    const priorLow = Math.min(...prior.map(x => Number(x.low)));
-
-    if (c.close > priorHigh && c.bodyPct >= 0.55) push('Bullish Breakout Candle', 1, 4);
-    if (c.close < priorLow && c.bodyPct >= 0.55) push('Bearish Breakdown Candle', -1, 4);
-
-    if (patterns.length) {
-      rows[i] = {
-        time: candles[i].time,
-        patterns: patterns.sort((x, y) => y.strength - x.strength)
-      };
-    }
-  }
-
-  const detected = rows.filter(Boolean);
-  const latest = detected.at(-1) || null;
-  const latestStrong = detected
-    .flatMap(row => row.patterns.map(p => ({ ...p, time: row.time })))
-    .filter(p => p.strength >= 3)
-    .at(-1) || null;
-
-  return { rows, latest, latestStrong };
-}
-
-export function candleConfluence(scanner, marketMap, edge, mtf) {
-  const latest = scanner?.latest;
-  if (!latest) {
-    return { action: 'NO TRADE', score: 0, reason: 'No confirmed candle pattern' };
-  }
-
-  const strongest = latest.patterns[0];
-  if (!strongest) {
-    return { action: 'NO TRADE', score: 0, reason: 'No confirmed candle pattern' };
-  }
-
-  let score = strongest.strength;
-  const side = strongest.side;
-
-  if (side === 0) {
+  if (
+    n < 2 ||
+    atrPeriod < 1 ||
+    dmiPeriod < 1 ||
+    !finite(multiplier) ||
+    Number(multiplier) <= 0
+  ) {
     return {
-      action: 'NO TRADE',
-      score,
-      reason: strongest.name + ' is neutral'
+      supertrend,
+      direction,
+      atr,
+      plusDI,
+      minusDI,
+      dx,
+      adx
     };
   }
 
-  if (marketMap) {
-    if (side === 1 && marketMap.trend?.includes('BULLISH')) score += 2;
-    if (side === -1 && marketMap.trend?.includes('BEARISH')) score += 2;
-    if (side === 1 && marketMap.reversal === 'BULLISH REVERSAL') score += 2;
-    if (side === -1 && marketMap.reversal === 'BEARISH REVERSAL') score += 2;
-    if (side === 1 && marketMap.breakout === 'BREAKOUT UP') score += 2;
-    if (side === -1 && marketMap.breakout === 'BREAKDOWN') score += 2;
+  // ==========================================================
+  // TRUE RANGE / DIRECTIONAL MOVEMENT
+  // ==========================================================
+
+  const tr = Array(n).fill(null);
+  const plusDM = Array(n).fill(null);
+  const minusDM = Array(n).fill(null);
+
+  for (let i = 1; i < n; i++) {
+    const current = candles[i];
+    const previous = candles[i - 1];
+
+    if (
+      ![
+        current?.high,
+        current?.low,
+        current?.close,
+        previous?.high,
+        previous?.low,
+        previous?.close
+      ].every(finite)
+    ) {
+      continue;
+    }
+
+    const high = Number(current.high);
+    const low = Number(current.low);
+
+    const prevHigh = Number(previous.high);
+    const prevLow = Number(previous.low);
+    const prevClose = Number(previous.close);
+
+    if (
+      high < low ||
+      prevHigh < prevLow
+    ) {
+      continue;
+    }
+
+    tr[i] = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+
+    const upMove =
+      high - prevHigh;
+
+    const downMove =
+      prevLow - low;
+
+    plusDM[i] =
+      upMove > downMove &&
+      upMove > 0
+        ? upMove
+        : 0;
+
+    minusDM[i] =
+      downMove > upMove &&
+      downMove > 0
+        ? downMove
+        : 0;
   }
 
-  const edgeSide = edge?.latestActionable?.side || 0;
-  if (edgeSide === side) score += 2;
+  // ==========================================================
+  // WILDER ATR
+  // ==========================================================
 
-  const mtfSide = mtf?.overall?.includes('BUY') ? 1 : mtf?.overall?.includes('SELL') ? -1 : 0;
-  if (mtfSide === side) score += 2;
+  let atrSeed = 0;
+  let atrSeedCount = 0;
+  let lastATR = null;
 
-  const action =
-    score >= 8
-      ? side === 1 ? 'BUY REVERSAL' : 'SELL REVERSAL'
-      : 'NO TRADE';
+  for (let i = 1; i < n; i++) {
+    if (!finite(tr[i])) {
+      continue;
+    }
+
+    if (lastATR === null) {
+      atrSeed += Number(tr[i]);
+      atrSeedCount += 1;
+
+      if (atrSeedCount === atrPeriod) {
+        lastATR =
+          atrSeed / atrPeriod;
+
+        atr[i] = lastATR;
+      }
+
+      continue;
+    }
+
+    lastATR =
+      (
+        lastATR *
+          (atrPeriod - 1) +
+        Number(tr[i])
+      ) /
+      atrPeriod;
+
+    atr[i] = lastATR;
+  }
+
+  // ==========================================================
+  // SUPERTREND
+  // ==========================================================
+
+  const finalUpper =
+    Array(n).fill(null);
+
+  const finalLower =
+    Array(n).fill(null);
+
+  let previousDirection = 0;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(atr[i]) ||
+      !finite(candles[i]?.high) ||
+      !finite(candles[i]?.low) ||
+      !finite(candles[i]?.close) ||
+      !finite(candles[i - 1]?.close)
+    ) {
+      continue;
+    }
+
+    const high =
+      Number(candles[i].high);
+
+    const low =
+      Number(candles[i].low);
+
+    const close =
+      Number(candles[i].close);
+
+    const prevClose =
+      Number(candles[i - 1].close);
+
+    const midpoint =
+      (high + low) / 2;
+
+    const basicUpper =
+      midpoint +
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const basicLower =
+      midpoint -
+      Number(multiplier) *
+        Number(atr[i]);
+
+    const previousUpper =
+      finalUpper[i - 1];
+
+    const previousLower =
+      finalLower[i - 1];
+
+    // First valid Supertrend candle.
+    if (
+      !finite(previousUpper) ||
+      !finite(previousLower)
+    ) {
+      finalUpper[i] =
+        basicUpper;
+
+      finalLower[i] =
+        basicLower;
+
+      previousDirection =
+        close >= midpoint
+          ? 1
+          : -1;
+
+      direction[i] =
+        previousDirection;
+
+      supertrend[i] =
+        previousDirection === 1
+          ? finalLower[i]
+          : finalUpper[i];
+
+      continue;
+    }
+
+    // Final upper band.
+    finalUpper[i] =
+      basicUpper <
+        Number(previousUpper) ||
+      prevClose >
+        Number(previousUpper)
+        ? basicUpper
+        : Number(previousUpper);
+
+    // Final lower band.
+    finalLower[i] =
+      basicLower >
+        Number(previousLower) ||
+      prevClose <
+        Number(previousLower)
+        ? basicLower
+        : Number(previousLower);
+
+    const priorDirection =
+      direction[i - 1] === 1 ||
+      direction[i - 1] === -1
+        ? direction[i - 1]
+        : previousDirection;
+
+    let currentDirection =
+      priorDirection;
+
+    if (
+      priorDirection === 1 &&
+      close <
+        Number(previousLower)
+    ) {
+      currentDirection = -1;
+
+    } else if (
+      priorDirection === -1 &&
+      close >
+        Number(previousUpper)
+    ) {
+      currentDirection = 1;
+    }
+
+    direction[i] =
+      currentDirection;
+
+    previousDirection =
+      currentDirection;
+
+    supertrend[i] =
+      currentDirection === 1
+        ? finalLower[i]
+        : finalUpper[i];
+  }
+
+  // ==========================================================
+  // WILDER DMI
+  // ==========================================================
+
+  let trSeed = 0;
+  let plusSeed = 0;
+  let minusSeed = 0;
+  let dmiSeedCount = 0;
+
+  let smoothTR = null;
+  let smoothPlus = null;
+  let smoothMinus = null;
+
+  for (let i = 1; i < n; i++) {
+    if (
+      !finite(tr[i]) ||
+      !finite(plusDM[i]) ||
+      !finite(minusDM[i])
+    ) {
+      continue;
+    }
+
+    if (smoothTR === null) {
+      trSeed += Number(tr[i]);
+      plusSeed += Number(plusDM[i]);
+      minusSeed += Number(minusDM[i]);
+
+      dmiSeedCount += 1;
+
+      if (
+        dmiSeedCount === dmiPeriod
+      ) {
+        smoothTR = trSeed;
+        smoothPlus = plusSeed;
+        smoothMinus = minusSeed;
+      } else {
+        continue;
+      }
+
+    } else {
+      smoothTR =
+        smoothTR -
+        smoothTR / dmiPeriod +
+        Number(tr[i]);
+
+      smoothPlus =
+        smoothPlus -
+        smoothPlus / dmiPeriod +
+        Number(plusDM[i]);
+
+      smoothMinus =
+        smoothMinus -
+        smoothMinus / dmiPeriod +
+        Number(minusDM[i]);
+    }
+
+    if (
+      !finite(smoothTR) ||
+      smoothTR <= 0
+    ) {
+      plusDI[i] = 0;
+      minusDI[i] = 0;
+      dx[i] = 0;
+
+      continue;
+    }
+
+    plusDI[i] =
+      100 *
+      Number(smoothPlus) /
+      Number(smoothTR);
+
+    minusDI[i] =
+      100 *
+      Number(smoothMinus) /
+      Number(smoothTR);
+
+    const total =
+      plusDI[i] +
+      minusDI[i];
+
+    dx[i] =
+      total > 0
+        ? (
+            100 *
+            Math.abs(
+              plusDI[i] -
+              minusDI[i]
+            )
+          ) /
+          total
+        : 0;
+  }
+
+  // ==========================================================
+  // WILDER ADX
+  // ==========================================================
+
+  let dxSeed = 0;
+  let dxSeedCount = 0;
+  let lastADX = null;
+
+  for (let i = 0; i < n; i++) {
+    if (!finite(dx[i])) {
+      continue;
+    }
+
+    if (lastADX === null) {
+      dxSeed += Number(dx[i]);
+      dxSeedCount += 1;
+
+      if (
+        dxSeedCount === dmiPeriod
+      ) {
+        lastADX =
+          dxSeed / dmiPeriod;
+
+        adx[i] =
+          lastADX;
+      }
+
+      continue;
+    }
+
+    lastADX =
+      (
+        lastADX *
+          (dmiPeriod - 1) +
+        Number(dx[i])
+      ) /
+      dmiPeriod;
+
+    adx[i] =
+      lastADX;
+  }
+
+  // ==========================================================
+  // SANITY CLEANUP
+  // ==========================================================
+
+  for (let i = 0; i < n; i++) {
+    if (
+      finite(plusDI[i])
+    ) {
+      plusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(plusDI[i])
+          )
+        );
+    }
+
+    if (
+      finite(minusDI[i])
+    ) {
+      minusDI[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(minusDI[i])
+          )
+        );
+    }
+
+    if (finite(dx[i])) {
+      dx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(dx[i])
+          )
+        );
+    }
+
+    if (finite(adx[i])) {
+      adx[i] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(adx[i])
+          )
+        );
+    }
+  }
 
   return {
-    action,
-    score,
-    reason: strongest.name,
-    side,
-    pattern: strongest.name
+    supertrend,
+    direction,
+
+    // Additional outputs used by Prime/Finalizer.
+    atr,
+
+    plusDI,
+    minusDI,
+
+    dx,
+    adx
   };
 }

@@ -1,48 +1,53 @@
-// smrt-risk-engine.js
-// Trade-plan quality control. It does not create BUY/SELL direction.
+// smrt-session-quality.js
+// NIFTY intraday session context. Closed-candle context only.
+// Does not generate BUY/SELL direction.
 
-const finite=v=>Number.isFinite(Number(v));
+const SESSION_START=9*60+15;
+const SESSION_END=15*60+30;
 
-export function analyseRisk(plan,{atr=null,side=0}={}){
-  if(!plan) return {ready:false,state:'NO ACTIVE PLAN',quality:'WAIT',score:0};
+function ist(time){
+  const p=new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',
+    weekday:'short',hour12:false
+  }).formatToParts(new Date(Number(time)*1000));
+  const get=t=>p.find(x=>x.type===t)?.value||'';
+  return {minutes:Number(get('hour'))*60+Number(get('minute')),weekday:get('weekday')};
+}
 
-  const entry=Number(plan.entry);
-  const stop=Number(plan.stopLoss ?? plan.stop);
-  const t1=Number(plan.target1);
-  const t2=Number(plan.target2);
-  const t3=Number(plan.target3);
+export function analyseSessionQuality(candles){
+  if(!Array.isArray(candles)||candles.length<3)
+    return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
 
-  if(![entry,stop,t1].every(finite)||entry===stop)
-    return {ready:false,state:'INVALID PLAN',quality:'BLOCK',score:0};
+  const c=candles[candles.length-2];
+  if(!c) return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
 
-  const risk=Math.abs(entry-stop);
-  const rewards=[t1,t2,t3].map(t=>finite(t)?Math.abs(t-entry):null);
-  const rr1=rewards[0]/risk;
-  const rr2=finite(rewards[1])?rewards[1]/risk:null;
-  const rr3=finite(rewards[2])?rewards[2]/risk:null;
-  const atrRisk=finite(atr)&&Number(atr)>0?risk/Number(atr):null;
+  const {minutes,weekday}=ist(c.time);
+  if(['Sat','Sun'].includes(weekday)||minutes<SESSION_START||minutes>=SESSION_END)
+    return {ready:true,state:'MARKET CLOSED',quality:'CLOSED',score:0,time:c.time};
 
-  const directionValid=side===1
-    ? stop<entry&&t1>entry
-    : side===-1
-      ? stop>entry&&t1<entry
-      : false;
+  const fromOpen=minutes-SESSION_START;
+  let state='NORMAL SESSION',quality='GOOD',score=75;
 
-  let score=100;
-  const reasons=[];
-
-  if(!directionValid){score=0;reasons.push('Stop/target direction invalid');}
-  if(rr1<1){score-=35;reasons.push('T1 reward is below 1R');}
-  else if(rr1<1.25){score-=15;reasons.push('T1 reward is marginal');}
-
-  if(atrRisk!==null){
-    if(atrRisk<0.45){score-=25;reasons.push('Stop is very tight versus ATR');}
-    else if(atrRisk>2.5){score-=20;reasons.push('Stop is wide versus ATR');}
+  // Opening minutes and the final stretch often carry faster price discovery,
+  // wider spreads/slippage and event-driven movement. Treat as context/risk,
+  // not as a directional signal.
+  if(fromOpen<15){
+    state='OPENING VOLATILITY';
+    quality='CAUTION';
+    score=45;
+  }else if(fromOpen<45){
+    state='OPENING TREND WINDOW';
+    quality='GOOD';
+    score=80;
+  }else if(minutes>=12*60&&minutes<13*60+30){
+    state='MIDDAY / LOWER MOMENTUM';
+    quality='CAUTION';
+    score=55;
+  }else if(minutes>=14*60+45){
+    state='LATE SESSION';
+    quality='CAUTION';
+    score=55;
   }
 
-  score=Math.max(0,Math.min(100,Math.round(score)));
-  const quality=!directionValid||score<50?'BLOCK':score<70?'CAUTION':'GOOD';
-  const state=quality==='BLOCK'?'POOR RISK SETUP':quality==='CAUTION'?'RISK CAUTION':'RISK ACCEPTABLE';
-
-  return {ready:true,state,quality,score,risk,rr1,rr2,rr3,atrRisk,reasons};
+  return {ready:true,state,quality,score,minutes,time:c.time};
 }

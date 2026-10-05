@@ -1,429 +1,471 @@
-// netlify/functions/upstox-history.js
-// PRO SCALPER - REAL UPSTOX INTRADAY HISTORY
-// No demo/random candles.
-// Upstox token stays on Netlify server.
+// tradingview-datafeed.js
+// ============================================================
+// TradingView Advanced Charts Datafeed API adapter for SMRT Algo Pro.
+// Uses the app's existing Upstox-backed Cloudflare Worker endpoints.
+// This file is ready for the official private Advanced Charts library.
+// ============================================================
 
-const keys = {
-  NIFTY: 'NSE_INDEX|Nifty 50',
-  BANKNIFTY: 'NSE_INDEX|Nifty Bank',
+const RESOLUTION_TO_TF = {
+  '1': '1m',
+  '3': '3m',
+  '5': '5m',
+  '15': '15m',
+  '60': '1h',
+  '1D': '1D',
+  D: '1D'
 };
 
-const timeframeMap = {
-  '1m': 1,
-  '3m': 3,
-  '5m': 5,
-  '15m': 15,
+const TF_SECONDS = {
+  '1m': 60,
+  '3m': 180,
+  '5m': 300,
+  '15m': 900,
+  '1h': 3600,
+  '1D': 86400
 };
 
-function sendJSON(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'content-type': 'application/json',
-      'cache-control': 'no-store, no-cache, must-revalidate',
-    },
-  });
+const asyncCall = fn =>
+  setTimeout(fn, 0);
+
+function normalizeBase(base) {
+  return String(base || '')
+    .replace(/\/$/, '');
 }
 
-// ------------------------------------------------------------
-// Convert a timestamp into IST date/time parts
-// ------------------------------------------------------------
-
-function getISTParts(timestamp) {
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  });
-
-  const parts = formatter.formatToParts(new Date(timestamp));
-
-  return Object.fromEntries(
-    parts
-      .filter((part) => part.type !== 'literal')
-      .map((part) => [part.type, part.value])
-  );
-}
-
-// ------------------------------------------------------------
-// Keep only TODAY'S candles starting from 09:15 IST
-// ------------------------------------------------------------
-
-function isTodayFrom0915(timestamp) {
-  const candle = getISTParts(timestamp);
-  const today = getISTParts(Date.now());
-
-  const sameDate =
-    candle.year === today.year &&
-    candle.month === today.month &&
-    candle.day === today.day;
-
-  if (!sameDate) {
-    return false;
-  }
-
-  const candleMinutes =
-    Number(candle.hour) * 60 +
-    Number(candle.minute);
-
-  const marketStart = 9 * 60 + 15;
-
-  return candleMinutes >= marketStart;
-}
-
-// ------------------------------------------------------------
-// Convert Upstox candle array into our standard candle object
-//
-// Upstox:
-// [
-//   timestamp,
-//   open,
-//   high,
-//   low,
-//   close,
-//   volume,
-//   openInterest
-// ]
-// ------------------------------------------------------------
-
-function normalizeCandle(row) {
-  if (!Array.isArray(row) || row.length < 6) {
-    return null;
-  }
-
-  const [
-    timestamp,
-    open,
-    high,
-    low,
-    close,
-    volume,
-    openInterest,
-  ] = row;
-
-  const milliseconds = new Date(timestamp).getTime();
-
-  if (!Number.isFinite(milliseconds)) {
-    return null;
-  }
-
-  const candle = {
-    time: Math.floor(milliseconds / 1000),
-
-    open: Number(open),
-    high: Number(high),
-    low: Number(low),
-    close: Number(close),
-
-    volume: Number(volume) || 0,
-
-    openInterest:
-      Number(openInterest) || 0,
-  };
-
-  // ----------------------------------------------------------
-  // Reject invalid numeric data
-  // ----------------------------------------------------------
-
-  if (
-    !Number.isFinite(candle.open) ||
-    !Number.isFinite(candle.high) ||
-    !Number.isFinite(candle.low) ||
-    !Number.isFinite(candle.close)
-  ) {
-    return null;
-  }
-
-  if (
-    candle.open <= 0 ||
-    candle.high <= 0 ||
-    candle.low <= 0 ||
-    candle.close <= 0
-  ) {
-    return null;
-  }
-
-  // ----------------------------------------------------------
-  // Reject malformed OHLC
-  // ----------------------------------------------------------
-
-  if (
-    candle.high < candle.low ||
-    candle.high < candle.open ||
-    candle.high < candle.close ||
-    candle.low > candle.open ||
-    candle.low > candle.close
-  ) {
-    return null;
-  }
-
-  // ----------------------------------------------------------
-  // Today's session only - starting 09:15 IST
-  // ----------------------------------------------------------
-
-  if (!isTodayFrom0915(milliseconds)) {
-    return null;
-  }
-
-  return candle;
-}
-
-// ------------------------------------------------------------
-// NETLIFY FUNCTION
-// ------------------------------------------------------------
-
-export default async (request) => {
-  try {
-    const requestURL = new URL(request.url);
-
-    const symbol = (
-      requestURL.searchParams.get('symbol') ||
-      'NIFTY'
-    ).toUpperCase();
-
-    const timeframe =
-      requestURL.searchParams.get('timeframe') ||
-      '1m';
-
-    const instrumentKey =
-      keys[symbol];
-
-    const interval =
-      timeframeMap[timeframe];
-
-    const token =
-      process.env.UPSTOX_ANALYTICS_TOKEN;
-
-    // --------------------------------------------------------
-    // Validate instrument
-    // --------------------------------------------------------
-
-    if (!instrumentKey) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason: 'Unsupported instrument.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Validate timeframe
-    // --------------------------------------------------------
-
-    if (!interval) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason: 'Unsupported timeframe.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Check token
-    // --------------------------------------------------------
-
-    if (!token) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          'UPSTOX_ANALYTICS_TOKEN is not configured.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Upstox V3 intraday candle endpoint
-    // --------------------------------------------------------
-
-    const endpoint =
-      'https://api.upstox.com/v3/historical-candle/intraday/' +
-      encodeURIComponent(instrumentKey) +
-      '/minutes/' +
-      interval;
-
-    // --------------------------------------------------------
-    // Request REAL candles from Upstox
-    // --------------------------------------------------------
-
-    const response = await fetch(endpoint, {
-      method: 'GET',
-
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
-
-    // --------------------------------------------------------
-    // Upstox error
-    // --------------------------------------------------------
-
-    if (!response.ok) {
-      let details = '';
-
-      try {
-        details = await response.text();
-      } catch {
-        details = '';
+function toBars(candles, from, to) {
+  return (Array.isArray(candles) ? candles : [])
+    .map(c => ({
+      time: Number(c.time) * 1000,
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+      volume: Number(c.volume) || 0
+    }))
+    .filter(bar => {
+      if (
+        ![
+          bar.time,
+          bar.open,
+          bar.high,
+          bar.low,
+          bar.close
+        ].every(Number.isFinite)
+      ) {
+        return false;
       }
 
-      console.error(
-        'Upstox history request failed:',
-        response.status,
-        details
-      );
-
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          `Upstox returned HTTP ${response.status}.`,
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Read response
-    // --------------------------------------------------------
-
-    const body =
-      await response.json();
-
-    const rawCandles =
-      body?.data?.candles;
-
-    if (!Array.isArray(rawCandles)) {
-      return sendJSON({
-        live: false,
-        source: 'UPSTOX',
-        reason:
-          'Upstox did not return candle data.',
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // Normalize + validate + sort
-    // --------------------------------------------------------
-
-    let candles =
-      rawCandles
-        .map(normalizeCandle)
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            a.time - b.time
-        );
-
-    // --------------------------------------------------------
-    // Remove duplicate candle timestamps
-    // --------------------------------------------------------
-
-    const uniqueCandles = [];
-
-    for (const candle of candles) {
-      const previous =
-        uniqueCandles[
-          uniqueCandles.length - 1
-        ];
+      const seconds =
+        bar.time / 1000;
 
       if (
-        previous &&
-        previous.time === candle.time
+        Number.isFinite(from) &&
+        seconds < from
       ) {
-        uniqueCandles[
-          uniqueCandles.length - 1
-        ] = candle;
-      } else {
-        uniqueCandles.push(candle);
+        return false;
       }
-    }
 
-    candles = uniqueCandles;
+      if (
+        Number.isFinite(to) &&
+        seconds > to
+      ) {
+        return false;
+      }
 
-    // --------------------------------------------------------
-    // Nothing returned for current trading session
-    // --------------------------------------------------------
+      return true;
+    })
+    .sort((a, b) => a.time - b.time);
+}
 
-    if (!candles.length) {
-      return sendJSON({
-        live: false,
-
-        source: 'UPSTOX',
-
-        symbol,
-        timeframe,
-
-        sessionStart: '09:15',
-
-        timezone:
-          'Asia/Kolkata',
-
-        reason:
-          'No candles available for today from 09:15 IST.',
-
-        candles: [],
-      });
-    }
-
-    // --------------------------------------------------------
-    // SUCCESS
-    // --------------------------------------------------------
-
-    return sendJSON({
-      live: true,
-
-      source: 'UPSTOX',
-
-      symbol,
-      timeframe,
-
-      instrumentKey,
-
-      sessionStart: '09:15',
-
-      timezone:
-        'Asia/Kolkata',
-
-      count:
-        candles.length,
-
-      firstCandleTime:
-        candles[0]?.time ??
-        null,
-
-      lastCandleTime:
-        candles[
-          candles.length - 1
-        ]?.time ??
-        null,
-
-      candles,
+async function fetchJson(url) {
+  const response =
+    await fetch(url, {
+      cache: 'no-store'
     });
-  } catch (error) {
-    console.error(
-      'upstox-history error:',
-      error
+
+  if (!response.ok) {
+    throw new Error(
+      'HTTP ' + response.status
     );
-
-    return sendJSON({
-      live: false,
-
-      source: 'UPSTOX',
-
-      reason:
-        error?.message ||
-        'Unable to load Upstox intraday candles.',
-
-      candles: [],
-    });
   }
-};
+
+  return response.json();
+}
+
+export function createTradingViewDatafeed(
+  apiBase = ''
+) {
+  const base =
+    normalizeBase(apiBase);
+
+  const subscriptions =
+    new Map();
+
+  const datafeed = {
+
+    onReady(callback) {
+      asyncCall(
+        () =>
+          callback({
+            supported_resolutions: [
+              '1',
+              '3',
+              '5',
+              '15',
+              '60',
+              '1D'
+            ],
+            exchanges: [
+              {
+                value: 'NSE',
+                name: 'NSE',
+                desc: 'National Stock Exchange of India'
+              }
+            ],
+            symbols_types: [
+              {
+                name: 'index',
+                value: 'index'
+              }
+            ],
+            supports_marks: false,
+            supports_timescale_marks: false,
+            supports_time: true
+          })
+      );
+    },
+
+
+    searchSymbols(
+      userInput,
+      exchange,
+      symbolType,
+      onResult
+    ) {
+      const q =
+        String(userInput || '')
+          .trim()
+          .toUpperCase();
+
+      const matches =
+        !q ||
+        'NIFTY 50'.includes(q) ||
+        'NIFTY'.includes(q);
+
+      asyncCall(
+        () =>
+          onResult(
+            matches
+              ? [
+                  {
+                    symbol: 'NIFTY',
+                    full_name: 'NSE:NIFTY',
+                    description: 'NIFTY 50',
+                    exchange: 'NSE',
+                    ticker: 'NIFTY',
+                    type: 'index'
+                  }
+                ]
+              : []
+          )
+      );
+    },
+
+
+    resolveSymbol(
+      symbolName,
+      onResolve,
+      onError
+    ) {
+      const name =
+        String(symbolName || '')
+          .toUpperCase();
+
+      if (
+        !name.includes('NIFTY')
+      ) {
+        asyncCall(
+          () =>
+            onError(
+              'Only NIFTY 50 is enabled'
+            )
+        );
+
+        return;
+      }
+
+      asyncCall(
+        () =>
+          onResolve({
+            ticker: 'NIFTY',
+            name: 'NIFTY',
+            full_name: 'NSE:NIFTY',
+            description: 'NIFTY 50',
+            type: 'index',
+            session: '0915-1530',
+            exchange: 'NSE',
+            listed_exchange: 'NSE',
+            timezone: 'Asia/Kolkata',
+            minmov: 1,
+            pricescale: 100,
+            has_intraday: true,
+            has_daily: true,
+            has_weekly_and_monthly: false,
+            supported_resolutions: [
+              '1',
+              '3',
+              '5',
+              '15',
+              '60',
+              '1D'
+            ],
+            volume_precision: 0,
+            data_status: 'streaming',
+            currency_code: 'INR'
+          })
+      );
+    },
+
+
+    async getBars(
+      symbolInfo,
+      resolution,
+      periodParams,
+      onResult,
+      onError
+    ) {
+      try {
+        const tf =
+          RESOLUTION_TO_TF[
+            resolution
+          ];
+
+        if (!tf) {
+          throw new Error(
+            'Unsupported resolution ' +
+            resolution
+          );
+        }
+
+        let payload;
+
+        if (tf === '1D') {
+          payload =
+            await fetchJson(
+              base +
+              '/api/nifty-daily-history?days=180'
+            );
+        } else if (
+          tf === '1h'
+        ) {
+          payload =
+            await fetchJson(
+              base +
+              '/api/upstox-mtf-history?symbol=NIFTY&timeframe=1h'
+            );
+        } else {
+          payload =
+            await fetchJson(
+              base +
+              '/api/upstox-history?symbol=NIFTY&timeframe=' +
+              encodeURIComponent(tf)
+            );
+        }
+
+        const bars =
+          toBars(
+            payload?.candles,
+            periodParams?.from,
+            periodParams?.to
+          );
+
+        asyncCall(
+          () =>
+            onResult(
+              bars,
+              {
+                noData:
+                  bars.length === 0
+              }
+            )
+        );
+
+      } catch (error) {
+        asyncCall(
+          () =>
+            onError(
+              error?.message ||
+              'Unable to load NIFTY bars'
+            )
+        );
+      }
+    },
+
+
+    subscribeBars(
+      symbolInfo,
+      resolution,
+      onRealtimeCallback,
+      subscriberUID,
+      onResetCacheNeededCallback
+    ) {
+      const tf =
+        RESOLUTION_TO_TF[
+          resolution
+        ] ||
+        '5m';
+
+      const bucketSeconds =
+        TF_SECONDS[tf] ||
+        300;
+
+      let stopped = false;
+      let timer = null;
+      let currentBar = null;
+
+
+      const poll =
+        async () => {
+          if (stopped) {
+            return;
+          }
+
+          try {
+            const q =
+              await fetchJson(
+                base +
+                '/api/live-quote?symbol=NIFTY'
+              );
+
+            const price =
+              Number(q?.price);
+
+            if (
+              Number.isFinite(price)
+            ) {
+              const nowSeconds =
+                Number(
+                  q?.time
+                ) ||
+                Math.floor(
+                  Date.now() / 1000
+                );
+
+              const bucket =
+                Math.floor(
+                  nowSeconds /
+                  bucketSeconds
+                ) *
+                bucketSeconds;
+
+              if (
+                !currentBar ||
+                currentBar.time !==
+                  bucket * 1000
+              ) {
+                currentBar = {
+                  time:
+                    bucket * 1000,
+                  open: price,
+                  high: price,
+                  low: price,
+                  close: price,
+                  volume:
+                    Number(
+                      q?.volume
+                    ) || 0
+                };
+              } else {
+                currentBar = {
+                  ...currentBar,
+                  high:
+                    Math.max(
+                      currentBar.high,
+                      price
+                    ),
+                  low:
+                    Math.min(
+                      currentBar.low,
+                      price
+                    ),
+                  close: price,
+                  volume:
+                    Number(
+                      q?.volume
+                    ) ||
+                    currentBar.volume ||
+                    0
+                };
+              }
+
+              onRealtimeCallback({
+                ...currentBar
+              });
+            }
+
+          } catch (error) {
+            console.warn(
+              'TradingView realtime poll failed:',
+              error
+            );
+          }
+
+          if (!stopped) {
+            timer =
+              setTimeout(
+                poll,
+                1500
+              );
+          }
+        };
+
+
+      poll();
+
+      subscriptions.set(
+        subscriberUID,
+        () => {
+          stopped = true;
+
+          if (timer) {
+            clearTimeout(
+              timer
+            );
+          }
+        }
+      );
+    },
+
+
+    unsubscribeBars(
+      subscriberUID
+    ) {
+      const stop =
+        subscriptions.get(
+          subscriberUID
+        );
+
+      stop?.();
+
+      subscriptions.delete(
+        subscriberUID
+      );
+    },
+
+
+    async getServerTime(
+      callback
+    ) {
+      asyncCall(
+        () =>
+          callback(
+            Math.floor(
+              Date.now() / 1000
+            )
+          )
+      );
+    }
+  };
+
+  return datafeed;
+}
