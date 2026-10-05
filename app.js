@@ -4197,13 +4197,21 @@ function syncTradingViewIndicators() {
 
 function buildTradingViewMarkers() {
 
-  // The chart shows one authoritative signal stream only: chart consensus.
-  // Momentum and Stride remain available as indicators/panels, but their
-  // independent arrows are not mixed with the final BUY/SELL decision.
-  // This prevents contradictory/overlapping M BUY, S BUY, BUY and SELL
-  // markers on the same candle.
   const markers = [];
   const rows = state.chartConsensus?.rows || [];
+  const finalizer =
+    state.tradeFinalizer || {};
+  const finalSide =
+    Number(finalizer.side || 0);
+  const finalTime =
+    Number(finalizer.time);
+  const finalConfirmed =
+    finalizer.primeConfirmed === true &&
+    (finalizer.state === 'BUY SETUP' ||
+      finalizer.state === 'STRONG BUY SETUP' ||
+      finalizer.state === 'SELL SETUP' ||
+      finalizer.state === 'STRONG SELL SETUP') &&
+    (finalSide === 1 || finalSide === -1);
 
   let previousSide = 0;
 
@@ -4226,15 +4234,24 @@ function buildTradingViewMarkers() {
     }
 
     const side = isBuy ? 1 : -1;
-
-    // Only draw one marker for a continuous same-side signal run.
-    if (side === previousSide) return;
-
     const candle = state.data[index];
     if (!candle || candle.time === null || candle.time === undefined) return;
 
     const time = Number(candle.time);
     if (!Number.isFinite(time)) return;
+
+    if (
+      !finalConfirmed ||
+      side !== finalSide ||
+      !Number.isFinite(finalTime) ||
+      time !== finalTime
+    ) {
+      previousSide = 0;
+      return;
+    }
+
+    // Only draw one marker for a continuous same-side signal run.
+    if (side === previousSide) return;
 
     const strong = signal.startsWith('STRONG');
 
@@ -15492,8 +15509,21 @@ function renderChartConsensus(
 
   const analysis =
     state.chartConsensus;
+  const finalizer =
+    state.tradeFinalizer || {};
+  const finalSide =
+    Number(finalizer.side || 0);
+  const finalTime =
+    Number(finalizer.time);
+  const finalConfirmed =
+    finalizer.primeConfirmed === true &&
+    (finalizer.state === 'BUY SETUP' ||
+      finalizer.state === 'STRONG BUY SETUP' ||
+      finalizer.state === 'SELL SETUP' ||
+      finalizer.state === 'STRONG SELL SETUP') &&
+    (finalSide === 1 || finalSide === -1);
 
-  if (!analysis) {
+  if (!analysis || !finalConfirmed || !Number.isFinite(finalTime)) {
     return;
   }
 
@@ -15553,6 +15583,16 @@ function renderChartConsensus(
 
       const buy =
         row.side === 1;
+      const markerTime =
+        Number(candle.time);
+
+      if (
+        !Number.isFinite(markerTime) ||
+        markerTime !== finalTime ||
+        Number(row.side || 0) !== finalSide
+      ) {
+        return;
+      }
 
       const strong =
         row.signal.includes(
@@ -16160,6 +16200,11 @@ function renderScalper(
   if (!enabled) {
     return;
   }
+
+  // Pro Scalper remains visible in its panel and alerts, but its raw intraday
+  // labels are not drawn on the primary chart. The chart surface is reserved
+  // for final confirmed BUY/SELL markers only.
+  return;
 
 
   const {
