@@ -5,7 +5,6 @@
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
 import { parse } from 'csv-parse/sync';
-import { authResponse } from './auth.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -20,6 +19,7 @@ const TIMEFRAMES = {
 };
 
 const IST = "Asia/Kolkata";
+const ALLOWED_USER_EMAIL = "mohanbhyri@gmail.com";
 const istFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: IST,
   year: "numeric",
@@ -37,8 +37,41 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Content-Type, Authorization",
     },
   });
+}
+
+function authenticatedEmail(request) {
+  return String(
+    request.headers.get("cf-access-authenticated-user-email") ||
+    request.headers.get("x-authenticated-user-email") ||
+    ""
+  ).trim().toLowerCase();
+}
+
+function accessDenied(url) {
+  if (url.pathname.startsWith("/api/")) {
+    return json({
+      live: false,
+      allowed: false,
+      reason:
+        "Access restricted. Sign in with mohanbhyri@gmail.com.",
+    }, 403);
+  }
+
+  return new Response(
+    "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Access restricted</title></head><body style=\"font-family:system-ui,sans-serif;background:#101719;color:#eef7f2;display:grid;min-height:100vh;place-items:center;margin:0\"><main style=\"max-width:520px;padding:32px;text-align:center\"><h1>Access restricted</h1><p>This app is open only for mohanbhyri@gmail.com.</p></main></body></html>",
+    {
+      status: 403,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
 }
 
 async function cachedApiResponse(request, ttlSeconds, loader, context) {
@@ -1409,99 +1442,85 @@ function findNearestNiftyFuture(instruments) {
 }
 
 async function findNearestNiftyFutureViaSearch(token) {
-  // Expiry filters are used as a first pass, with broader fallbacks for
-  // rollover/contract-list timing issues. Upstox limits search results to 30.
-  const expiryModes = ["current_month", "near_month", null];
-  let lastError = null;
+  const endpoint =
+    "https://api.upstox.com/v2/instruments/search" +
+    "?query=NIFTY" +
+    "&exchanges=NSE" +
+    "&segments=FO" +
+    "&instrument_types=FUT" +
+    "&expiry=current_month" +
+    "&page_number=1" +
+    "&records=30";
 
-  for (const expiryMode of expiryModes) {
-    const params = new URLSearchParams({
-      query: "NIFTY",
-      exchanges: "NSE",
-      segments: "FO",
-      instrument_types: "FUT",
-      page_number: "1",
-      records: "30",
-    });
+  const body =
+    await upstoxFetch(
+      endpoint,
+      token
+    );
 
-    if (expiryMode) params.set("expiry", expiryMode);
+  const rows =
+    Array.isArray(body?.data)
+      ? body.data
+      : [];
 
-    try {
-      const endpoint =
-        "https://api.upstox.com/v2/instruments/search?" +
-        params.toString();
+  const now =
+    Date.now();
 
-      const body = await upstoxFetch(endpoint, token);
+  const candidates =
+    rows
+      .filter((item) => {
+        const type =
+          String(
+            item?.instrument_type || ""
+          ).toUpperCase();
 
-      const rows =
-        Array.isArray(body?.data)
-          ? body.data
-          : [];
+        const segment =
+          String(
+            item?.segment || ""
+          ).toUpperCase();
 
-      const now = Date.now();
+        const underlying =
+          String(
+            item?.underlying_symbol || ""
+          ).toUpperCase();
 
-      const candidates =
-        rows
-          .filter((item) => {
-            const type =
-              String(item?.instrument_type || "").toUpperCase();
-            const segment =
-              String(item?.segment || "").toUpperCase();
-            const underlying =
-              String(
-                item?.underlying_symbol ||
-                item?.asset_symbol ||
-                ""
-              ).toUpperCase();
-            const symbol =
-              String(
-                item?.trading_symbol ||
-                item?.tradingsymbol ||
-                item?.name ||
-                ""
-              ).toUpperCase();
-            const expiry = expiryMs(item?.expiry);
+        const symbol =
+          String(
+            item?.trading_symbol || ""
+          ).toUpperCase();
 
-            const isNifty =
-              underlying === "NIFTY" ||
-              symbol.startsWith("NIFTY ");
-
-            const isBankNifty =
-              underlying === "BANKNIFTY" ||
-              symbol.startsWith("BANKNIFTY");
-
-            return (
-              type === "FUT" &&
-              segment === "NSE_FO" &&
-              isNifty &&
-              !isBankNifty &&
-              Number.isFinite(expiry) &&
-              expiry >= now &&
-              item?.instrument_key
-            );
-          })
-          .sort(
-            (a, b) => expiryMs(a.expiry) - expiryMs(b.expiry)
+        const expiry =
+          expiryMs(
+            item?.expiry
           );
 
-      if (candidates.length) return candidates[0];
-    } catch (error) {
-      lastError = error;
+        return (
+          type === "FUT" &&
+          segment === "NSE_FO" &&
+          (
+            underlying === "NIFTY" ||
+            symbol.startsWith("NIFTY ") ||
+            symbol.startsWith("NIFTY FUT")
+          ) &&
+          !symbol.startsWith("BANKNIFTY") &&
+          Number.isFinite(expiry) &&
+          expiry >= now &&
+          item?.instrument_key
+        );
+      })
+      .sort(
+        (a, b) =>
+          expiryMs(a.expiry) -
+          expiryMs(b.expiry)
+      );
 
-      // A rate limit is not recoverable by immediately issuing another
-      // request; let the shared cooldown protect the API and surface it.
-      if (error?.rateLimited || error?.status === 429) {
-        throw error;
-      }
-    }
+  if (!candidates.length) {
+    throw new Error(
+      "No active NIFTY futures contract found from Upstox instrument search."
+    );
   }
 
-  throw (
-    lastError ||
-    new Error(
-      "No active NIFTY futures contract found from Upstox instrument search."
-    )
-  );
+  return candidates[0];
 }
 
 // ----------------------------------------------------
@@ -2638,7 +2657,7 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          "access-control-allow-origin": url.origin,
+          "access-control-allow-origin": "*",
           "access-control-allow-methods": "GET, OPTIONS",
           "access-control-allow-headers": "Content-Type, Authorization",
           "access-control-max-age": "86400",
@@ -2646,13 +2665,9 @@ export default {
       });
     }
 
-    // ----------------------------------------------------
-    // PRIVATE SINGLE-USER ACCESS
-    // Every dashboard and API route is protected by a signed
-    // HttpOnly session cookie. Credentials are Cloudflare secrets.
-    // ----------------------------------------------------
-    const auth = await authResponse(request, env);
-    if (auth) return auth;
+    if (authenticatedEmail(request) !== ALLOWED_USER_EMAIL) {
+      return accessDenied(url);
+    }
 
     const token =
       env.UPSTOX_EXTENDED_TOKEN ||
