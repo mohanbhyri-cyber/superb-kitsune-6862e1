@@ -91,7 +91,7 @@ async function upstoxRequest(url, options = {}, scope = 'default') {
 
 export const API_BASE =
   typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).get('sample') === '1'
+  false
     ? ''
     : typeof window !== 'undefined' &&
   ['127.0.0.1', 'localhost'].includes(
@@ -967,7 +967,7 @@ export class UpstoxMarketAdapter {
 
 const sampleMode =
   typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).get('sample') === '1';
+  false;
 
 function sampleCandles(timeframe, count = 500, endTime = Date.now() / 1000) {
   const seconds = intervals[timeframe] || 60;
