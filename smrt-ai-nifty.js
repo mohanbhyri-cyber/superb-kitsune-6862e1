@@ -1,14 +1,9 @@
-// smrt-notebook-predictor.js
+// smrt-ai-nifty.js
 // ============================================================
-// Adapted from the uploaded "NIFTY50 STOCK PREDICTION.ipynb" methodology:
-// - 30-day input series
-// - 7-day prediction horizon
-// - standard scaling
-// - BUY=1 / SELL=0 framing
-//
-// The uploaded notebook does NOT include trained model weights.
-// Therefore this module uses a transparent live proxy score rather
-// than pretending to run the original 3x LSTM(256) network.
+// SMRT AI NIFTY 50
+// Multi-source deterministic decision-support engine.
+// Combines Upstox app state with independent external sources.
+// No automatic order placement and no guaranteed accuracy.
 // ============================================================
 
 const finite = value =>
@@ -17,254 +12,383 @@ const finite = value =>
   value !== '' &&
   Number.isFinite(Number(value));
 
-function zscore(values) {
-  const clean =
-    values
-      .map(Number)
-      .filter(finite);
-
-  if (!clean.length) {
-    return [];
-  }
-
-  const mean =
-    clean.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    clean.length;
-
-  const variance =
-    clean.reduce(
-      (sum, value) =>
-        sum +
-        Math.pow(
-          value - mean,
-          2
-        ),
-      0
-    ) /
-    clean.length;
-
-  const sd =
-    Math.sqrt(
-      variance
-    ) || 1;
-
-  return values.map(
-    value =>
-      finite(value)
-        ? (
-            Number(value) -
-            mean
-          ) / sd
-        : 0
-  );
-}
-
-export function analyseNotebookPredictor(
-  candles
-) {
-
-  const SERIES_LENGTH = 30;
-  const PREDICT_LENGTH = 7;
+const sourceSide = source => {
+  if (!source) return 0;
 
   if (
-    !Array.isArray(
-      candles
-    ) ||
-    candles.length <
-      SERIES_LENGTH + 8
+    source.name ===
+    'TradingView'
   ) {
-    return {
-      ready: false,
-      mode:
-        'ADAPTED_PROXY',
-      signal:
-        'WARMING UP',
-      score:
-        0,
-      seriesLength:
-        SERIES_LENGTH,
-      horizonDays:
-        PREDICT_LENGTH,
-      reason:
-        'Need at least 38 daily candles.'
-    };
+    const rec =
+      Number(
+        source.recommendAll
+      );
+
+    if (finite(rec)) {
+      if (rec >= 0.2) {
+        return 1;
+      }
+
+      if (rec <= -0.2) {
+        return -1;
+      }
+    }
+
+    const ema20 =
+      Number(
+        source.ema20
+      );
+
+    const ema50 =
+      Number(
+        source.ema50
+      );
+
+    if (
+      finite(ema20) &&
+      finite(ema50)
+    ) {
+      if (ema20 > ema50) {
+        return 1;
+      }
+
+      if (ema20 < ema50) {
+        return -1;
+      }
+    }
+
+    return 0;
   }
 
-  const rows =
-    candles.slice(
-      -SERIES_LENGTH
+  if (
+    source.name === 'Moneycontrol' ||
+    source.name === 'Trendlyne'
+  ) {
+    const rating =
+      String(
+        source.technicalRating || ''
+      ).toUpperCase();
+
+    if (
+      rating.includes('BULLISH')
+    ) {
+      return 1;
+    }
+
+    if (
+      rating.includes('BEARISH')
+    ) {
+      return -1;
+    }
+
+    return 0;
+  }
+
+  const change =
+    Number(
+      source.changePercent
     );
 
-  const closes =
-    rows.map(
-      row =>
-        Number(
-          row.close
-        )
+  const momentum =
+    Number(
+      source.momentum
     );
 
-  const volumes =
-    rows.map(
-      row =>
-        Number(
-          row.volume
-        ) || 0
-    );
-
-  const scaledClose =
-    zscore(
-      closes
-    );
-
-  const scaledVolume =
-    zscore(
-      volumes
-    );
-
-  const latest =
-    closes.at(-1);
-
-  const close7 =
-    closes.at(-8);
-
-  const close14 =
-    closes.at(-15);
-
-  const ret7 =
-    finite(latest) &&
-    finite(close7) &&
-    close7 !== 0
-      ? (
-          (
-            latest -
-            close7
-          ) /
-          close7
-        ) * 100
-      : 0;
-
-  const ret14 =
-    finite(latest) &&
-    finite(close14) &&
-    close14 !== 0
-      ? (
-          (
-            latest -
-            close14
-          ) /
-          close14
-        ) * 100
-      : 0;
-
-  const recentScaled =
-    scaledClose.slice(
-      -7
-    );
-
-  const olderScaled =
-    scaledClose.slice(
-      -14,
-      -7
-    );
-
-  const recentMean =
-    recentScaled.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    recentScaled.length;
-
-  const olderMean =
-    olderScaled.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    olderScaled.length;
-
-  const closeMomentum =
-    recentMean -
-    olderMean;
-
-  const volumePulse =
-    scaledVolume
-      .slice(-5)
-      .reduce(
-        (sum, value) =>
-          sum + value,
-        0
-      ) / 5;
-
-  // Transparent proxy, not the notebook's trained LSTM.
-  const raw =
-    ret7 * 0.9 +
-    ret14 * 0.35 +
-    closeMomentum * 8 +
-    volumePulse * 1.5;
-
-  const probability =
-    1 /
+  const combined =
     (
-      1 +
-      Math.exp(
-        -raw / 4
+      finite(change)
+        ? change
+        : 0
+    ) +
+    (
+      finite(momentum)
+        ? momentum
+        : 0
+    );
+
+  if (combined > 0.08) {
+    return 1;
+  }
+
+  if (combined < -0.08) {
+    return -1;
+  }
+
+  return 0;
+};
+
+export function analyseSmrtAiNifty({
+  upstoxPrice,
+  finalizer,
+  mtf,
+  external
+} = {}) {
+
+  const reasons = [];
+
+  let score = 0;
+
+  const finalizerState =
+    finalizer?.state ||
+    'NO TRADE';
+
+  if (
+    finalizerState.includes(
+      'BUY'
+    )
+  ) {
+    score +=
+      finalizerState.includes(
+        'STRONG'
+      )
+        ? 35
+        : 28;
+
+    reasons.push(
+      'SMRT Finalizer bullish'
+    );
+  } else if (
+    finalizerState.includes(
+      'SELL'
+    )
+  ) {
+    score -=
+      finalizerState.includes(
+        'STRONG'
+      )
+        ? 35
+        : 28;
+
+    reasons.push(
+      'SMRT Finalizer bearish'
+    );
+  }
+
+  const mtfRows = [
+    mtf?.['5m'],
+    mtf?.['15m'],
+    mtf?.['1h']
+  ];
+
+  let mtfBull = 0;
+  let mtfBear = 0;
+
+  for (
+    const row of mtfRows
+  ) {
+    if (row?.side === 1) {
+      mtfBull += 1;
+      score += 10;
+    }
+
+    if (row?.side === -1) {
+      mtfBear += 1;
+      score -= 10;
+    }
+  }
+
+  if (mtfBull === 3) {
+    reasons.push(
+      '5m / 15m / 1h bullish'
+    );
+  } else if (mtfBear === 3) {
+    reasons.push(
+      '5m / 15m / 1h bearish'
+    );
+  } else if (
+    mtfBull ||
+    mtfBear
+  ) {
+    reasons.push(
+      'MTF mixed ' +
+      mtfBull +
+      ' bull / ' +
+      mtfBear +
+      ' bear'
+    );
+  }
+
+  const sources =
+    Array.isArray(
+      external?.sources
+    )
+      ? external.sources
+      : [];
+
+  let externalBull = 0;
+  let externalBear = 0;
+  let externalNeutral = 0;
+
+  for (
+    const source of sources
+  ) {
+    const side =
+      sourceSide(
+        source
+      );
+
+    if (side === 1) {
+      externalBull += 1;
+
+      score +=
+        source.name ===
+        'TradingView'
+          ? 15
+          : 12;
+
+      reasons.push(
+        source.name +
+        ' bullish'
+      );
+    } else if (
+      side === -1
+    ) {
+      externalBear += 1;
+
+      score -=
+        source.name ===
+        'TradingView'
+          ? 15
+          : 12;
+
+      reasons.push(
+        source.name +
+        ' bearish'
+      );
+    } else {
+      externalNeutral += 1;
+    }
+  }
+
+  const upstox =
+    Number(
+      upstoxPrice
+    );
+
+  const externalPrices =
+    sources
+      .map(
+        source =>
+          Number(
+            source.price
+          )
+      )
+      .filter(
+        finite
+      );
+
+  let priceAgreement =
+    null;
+
+  if (
+    finite(upstox) &&
+    externalPrices.length
+  ) {
+    const average =
+      externalPrices
+        .reduce(
+          (
+            total,
+            value
+          ) =>
+            total + value,
+          0
+        ) /
+      externalPrices.length;
+
+    priceAgreement =
+      Math.abs(
+        average -
+        upstox
+      ) /
+      upstox *
+      100;
+
+    if (
+      priceAgreement <= 0.15
+    ) {
+      reasons.push(
+        'External prices agree with Upstox'
+      );
+    }
+  }
+
+  const absScore =
+    Math.min(
+      100,
+      Math.round(
+        Math.abs(
+          score
+        )
       )
     );
+
+  const directionalSources =
+    externalBull +
+    externalBear;
 
   let signal =
     'NO TRADE';
 
   if (
-    probability >= 0.58
+    score >= 45 &&
+    (
+      externalBull >= 1 ||
+      mtfBull >= 2
+    )
   ) {
     signal =
       'BUY';
   } else if (
-    probability <= 0.42
+    score <= -45 &&
+    (
+      externalBear >= 1 ||
+      mtfBear >= 2
+    )
   ) {
     signal =
       'SELL';
   }
 
-  const score =
-    Math.round(
-      Math.abs(
-        probability -
-        0.5
-      ) *
-      200
+  if (
+    externalBull > 0 &&
+    externalBear > 0
+  ) {
+    signal =
+      'NO TRADE';
+
+    reasons.push(
+      'External sources disagree'
     );
+  }
+
+  const plan =
+    signal !==
+      'NO TRADE' &&
+    finalizer?.plan
+      ? finalizer.plan
+      : null;
 
   return {
-    ready: true,
-    mode:
-      'ADAPTED_PROXY',
     signal,
-    score,
-    buyProbability:
-      probability,
-    sellProbability:
-      1 - probability,
-    seriesLength:
-      SERIES_LENGTH,
-    horizonDays:
-      PREDICT_LENGTH,
-    ret7,
-    ret14,
-    closeMomentum,
-    volumePulse,
-    latestClose:
-      latest,
-    reason:
-      signal === 'BUY'
-        ? '30-day scaled trend proxy favors higher NIFTY over the next 7-day horizon.'
-        : signal === 'SELL'
-          ? '30-day scaled trend proxy favors lower NIFTY over the next 7-day horizon.'
-          : 'The adapted 30-day / 7-day proxy is not directional enough.'
+    confidence:
+      absScore,
+    rawScore:
+      score,
+    externalBull,
+    externalBear,
+    externalNeutral,
+    directionalSources,
+    sourceCount:
+      sources.length,
+    priceAgreement,
+    reasons:
+      reasons.slice(
+        0,
+        8
+      ),
+    plan,
+    updated:
+      Date.now()
   };
 }

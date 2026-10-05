@@ -1,42 +1,53 @@
-export function regularNseHours(now = Date.now()) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit',
-    minute: '2-digit', hourCycle: 'h23'
-  }).formatToParts(now);
-  const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
-  const minute = Number(p.hour) * 60 + Number(p.minute);
-  return !['Sat', 'Sun'].includes(p.weekday) && minute >= 555 && minute < 930;
+// smrt-session-quality.js
+// NIFTY intraday session context. Closed-candle context only.
+// Does not generate BUY/SELL direction.
+
+const SESSION_START=9*60+15;
+const SESSION_END=15*60+30;
+
+function ist(time){
+  const p=new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',
+    weekday:'short',hour12:false
+  }).formatToParts(new Date(Number(time)*1000));
+  const get=t=>p.find(x=>x.type===t)?.value||'';
+  return {minutes:Number(get('hour'))*60+Number(get('minute')),weekday:get('weekday')};
 }
 
-export function summarizeOptions(rows, expiry, fetchedAt = Date.now()) {
-  const unavailable = { available: false, live: false, reason: 'Incomplete option chain' };
-  if (!Array.isArray(rows) || rows.length < 2) return unavailable;
-  let calls = 0, puts = 0, callMax = -1, putMax = -1;
-  let callWall = null, putWall = null;
-  const strikes = new Set();
-  for (const row of rows) {
-    const strike = row?.strike_price;
-    const call = row?.call_options?.market_data?.oi;
-    const put = row?.put_options?.market_data?.oi;
-    if (row?.expiry !== expiry || row?.underlying_key !== 'NSE_INDEX|Nifty 50' ||
-        !Number.isFinite(strike) || strike <= 0 || strikes.has(strike) ||
-        !Number.isFinite(call) || call < 0 || !Number.isFinite(put) || put < 0) return unavailable;
-    strikes.add(strike);
-    calls += call;
-    puts += put;
-    if (call > callMax) { callMax = call; callWall = strike; }
-    else if (call === callMax) callWall = null;
-    if (put > putMax) { putMax = put; putWall = strike; }
-    else if (put === putMax) putWall = null;
+export function analyseSessionQuality(candles){
+  if(!Array.isArray(candles)||candles.length<3)
+    return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
+
+  const c=candles[candles.length-2];
+  if(!c) return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
+
+  const {minutes,weekday}=ist(c.time);
+  if(['Sat','Sun'].includes(weekday)||minutes<SESSION_START||minutes>=SESSION_END)
+    return {ready:true,state:'MARKET CLOSED',quality:'CLOSED',score:0,time:c.time};
+
+  const fromOpen=minutes-SESSION_START;
+  let state='NORMAL SESSION',quality='GOOD',score=75;
+
+  // Opening minutes and the final stretch often carry faster price discovery,
+  // wider spreads/slippage and event-driven movement. Treat as context/risk,
+  // not as a directional signal.
+  if(fromOpen<15){
+    state='OPENING VOLATILITY';
+    quality='CAUTION';
+    score=45;
+  }else if(fromOpen<45){
+    state='OPENING TREND WINDOW';
+    quality='GOOD';
+    score=80;
+  }else if(minutes>=12*60&&minutes<13*60+30){
+    state='MIDDAY / LOWER MOMENTUM';
+    quality='CAUTION';
+    score=55;
+  }else if(minutes>=14*60+45){
+    state='LATE SESSION';
+    quality='CAUTION';
+    score=55;
   }
-  if (calls <= 0 || puts <= 0 || !Number.isFinite(calls + puts)) return unavailable;
-  const pcr = puts / calls;
-  const bias =
-    pcr >= 1.15 && putWall !== null && callWall !== null && Number(putWall) <= Number(callWall)
-      ? 'BULLISH'
-      : pcr <= 0.85 && putWall !== null && callWall !== null && Number(callWall) >= Number(putWall)
-        ? 'BEARISH'
-        : 'NEUTRAL';
-  return { available: true, live: false, expiry, fetchedAt, pcr,
-    callWall, putWall, callOI: calls, putOI: puts, strikeCount: strikes.size, bias };
+
+  return {ready:true,state,quality,score,minutes,time:c.time};
 }

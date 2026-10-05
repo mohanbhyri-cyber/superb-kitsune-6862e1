@@ -1,394 +1,312 @@
-// smrt-ai-nifty.js
+// smrt-market-map.js
 // ============================================================
-// SMRT AI NIFTY 50
-// Multi-source deterministic decision-support engine.
-// Combines Upstox app state with independent external sources.
-// No automatic order placement and no guaranteed accuracy.
+// SMRT MARKET MAP
+// Original NIFTY 50 support/resistance, trend, breakout and
+// reversal analysis using closed candles only.
 // ============================================================
 
-const finite = value =>
-  value !== null &&
-  value !== undefined &&
-  value !== '' &&
-  Number.isFinite(Number(value));
+import { indicators } from './market.js';
+import { closedDonchian } from './donchian.js';
+import { trendIndicators } from './trend-indicators.js';
 
-const sourceSide = source => {
-  if (!source) return 0;
+const finite = v =>
+  v !== null &&
+  v !== undefined &&
+  v !== '' &&
+  Number.isFinite(Number(v));
 
-  if (
-    source.name ===
-    'TradingView'
-  ) {
-    const rec =
-      Number(
-        source.recommendAll
-      );
+function atrSeries(candles, period = 14) {
+  const out = Array(candles.length).fill(null);
+  let seed = 0;
+  let atr = null;
 
-    if (finite(rec)) {
-      if (rec >= 0.2) {
-        return 1;
-      }
+  for (let i = 1; i < candles.length; i++) {
+    const c = candles[i];
+    const p = candles[i - 1];
 
-      if (rec <= -0.2) {
-        return -1;
-      }
-    }
-
-    const ema20 =
-      Number(
-        source.ema20
-      );
-
-    const ema50 =
-      Number(
-        source.ema50
-      );
-
-    if (
-      finite(ema20) &&
-      finite(ema50)
-    ) {
-      if (ema20 > ema50) {
-        return 1;
-      }
-
-      if (ema20 < ema50) {
-        return -1;
-      }
-    }
-
-    return 0;
-  }
-
-  if (
-    source.name === 'Moneycontrol' ||
-    source.name === 'Trendlyne'
-  ) {
-    const rating =
-      String(
-        source.technicalRating || ''
-      ).toUpperCase();
-
-    if (
-      rating.includes('BULLISH')
-    ) {
-      return 1;
-    }
-
-    if (
-      rating.includes('BEARISH')
-    ) {
-      return -1;
-    }
-
-    return 0;
-  }
-
-  const change =
-    Number(
-      source.changePercent
+    const tr = Math.max(
+      Number(c.high) - Number(c.low),
+      Math.abs(Number(c.high) - Number(p.close)),
+      Math.abs(Number(c.low) - Number(p.close))
     );
 
-  const momentum =
-    Number(
-      source.momentum
-    );
+    if (i <= period) seed += tr;
 
-  const combined =
-    (
-      finite(change)
-        ? change
-        : 0
-    ) +
-    (
-      finite(momentum)
-        ? momentum
-        : 0
-    );
+    if (i === period) {
+      atr = seed / period;
+    } else if (i > period && atr !== null) {
+      atr = (atr * (period - 1) + tr) / period;
+    }
 
-  if (combined > 0.08) {
-    return 1;
+    out[i] = atr;
   }
 
-  if (combined < -0.08) {
-    return -1;
+  return out;
+}
+
+function pivots(candles, left = 3, right = 3) {
+  const highs = [];
+  const lows = [];
+
+  for (let i = left; i < candles.length - right; i++) {
+    const h = Number(candles[i].high);
+    const l = Number(candles[i].low);
+
+    let isHigh = true;
+    let isLow = true;
+
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue;
+      if (Number(candles[j].high) >= h) isHigh = false;
+      if (Number(candles[j].low) <= l) isLow = false;
+    }
+
+    if (isHigh) highs.push({ index: i, price: h, time: candles[i].time });
+    if (isLow) lows.push({ index: i, price: l, time: candles[i].time });
   }
 
-  return 0;
-};
+  return { highs, lows };
+}
 
-export function analyseSmrtAiNifty({
-  upstoxPrice,
-  finalizer,
-  mtf,
-  external
-} = {}) {
+function clusterLevels(points, tolerance) {
+  const sorted = [...points].sort((a, b) => a.price - b.price);
+  const zones = [];
 
-  const reasons = [];
+  for (const point of sorted) {
+    const existing = zones.find(z => Math.abs(z.price - point.price) <= tolerance);
+
+    if (existing) {
+      existing.touches += 1;
+      existing.price =
+        (existing.price * (existing.touches - 1) + point.price) /
+        existing.touches;
+      existing.lastTime = Math.max(existing.lastTime, point.time);
+    } else {
+      zones.push({
+        price: point.price,
+        touches: 1,
+        lastTime: point.time
+      });
+    }
+  }
+
+  return zones;
+}
+
+function trendLabel(score, adx) {
+  if (score >= 4 && adx >= 25) return 'STRONG BULLISH';
+  if (score >= 2) return 'BULLISH';
+  if (score <= -4 && adx >= 25) return 'STRONG BEARISH';
+  if (score <= -2) return 'BEARISH';
+  return 'RANGE / MIXED';
+}
+
+export function analyseMarketMap(candles, options = {}) {
+  if (!Array.isArray(candles) || candles.length < 40) {
+    return null;
+  }
+
+  const closedIndex = Math.max(0, candles.length - 2);
+  const calc = indicators(candles);
+  const trend = trendIndicators(candles);
+  const atr14 = atrSeries(candles, 14);
+  const atr = Number(atr14[closedIndex]);
+
+  if (!finite(atr) || atr <= 0) return null;
+
+  const { highs, lows } = pivots(candles, 3, 3);
+  const tolerance = atr * 0.45;
+
+  const resistanceZones = clusterLevels(
+    highs.filter(p => p.index <= closedIndex).slice(-18),
+    tolerance
+  );
+
+  const supportZones = clusterLevels(
+    lows.filter(p => p.index <= closedIndex).slice(-18),
+    tolerance
+  );
+
+  const close = Number(candles[closedIndex].close);
+  const volatilityWindow = atr14.slice(closedIndex - 99, closedIndex + 1);
+  const volatilityReady = closedIndex >= 219 && close > 0 &&
+    volatilityWindow.length === 100 &&
+    volatilityWindow.every(value => finite(value) && Number(value) > 0);
+  const atrVolatility = volatilityReady ? {
+    points: atr,
+    percent: atr / close * 100,
+    percentile: volatilityWindow.filter(value => value <= atr).length,
+    time: candles[closedIndex].time
+  } : null;
+  const prevClose = Number(candles[closedIndex - 1]?.close);
+  const e9 = Number(calc.e9?.[closedIndex]);
+  const e21 = Number(calc.e21?.[closedIndex]);
+  const e50 = Number(calc.e50?.[closedIndex]);
+  const rsi = Number(calc.rsi?.[closedIndex]);
+  const hist = Number(calc.hist?.[closedIndex]);
+  const prevHist = Number(calc.hist?.[closedIndex - 1]);
+  const stDir = Number(trend.direction?.[closedIndex] || 0);
+  const adx = Number(trend.adx?.[closedIndex]);
+  const plusDI = Number(trend.plusDI?.[closedIndex]);
+  const minusDI = Number(trend.minusDI?.[closedIndex]);
+
+  const indexVWAP = Number(calc.vwap?.[closedIndex]);
+  const futuresVWAP = finite(options.futuresVWAP)
+    ? Number(options.futuresVWAP)
+    : null;
+  const vwap = finite(indexVWAP) ? indexVWAP : futuresVWAP;
+
+  const nearestSupport = supportZones
+    .filter(z => z.price <= close + tolerance)
+    .sort((a, b) => b.price - a.price)[0] || null;
+
+  const nearestResistance = resistanceZones
+    .filter(z => z.price >= close - tolerance)
+    .sort((a, b) => a.price - b.price)[0] || null;
 
   let score = 0;
 
-  const finalizerState =
-    finalizer?.state ||
-    'NO TRADE';
+  if (e9 > e21) score += 1;
+  else if (e9 < e21) score -= 1;
+
+  if (e21 > e50) score += 1;
+  else if (e21 < e50) score -= 1;
+
+  if (stDir === 1) score += 1;
+  else if (stDir === -1) score -= 1;
+
+  if (plusDI > minusDI) score += 1;
+  else if (minusDI > plusDI) score -= 1;
+
+  if (finite(vwap)) {
+    if (close > vwap) score += 1;
+    else if (close < vwap) score -= 1;
+  }
+
+  const trendState = trendLabel(score, finite(adx) ? adx : 0);
+
+  let breakout = 'NONE';
 
   if (
-    finalizerState.includes(
-      'BUY'
-    )
+    nearestResistance &&
+    prevClose <= nearestResistance.price + tolerance * 0.25 &&
+    close > nearestResistance.price + atr * 0.15
   ) {
-    score +=
-      finalizerState.includes(
-        'STRONG'
-      )
-        ? 35
-        : 28;
+    breakout = 'BREAKOUT UP';
+  }
 
-    reasons.push(
-      'SMRT Finalizer bullish'
-    );
+  if (
+    nearestSupport &&
+    prevClose >= nearestSupport.price - tolerance * 0.25 &&
+    close < nearestSupport.price - atr * 0.15
+  ) {
+    breakout = 'BREAKDOWN';
+  }
+
+  const nearSupport =
+    nearestSupport &&
+    Math.abs(close - nearestSupport.price) <= atr * 0.65;
+
+  const nearResistance =
+    nearestResistance &&
+    Math.abs(close - nearestResistance.price) <= atr * 0.65;
+
+  const bullishMomentumTurn =
+    finite(rsi) &&
+    finite(hist) &&
+    finite(prevHist) &&
+    rsi >= 42 &&
+    rsi <= 58 &&
+    hist > prevHist;
+
+  const bearishMomentumTurn =
+    finite(rsi) &&
+    finite(hist) &&
+    finite(prevHist) &&
+    rsi >= 42 &&
+    rsi <= 62 &&
+    hist < prevHist;
+
+  let reversal = 'NONE';
+
+  if (
+    nearSupport &&
+    bullishMomentumTurn &&
+    close > Number(candles[closedIndex].open) &&
+    score >= -1
+  ) {
+    reversal = 'BULLISH REVERSAL';
+  }
+
+  if (
+    nearResistance &&
+    bearishMomentumTurn &&
+    close < Number(candles[closedIndex].open) &&
+    score <= 1
+  ) {
+    reversal = 'BEARISH REVERSAL';
+  }
+
+  let confluence = 0;
+  if (Math.abs(score) >= 3) confluence += 2;
+  else if (Math.abs(score) >= 2) confluence += 1;
+  if (finite(adx) && adx >= 22) confluence += 2;
+  if (breakout !== 'NONE') confluence += 2;
+  if (reversal !== 'NONE') confluence += 2;
+  if (nearestSupport || nearestResistance) confluence += 1;
+  if (finite(vwap)) confluence += 1;
+
+  confluence = Math.min(10, confluence);
+
+  let action = 'NO TRADE';
+
+  if (
+    breakout === 'BREAKOUT UP' &&
+    score >= 2 &&
+    adx >= 22
+  ) {
+    action = 'BUY BREAKOUT';
   } else if (
-    finalizerState.includes(
-      'SELL'
-    )
+    breakout === 'BREAKDOWN' &&
+    score <= -2 &&
+    adx >= 22
   ) {
-    score -=
-      finalizerState.includes(
-        'STRONG'
-      )
-        ? 35
-        : 28;
-
-    reasons.push(
-      'SMRT Finalizer bearish'
-    );
-  }
-
-  const mtfRows = [
-    mtf?.['5m'],
-    mtf?.['15m'],
-    mtf?.['1h']
-  ];
-
-  let mtfBull = 0;
-  let mtfBear = 0;
-
-  for (
-    const row of mtfRows
-  ) {
-    if (row?.side === 1) {
-      mtfBull += 1;
-      score += 10;
-    }
-
-    if (row?.side === -1) {
-      mtfBear += 1;
-      score -= 10;
-    }
-  }
-
-  if (mtfBull === 3) {
-    reasons.push(
-      '5m / 15m / 1h bullish'
-    );
-  } else if (mtfBear === 3) {
-    reasons.push(
-      '5m / 15m / 1h bearish'
-    );
+    action = 'SELL BREAKDOWN';
   } else if (
-    mtfBull ||
-    mtfBear
+    reversal === 'BULLISH REVERSAL' &&
+    confluence >= 6
   ) {
-    reasons.push(
-      'MTF mixed ' +
-      mtfBull +
-      ' bull / ' +
-      mtfBear +
-      ' bear'
-    );
-  }
-
-  const sources =
-    Array.isArray(
-      external?.sources
-    )
-      ? external.sources
-      : [];
-
-  let externalBull = 0;
-  let externalBear = 0;
-  let externalNeutral = 0;
-
-  for (
-    const source of sources
-  ) {
-    const side =
-      sourceSide(
-        source
-      );
-
-    if (side === 1) {
-      externalBull += 1;
-
-      score +=
-        source.name ===
-        'TradingView'
-          ? 15
-          : 12;
-
-      reasons.push(
-        source.name +
-        ' bullish'
-      );
-    } else if (
-      side === -1
-    ) {
-      externalBear += 1;
-
-      score -=
-        source.name ===
-        'TradingView'
-          ? 15
-          : 12;
-
-      reasons.push(
-        source.name +
-        ' bearish'
-      );
-    } else {
-      externalNeutral += 1;
-    }
-  }
-
-  const upstox =
-    Number(
-      upstoxPrice
-    );
-
-  const externalPrices =
-    sources
-      .map(
-        source =>
-          Number(
-            source.price
-          )
-      )
-      .filter(
-        finite
-      );
-
-  let priceAgreement =
-    null;
-
-  if (
-    finite(upstox) &&
-    externalPrices.length
-  ) {
-    const average =
-      externalPrices
-        .reduce(
-          (
-            total,
-            value
-          ) =>
-            total + value,
-          0
-        ) /
-      externalPrices.length;
-
-    priceAgreement =
-      Math.abs(
-        average -
-        upstox
-      ) /
-      upstox *
-      100;
-
-    if (
-      priceAgreement <= 0.15
-    ) {
-      reasons.push(
-        'External prices agree with Upstox'
-      );
-    }
-  }
-
-  const absScore =
-    Math.min(
-      100,
-      Math.round(
-        Math.abs(
-          score
-        )
-      )
-    );
-
-  const directionalSources =
-    externalBull +
-    externalBear;
-
-  let signal =
-    'NO TRADE';
-
-  if (
-    score >= 45 &&
-    (
-      externalBull >= 1 ||
-      mtfBull >= 2
-    )
-  ) {
-    signal =
-      'BUY';
+    action = 'BUY REVERSAL';
   } else if (
-    score <= -45 &&
-    (
-      externalBear >= 1 ||
-      mtfBear >= 2
-    )
+    reversal === 'BEARISH REVERSAL' &&
+    confluence >= 6
   ) {
-    signal =
-      'SELL';
+    action = 'SELL REVERSAL';
   }
-
-  if (
-    externalBull > 0 &&
-    externalBear > 0
-  ) {
-    signal =
-      'NO TRADE';
-
-    reasons.push(
-      'External sources disagree'
-    );
-  }
-
-  const plan =
-    signal !==
-      'NO TRADE' &&
-    finalizer?.plan
-      ? finalizer.plan
-      : null;
 
   return {
-    signal,
-    confidence:
-      absScore,
-    rawScore:
-      score,
-    externalBull,
-    externalBear,
-    externalNeutral,
-    directionalSources,
-    sourceCount:
-      sources.length,
-    priceAgreement,
-    reasons:
-      reasons.slice(
-        0,
-        8
-      ),
-    plan,
-    updated:
-      Date.now()
+    time: candles[closedIndex].time,
+    close,
+    atr,
+    atrVolatility,
+    donchian: closedDonchian(candles),
+    nearestSupport,
+    nearestResistance,
+    supports: supportZones
+      .filter(z => z.price < close)
+      .sort((a, b) => b.price - a.price)
+      .slice(0, 3),
+    resistances: resistanceZones
+      .filter(z => z.price > close)
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 3),
+    trend: trendState,
+    trendScore: score,
+    adx,
+    reversal,
+    breakout,
+    action,
+    confluence,
+    vwap
   };
 }

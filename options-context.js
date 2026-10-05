@@ -1,135 +1,42 @@
-// smrt-scalp-reversal.js
-// ============================================================
-// SMRT SCALP REVERSAL PRO
-// Original NIFTY 50 scalp/reversal indicator inspired by the
-// requested visual style. Closed-candle confirmation only.
-// ============================================================
+export function regularNseHours(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit',
+    minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(now);
+  const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const minute = Number(p.hour) * 60 + Number(p.minute);
+  return !['Sat', 'Sun'].includes(p.weekday) && minute >= 555 && minute < 930;
+}
 
-const finite = v =>
-  v !== null &&
-  v !== undefined &&
-  v !== '' &&
-  Number.isFinite(Number(v));
-
-export function scalpReversalSignal({
-  edge,
-  marketMap,
-  candleSetup,
-  finalizer,
-  mtf
-}) {
-  const edgeNow = edge?.latest;
-  const map = marketMap;
-  const fin = finalizer;
-  const candle = candleSetup;
-
-  if (!edgeNow || !map || !fin) {
-    return {
-      signal: 'NO TRADE',
-      side: 0,
-      strength: 0,
-      plan: null,
-      reason: 'Waiting for confirmed closed-candle confluence'
-    };
+export function summarizeOptions(rows, expiry, fetchedAt = Date.now()) {
+  const unavailable = { available: false, live: false, reason: 'Incomplete option chain' };
+  if (!Array.isArray(rows) || rows.length < 2) return unavailable;
+  let calls = 0, puts = 0, callMax = -1, putMax = -1;
+  let callWall = null, putWall = null;
+  const strikes = new Set();
+  for (const row of rows) {
+    const strike = row?.strike_price;
+    const call = row?.call_options?.market_data?.oi;
+    const put = row?.put_options?.market_data?.oi;
+    if (row?.expiry !== expiry || row?.underlying_key !== 'NSE_INDEX|Nifty 50' ||
+        !Number.isFinite(strike) || strike <= 0 || strikes.has(strike) ||
+        !Number.isFinite(call) || call < 0 || !Number.isFinite(put) || put < 0) return unavailable;
+    strikes.add(strike);
+    calls += call;
+    puts += put;
+    if (call > callMax) { callMax = call; callWall = strike; }
+    else if (call === callMax) callWall = null;
+    if (put > putMax) { putMax = put; putWall = strike; }
+    else if (put === putMax) putWall = null;
   }
-
-  let longScore = 0;
-  let shortScore = 0;
-  const reasons = [];
-
-  if (['BUY+','BUY'].includes(edgeNow.signal)) {
-    longScore += edgeNow.signal === 'BUY+' ? 3 : 2;
-    reasons.push('NIFTY EDGE bullish');
-  }
-
-  if (['SELL+','SELL'].includes(edgeNow.signal)) {
-    shortScore += edgeNow.signal === 'SELL+' ? 3 : 2;
-    reasons.push('NIFTY EDGE bearish');
-  }
-
-  if (map.trend?.includes('BULLISH')) {
-    longScore += 2;
-    reasons.push('Market trend bullish');
-  }
-
-  if (map.trend?.includes('BEARISH')) {
-    shortScore += 2;
-    reasons.push('Market trend bearish');
-  }
-
-  if (map.reversal === 'BULLISH REVERSAL') {
-    longScore += 2;
-    reasons.push('Bullish reversal');
-  }
-
-  if (map.reversal === 'BEARISH REVERSAL') {
-    shortScore += 2;
-    reasons.push('Bearish reversal');
-  }
-
-  if (map.breakout === 'BREAKOUT UP') {
-    longScore += 2;
-    reasons.push('Breakout confirmed');
-  }
-
-  if (map.breakout === 'BREAKDOWN') {
-    shortScore += 2;
-    reasons.push('Breakdown confirmed');
-  }
-
-  if (candle?.action?.startsWith('BUY')) {
-    longScore += 2;
-    reasons.push('Bullish candle confluence');
-  }
-
-  if (candle?.action?.startsWith('SELL')) {
-    shortScore += 2;
-    reasons.push('Bearish candle confluence');
-  }
-
-  if (mtf?.overall?.includes('BUY')) {
-    longScore += 3;
-    reasons.push('MTF bullish');
-  }
-
-  if (mtf?.overall?.includes('SELL')) {
-    shortScore += 3;
-    reasons.push('MTF bearish');
-  }
-
-  if (fin.state?.includes('BUY')) {
-    longScore += fin.state.startsWith('STRONG') ? 4 : 3;
-    reasons.push('Trade Finalizer bullish');
-  }
-
-  if (fin.state?.includes('SELL')) {
-    shortScore += fin.state.startsWith('STRONG') ? 4 : 3;
-    reasons.push('Trade Finalizer bearish');
-  }
-
-  const side = longScore > shortScore ? 1 : shortScore > longScore ? -1 : 0;
-  const strength = Math.max(longScore, shortScore);
-  const gap = Math.abs(longScore - shortScore);
-
-  let signal = 'NO TRADE';
-
-  if (side === 1 && strength >= 10 && gap >= 4) {
-    signal = strength >= 13 ? 'LONG+' : 'LONG';
-  } else if (side === -1 && strength >= 10 && gap >= 4) {
-    signal = strength >= 13 ? 'SHORT+' : 'SHORT';
-  }
-
-  const plan = signal !== 'NO TRADE'
-    ? fin.plan || edgeNow.plan || null
-    : null;
-
-  return {
-    signal,
-    side: signal.startsWith('LONG') ? 1 : signal.startsWith('SHORT') ? -1 : 0,
-    strength,
-    longScore,
-    shortScore,
-    plan,
-    reason: reasons.slice(0, 6).join(' · ')
-  };
+  if (calls <= 0 || puts <= 0 || !Number.isFinite(calls + puts)) return unavailable;
+  const pcr = puts / calls;
+  const bias =
+    pcr >= 1.15 && putWall !== null && callWall !== null && Number(putWall) <= Number(callWall)
+      ? 'BULLISH'
+      : pcr <= 0.85 && putWall !== null && callWall !== null && Number(callWall) >= Number(putWall)
+        ? 'BEARISH'
+        : 'NEUTRAL';
+  return { available: true, live: false, expiry, fetchedAt, pcr,
+    callWall, putWall, callOI: calls, putOI: puts, strikeCount: strikes.size, bias };
 }
