@@ -1,4 +1,4 @@
-// All browser-side Upstox requests share the same retry deadline.
+/ All browser-side Upstox requests share the same retry deadline.
 let upstoxRetryAt = 0;
 const MIN_UPSTOX_RETRY_MS = 120000;
 
