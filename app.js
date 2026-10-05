@@ -50,8 +50,9 @@ import {
   intervals,
   indicators,
   market,
+  noteUpstoxRateLimit,
   strideSignals
-} from './market.js?v=3';
+} from './market.js?v=4';
 
 
 window.SMRTTradingViewDatafeed =
@@ -1972,6 +1973,57 @@ function toast(message) {
 }
 
 
+async function upstoxAwareFetch(
+  url,
+  options = {}
+) {
+  const response =
+    await fetch(
+      url,
+      options
+    );
+
+  if (response.status !== 429) {
+    return response;
+  }
+
+  const payload =
+    await response.clone()
+      .json()
+      .catch(() => ({}));
+
+  const delay =
+    noteUpstoxRateLimit(
+      payload?.retryAfterMs
+    );
+
+  const error =
+    new Error(
+      payload?.reason ||
+      'Upstox rate limit reached. Waiting before retry.'
+    );
+
+  error.status = 429;
+  error.retryAfterMs = delay;
+  error.rateLimited = true;
+
+  throw error;
+}
+
+
+function isUpstoxRateLimit(
+  error
+) {
+  return (
+    error?.rateLimited === true ||
+    error?.status === 429 ||
+    /rate limit/i.test(
+      String(error?.message || '')
+    )
+  );
+}
+
+
 function current() {
 
   return instruments.find(
@@ -2229,7 +2281,7 @@ async function refreshFuturesVWAP() {
   try {
 
     const response =
-      await fetch(
+      await upstoxAwareFetch(
         API_BASE + '/api/nifty-futures-vwap?interval=' +
         encodeURIComponent(minutes),
         {
@@ -2274,7 +2326,9 @@ async function refreshFuturesVWAP() {
 
     state.futuresVWAP = null;
     state.futuresVWAPUpdated = 0;
-    state.futuresVWAPReason = error?.message || 'Unable to load genuine NIFTY futures VWAP.';
+    state.futuresVWAPReason = isUpstoxRateLimit(error)
+      ? 'Upstox rate limited futures VWAP. Waiting before retry.'
+      : error?.message || 'Unable to load genuine NIFTY futures VWAP.';
   }
 }
 
@@ -2350,7 +2404,12 @@ function setFeedStatus(
   ) {
 
     el.textContent =
-      '● RECONNECTING · UPSTOX';
+      '● RECONNECTING · UPSTOX' +
+      (
+        message
+          ? ' · ' + message
+          : ''
+      );
 
     return;
   }
@@ -8429,7 +8488,7 @@ function scheduleReconnect(retryAfterMs = 0) {
 
   setFeedStatus(
     'RECONNECTING',
-    'Retrying in ' +
+    'Upstox cooling down · retrying in ' +
     Math.ceil(
       delay /
       1000
@@ -9556,11 +9615,11 @@ async function refreshOptionsContext() {
     updateMarketMapPanel();
     return;
   }
-  if (optionsBusy || Date.now() - optionsRequestedAt < 60000) return;
+  if (optionsBusy || Date.now() - optionsRequestedAt < 180000) return;
   optionsBusy = true;
   optionsRequestedAt = Date.now();
   try {
-    const response = await fetch(API_BASE + '/api/nifty-options', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    const response = await upstoxAwareFetch(API_BASE + '/api/nifty-options', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error('Options feed unavailable');
     const payload = await response.json();
     const age = Date.now() - Number(payload.fetchedAt);
@@ -9581,11 +9640,11 @@ async function refreshBreadthContext() {
     updateMarketMapPanel();
     return;
   }
-  if (breadthBusy || Date.now() - breadthRequestedAt < 60000) return;
+  if (breadthBusy || Date.now() - breadthRequestedAt < 180000) return;
   breadthBusy = true;
   breadthRequestedAt = Date.now();
   try {
-    const response = await fetch(API_BASE + '/api/nifty-breadth', { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    const response = await upstoxAwareFetch(API_BASE + '/api/nifty-breadth', { cache: 'no-store', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw new Error('Breadth unavailable');
     const payload = await response.json();
     state.niftyBreadth = payload.live === true ? payload : null;
@@ -9597,9 +9656,9 @@ async function refreshBreadthContext() {
   }
 }
 refreshBreadthContext();
-setInterval(() => { if (!document.hidden) refreshBreadthContext(); }, 60000);
+setInterval(() => { if (!document.hidden) refreshBreadthContext(); }, 180000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBreadthContext(); });
-setInterval(() => { if (!document.hidden) refreshOptionsContext(); }, 60000);
+setInterval(() => { if (!document.hidden) refreshOptionsContext(); }, 180000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOptionsContext(); });
 
 refreshGlobalWatch().catch(
@@ -9620,7 +9679,7 @@ const globalWatchTimer =
           );
       }
     },
-    60000
+    180000
   );
 
 
@@ -9636,7 +9695,7 @@ const externalNiftyTimer =
           );
       }
     },
-    30000
+    120000
   );
 
 
@@ -13102,7 +13161,7 @@ async function refreshGlobalWatch() {
 
   try {
     const response =
-      await fetch(
+      await upstoxAwareFetch(
         API_BASE +
         '/api/global-watch',
         {
@@ -13491,7 +13550,7 @@ async function refreshExternalNifty() {
 
   try {
     const response =
-      await fetch(
+      await upstoxAwareFetch(
         API_BASE +
         '/api/external-nifty',
         {

@@ -1,5 +1,22 @@
 // All browser-side Upstox requests share the same retry deadline.
 let upstoxRetryAt = 0;
+const MIN_UPSTOX_RETRY_MS = 120000;
+
+export function upstoxCooldownRemaining() {
+  return Math.max(0, upstoxRetryAt - Date.now());
+}
+
+export function noteUpstoxRateLimit(retryAfterMs = MIN_UPSTOX_RETRY_MS) {
+  const delay = Math.max(
+    MIN_UPSTOX_RETRY_MS,
+    Number.isFinite(Number(retryAfterMs))
+      ? Number(retryAfterMs)
+      : 0
+  );
+  upstoxRetryAt = Math.max(upstoxRetryAt, Date.now() + delay);
+  return delay;
+}
+
 function marketRateLimitError() {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
@@ -15,9 +32,9 @@ async function upstoxRequest(url, options) {
     const seconds = header && Number.isFinite(Number(header))
       ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : 0;
     const bodyDelay = Number(body.retryAfterMs);
-    const delay = Math.max(60000, Number.isFinite(bodyDelay) ? bodyDelay : 0,
+    const delay = Math.max(MIN_UPSTOX_RETRY_MS, Number.isFinite(bodyDelay) ? bodyDelay : 0,
       Number.isFinite(seconds) ? seconds * 1000 : 0);
-    upstoxRetryAt = Math.max(upstoxRetryAt, Date.now() + delay);
+    noteUpstoxRateLimit(delay);
     throw marketRateLimitError();
   }
   return response;
@@ -839,10 +856,10 @@ export class UpstoxMarketAdapter {
         if (alive && !document.hidden) {
           const retryDelay =
   consecutiveFailures >= 3
-    ? 60000
+    ? 120000
     : consecutiveFailures > 0
-      ? 30000
-      : 15000;
+      ? 60000
+      : 30000;
 
 timer = setTimeout(
   tick,
