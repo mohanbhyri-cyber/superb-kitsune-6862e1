@@ -1826,7 +1826,8 @@ const state = {
     'Bollinger',
     'VWAP',
     'Volume',
-    'S/R'
+    'S/R',
+    'Swing (5, 5, high, low, Left Side)'
   ]),
 
   hover: null,
@@ -1866,7 +1867,8 @@ const colors = {
   'Bollinger': '#879fac',
   'VWAP': '#ed90b2',
   'Volume': '#72e4bd',
-  'S/R': '#9aa8ad'
+  'S/R': '#9aa8ad',
+  'Swing (5, 5, high, low, Left Side)': '#2b8cff'
 };
 
 
@@ -3368,6 +3370,7 @@ let tvLiteVolumeSeries = null;
 let tvLiteMarkers = null;
 const tvLiteIndicatorSeries = new Map();
 let tvLitePriceLines = [];
+const tvLiteSwingSeries = new Map();
 let tvLiteLastLength = 0;
 let tvLiteLastFirstTime = null;
 let tvLiteLastMarkerKey = '';
@@ -3820,6 +3823,222 @@ function ensureTvLiteVolumeSeries() {
 }
 
 
+function calculateSwing55() {
+  const data = Array.isArray(state.data) ? state.data : [];
+  const left = 5;
+  const right = 5;
+  const swings = [];
+
+  // A swing is confirmed only after all 5 right-side candles exist.
+  // The newest/forming candle is not used as a confirmed right-side candle.
+  const lastClosed =
+    lastClosedCandleIndex(
+      data,
+      Number(intervals[state.tf]),
+      state.replay.active
+        ? Number(data.at(-1)?.time) + Number(intervals[state.tf])
+        : Date.now() / 1000
+    );
+
+  if (lastClosed < left + right) {
+    return swings;
+  }
+
+  for (let i = left; i <= lastClosed - right; i++) {
+    const pivot = data[i];
+    const high = Number(pivot?.high);
+    const low = Number(pivot?.low);
+    const time = Number(pivot?.time);
+
+    if (
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(time)
+    ) {
+      continue;
+    }
+
+    let swingHigh = true;
+    let swingLow = true;
+
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue;
+
+      const otherHigh = Number(data[j]?.high);
+      const otherLow = Number(data[j]?.low);
+
+      if (!Number.isFinite(otherHigh) || high <= otherHigh) {
+        swingHigh = false;
+      }
+
+      if (!Number.isFinite(otherLow) || low >= otherLow) {
+        swingLow = false;
+      }
+
+      if (!swingHigh && !swingLow) break;
+    }
+
+    if (swingHigh) {
+      swings.push({
+        type: 'HIGH',
+        index: i,
+        time,
+        price: high,
+        confirmedIndex: i + right
+      });
+    }
+
+    if (swingLow) {
+      swings.push({
+        type: 'LOW',
+        index: i,
+        time,
+        price: low,
+        confirmedIndex: i + right
+      });
+    }
+  }
+
+  return swings.sort((a, b) => a.index - b.index);
+}
+
+
+function syncTradingViewSwing55() {
+  const enabled =
+    state.overlays.has(
+      'Swing (5, 5, high, low, Left Side)'
+    );
+
+  if (!enabled || !tvLiteChart) {
+    for (const series of tvLiteSwingSeries.values()) {
+      try {
+        tvLiteChart?.removeSeries?.(series);
+      } catch {}
+    }
+    tvLiteSwingSeries.clear();
+    return;
+  }
+
+  const L = window.LightweightCharts;
+  if (!L) return;
+
+  const swings = calculateSwing55();
+  const wanted = new Set();
+
+  // Keep the latest 40 confirmed levels to avoid overcrowding the chart.
+  const visible = swings.slice(-40);
+
+  visible.forEach((swing, visibleIndex) => {
+    const key =
+      `SWING-${swing.type}-${swing.time}-${swing.price}`;
+
+    wanted.add(key);
+
+    let series =
+      tvLiteSwingSeries.get(key);
+
+    if (!series) {
+      const options = {
+        color:
+          swing.type === 'HIGH'
+            ? '#ff3f5f'
+            : '#00b8d4',
+        lineWidth: 2,
+        lineStyle:
+          L.LineStyle?.Dotted ?? 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      };
+
+      try {
+        if (L.LineSeries && tvLiteChart.addSeries) {
+          series =
+            tvLiteChart.addSeries(
+              L.LineSeries,
+              options
+            );
+        } else if (tvLiteChart.addLineSeries) {
+          series =
+            tvLiteChart.addLineSeries(
+              options
+            );
+        }
+      } catch (error) {
+        console.warn(
+          'Unable to create Swing 5/5 level:',
+          error
+        );
+      }
+
+      if (series) {
+        tvLiteSwingSeries.set(
+          key,
+          series
+        );
+      }
+    }
+
+    if (!series) return;
+
+    const nextSameType =
+      visible
+        .slice(visibleIndex + 1)
+        .find(item => item.type === swing.type);
+
+    const startIndex =
+      Math.max(
+        0,
+        swing.index - 5
+      );
+
+    const endIndex =
+      nextSameType
+        ? Math.max(
+            swing.index,
+            nextSameType.index
+          )
+        : Math.max(
+            swing.index,
+            state.data.length - 1
+          );
+
+    const startTime =
+      Number(state.data[startIndex]?.time);
+
+    const endTime =
+      Number(state.data[endIndex]?.time);
+
+    if (
+      Number.isFinite(startTime) &&
+      Number.isFinite(endTime) &&
+      Number.isFinite(swing.price)
+    ) {
+      series.setData([
+        {
+          time: startTime,
+          value: swing.price
+        },
+        {
+          time: endTime,
+          value: swing.price
+        }
+      ]);
+    }
+  });
+
+  for (const [key, series] of tvLiteSwingSeries) {
+    if (wanted.has(key)) continue;
+
+    try {
+      tvLiteChart.removeSeries?.(series);
+    } catch {}
+
+    tvLiteSwingSeries.delete(key);
+  }
+}
+
+
 function syncTradingViewIndicators() {
 
   if (
@@ -4107,6 +4326,8 @@ function syncTradingViewIndicators() {
   }
 
 
+  syncTradingViewSwing55();
+
   for (
     const priceLine of
     tvLitePriceLines
@@ -4249,6 +4470,29 @@ function buildTradingViewMarkers() {
 
     previousSide = side;
   });
+
+  if (
+    state.overlays.has(
+      'Swing (5, 5, high, low, Left Side)'
+    )
+  ) {
+    for (const swing of calculateSwing55()) {
+      markers.push({
+        time: swing.time,
+        position:
+          swing.type === 'HIGH'
+            ? 'aboveBar'
+            : 'belowBar',
+        color: '#2b8cff',
+        shape: 'circle',
+        text:
+          swing.type === 'HIGH'
+            ? 'SH'
+            : 'SL',
+        size: 1
+      });
+    }
+  }
 
   const ai =
     state.aiIndicator;
