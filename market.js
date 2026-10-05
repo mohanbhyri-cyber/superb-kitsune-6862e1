@@ -1,24 +1,82 @@
-// All browser-side Upstox requests share the same retry deadline.
-let upstoxRetryAt = 0;
-function marketRateLimitError() {
+// Upstox endpoints are throttled independently so a quote 429 does not
+// freeze history/profile flows, and a history 429 does not stop live quotes.
+const upstoxRetryAtByScope = new Map();
+const UPSTOX_RETRY_FLOORS = {
+  quote: 15000,
+  history: 30000,
+  mtfHistory: 30000,
+  previousHistory: 30000,
+  auth: 120000,
+  default: 30000
+};
+
+function upstoxScope(scope) {
+  return scope || 'default';
+}
+
+function upstoxRetryFloor(scope) {
+  return UPSTOX_RETRY_FLOORS[upstoxScope(scope)] || UPSTOX_RETRY_FLOORS.default;
+}
+
+export function upstoxCooldownRemaining(scope) {
+  if (scope === undefined) {
+    let remaining = 0;
+    for (const retryAt of upstoxRetryAtByScope.values()) {
+      remaining = Math.max(remaining, retryAt - Date.now());
+    }
+    return Math.max(0, remaining);
+  }
+  const retryAt = upstoxRetryAtByScope.get(upstoxScope(scope)) || 0;
+  return Math.max(0, retryAt - Date.now());
+}
+
+export function noteUpstoxRateLimit(retryAfterMs, scope = 'default') {
+  const key = upstoxScope(scope);
+  const delay = Math.max(
+    upstoxRetryFloor(key),
+    Number.isFinite(Number(retryAfterMs))
+      ? Number(retryAfterMs)
+      : 0
+  );
+  const retryAt = Math.max(
+    upstoxRetryAtByScope.get(key) || 0,
+    Date.now() + delay
+  );
+  upstoxRetryAtByScope.set(key, retryAt);
+  return delay;
+}
+
+function parseRetryAfterMs(response, body = {}) {
+  const header = response.headers.get('retry-after');
+  const headerSeconds = header && Number.isFinite(Number(header))
+    ? Number(header)
+    : header
+      ? (Date.parse(header) - Date.now()) / 1000
+      : 0;
+  const bodyDelay = Number(body.retryAfterMs ?? body.retry_after_ms);
+  const bodySeconds = Number(body.retryAfter ?? body.retry_after);
+  return Math.max(
+    Number.isFinite(bodyDelay) ? bodyDelay : 0,
+    Number.isFinite(bodySeconds) ? bodySeconds * 1000 : 0,
+    Number.isFinite(headerSeconds) ? headerSeconds * 1000 : 0
+  );
+}
+
+function marketRateLimitError(scope = 'default') {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
-  error.retryAfterMs = Math.max(1000, upstoxRetryAt - Date.now());
+  error.scope = upstoxScope(scope);
+  error.retryAfterMs = Math.max(1000, upstoxCooldownRemaining(scope));
   return error;
 }
-async function upstoxRequest(url, options) {
-  if (Date.now() < upstoxRetryAt) throw marketRateLimitError();
+async function upstoxRequest(url, options = {}, scope = 'default') {
+  if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
   const response = await fetch(url, options);
   if (response.status === 429) {
     const body = await response.clone().json().catch(() => ({}));
-    const header = response.headers.get('retry-after');
-    const seconds = header && Number.isFinite(Number(header))
-      ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : 0;
-    const bodyDelay = Number(body.retryAfterMs);
-    const delay = Math.max(60000, Number.isFinite(bodyDelay) ? bodyDelay : 0,
-      Number.isFinite(seconds) ? seconds * 1000 : 0);
-    upstoxRetryAt = Math.max(upstoxRetryAt, Date.now() + delay);
-    throw marketRateLimitError();
+    const delay = parseRetryAfterMs(response, body);
+    noteUpstoxRateLimit(delay, scope);
+    throw marketRateLimitError(scope);
   }
   return response;
 }
@@ -386,7 +444,7 @@ export class UpstoxMarketAdapter {
 
   constructor() {
 
-    this.status = 'CONNECTING';
+    this.status = 'DISCONNECTED';
 
     this.lastUpdate = null;
 
@@ -422,7 +480,7 @@ export class UpstoxMarketAdapter {
       );
     }
 
-    this.status = 'CONNECTING';
+    this.status = 'LOADING_HISTORY';
 
     const url =
       API_BASE + '/api/upstox-history' +
@@ -439,12 +497,16 @@ export class UpstoxMarketAdapter {
         url,
         {
           cache: 'no-store'
-        }
+        },
+        'history'
       );
 
     } catch (error) {
 
-      if (error?.status === 429) { this.status = 'RATE LIMITED'; throw error; }
+      if (error?.status === 429) {
+        this.status = 'RATE LIMITED';
+        throw error;
+      }
       this.status = 'OFFLINE';
 
       throw new Error(
@@ -574,7 +636,8 @@ export class UpstoxMarketAdapter {
             cache: 'no-store',
             signal:
               controller.signal
-          }
+          },
+          'mtfHistory'
         ).finally(
           () =>
             clearTimeout(
@@ -634,7 +697,8 @@ export class UpstoxMarketAdapter {
           encodeURIComponent(timeframe),
           {
             cache: 'no-store'
-          }
+          },
+          'previousHistory'
         );
 
       if (!response.ok) {
@@ -696,7 +760,7 @@ export class UpstoxMarketAdapter {
     const tick = async () => {
 
       if (!alive || inFlight) return;
-      if (document.hidden) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
       inFlight = true;
       timer = null;
 
@@ -710,7 +774,8 @@ export class UpstoxMarketAdapter {
             encodeURIComponent(symbol),
             {
               cache: 'no-store'
-            }
+            },
+            'quote'
           );
 
 
@@ -820,7 +885,14 @@ export class UpstoxMarketAdapter {
         consecutiveFailures +=
           1;
 
-        if (
+        if (error?.status === 429) {
+
+          this.status =
+            'RATE LIMITED';
+
+          onError?.(error);
+
+        } else if (
           consecutiveFailures >= 3
         ) {
 
@@ -836,30 +908,35 @@ export class UpstoxMarketAdapter {
         // NO demo price.
       } finally {
         inFlight = false;
-        if (alive && !document.hidden) {
+        if (alive && (typeof document === 'undefined' || !document.hidden)) {
           const retryDelay =
-  consecutiveFailures >= 3
-    ? 60000
-    : consecutiveFailures > 0
-      ? 30000
-      : 15000;
+            upstoxCooldownRemaining('quote') > 0
+              ? upstoxCooldownRemaining('quote')
+              : consecutiveFailures >= 3
+                ? 15000
+                : consecutiveFailures > 0
+                  ? 10000
+                  : 3000;
 
-timer = setTimeout(
-  tick,
-  Math.max(retryDelay, upstoxRetryAt - Date.now())
-);
+          timer = setTimeout(
+            tick,
+            Math.max(1000, retryDelay)
+          );
         }
       }
     };
 
     const resume = () => {
+      if (typeof document === 'undefined') return;
       if (!document.hidden && alive && !inFlight && timer === null) tick();
       if (document.hidden) {
         clearTimeout(timer);
         timer = null;
       }
     };
-    document.addEventListener('visibilitychange', resume);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', resume);
+    }
 
     tick();
 
@@ -869,7 +946,9 @@ timer = setTimeout(
       alive = false;
 
       clearTimeout(timer);
-      document.removeEventListener('visibilitychange', resume);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', resume);
+      }
 
       this.status =
         'DISCONNECTED';

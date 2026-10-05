@@ -5,6 +5,7 @@
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
 import { parse } from 'csv-parse/sync';
+import { authResponse } from './auth.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -36,9 +37,6 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, OPTIONS",
-      "access-control-allow-headers": "Content-Type, Authorization",
     },
   });
 }
@@ -2626,13 +2624,21 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          "access-control-allow-origin": "*",
+          "access-control-allow-origin": url.origin,
           "access-control-allow-methods": "GET, OPTIONS",
           "access-control-allow-headers": "Content-Type, Authorization",
           "access-control-max-age": "86400",
         },
       });
     }
+
+    // ----------------------------------------------------
+    // PRIVATE SINGLE-USER ACCESS
+    // Every dashboard and API route is protected by a signed
+    // HttpOnly session cookie. Credentials are Cloudflare secrets.
+    // ----------------------------------------------------
+    const auth = await authResponse(request, env);
+    if (auth) return auth;
 
     const token =
       env.UPSTOX_EXTENDED_TOKEN ||
