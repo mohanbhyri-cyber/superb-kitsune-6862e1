@@ -821,7 +821,7 @@ if (advancedCandles.length > 0) {
 
 function renderSmartMoneyTools() {
   const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
+    false;
 
   const sampleEdge = state.niftyEdge?.latest;
   let structure = state.primeMarket?.structure;
@@ -2875,7 +2875,7 @@ function renderProSuiteSummary() {
   const consensus = state.allIndicatorsConsensus || null;
   const finalizer = state.tradeFinalizer || null;
   const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
+    false;
 
   // =========================================================
   // FINAL DISPLAY SIGNAL
@@ -13513,7 +13513,7 @@ function renderAiNifty() {
 function recomputeAiNifty() {
 
   const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
+    false;
   const edge = state.niftyEdge?.latest;
   const sampleFinalizer =
     samplePreview &&
@@ -14093,7 +14093,7 @@ function setupAllIndicatorsChat() {
 
 function renderTradeFinalizer() {
   const samplePreview =
-    new URLSearchParams(window.location.search).get('sample') === '1';
+    false;
   const edge = state.niftyEdge?.latest;
   const sampleFinalizer =
     samplePreview &&
