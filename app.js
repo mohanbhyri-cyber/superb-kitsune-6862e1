@@ -1827,7 +1827,7 @@ const state = {
     'VWAP',
     'Volume',
     'S/R',
-    'Swing (5, 5, high, low, Left Side)'
+    'Turtle Soup (10, 60, Wick, Classic, Default, Dynamic, Low, 0.3, 0.4)'
   ]),
 
   hover: null,
@@ -1868,7 +1868,8 @@ const colors = {
   'VWAP': '#ed90b2',
   'Volume': '#72e4bd',
   'S/R': '#9aa8ad',
-  'Swing (5, 5, high, low, Left Side)': '#2b8cff'
+  'Swing (5, 5, high, low, Left Side)': '#2b8cff',
+  'Turtle Soup (10, 60, Wick, Classic, Default, Dynamic, Low, 0.3, 0.4)': '#f0b45a'
 };
 
 
@@ -3371,6 +3372,7 @@ let tvLiteMarkers = null;
 const tvLiteIndicatorSeries = new Map();
 let tvLitePriceLines = [];
 const tvLiteSwingSeries = new Map();
+const tvLiteTurtleSeries = new Map();
 let tvLiteLastLength = 0;
 let tvLiteLastFirstTime = null;
 let tvLiteLastMarkerKey = '';
@@ -3904,10 +3906,7 @@ function calculateSwing55() {
 
 
 function syncTradingViewSwing55() {
-  const enabled =
-    state.overlays.has(
-      'Swing (5, 5, high, low, Left Side)'
-    );
+  const enabled = false;
 
   if (!enabled || !tvLiteChart) {
     for (const series of tvLiteSwingSeries.values()) {
@@ -4035,6 +4034,455 @@ function syncTradingViewSwing55() {
     } catch {}
 
     tvLiteSwingSeries.delete(key);
+  }
+}
+
+
+// ================================================================
+// SMRT TURTLE SOUP
+// Original closed-candle implementation inspired by the documented
+// ICT Turtle Soup concept. It does NOT copy third-party Pine source.
+//
+// Requested preset:
+// 10 = MSS swing length
+// 60 = higher timeframe in minutes (1H)
+// Wick = wick breakout/sweep is sufficient
+// Classic = buy after sell-side sweep; sell after buy-side sweep
+// Default = normal chart display
+// Dynamic = ATR-based SL/TP
+// Low = conservative risk profile
+// 0.3 / 0.4 = ATR buffers used for dynamic stop/target construction
+// ================================================================
+
+const TURTLE_SOUP_PRESET = Object.freeze({
+  mssSwingLength: 10,
+  higherTimeframeMinutes: 60,
+  breakoutMethod: 'Wick',
+  entryMethod: 'Classic',
+  displayMode: 'Default',
+  tpSlMethod: 'Dynamic',
+  risk: 'Low',
+  stopAtrBuffer: 0.3,
+  targetAtrBuffer: 0.4
+});
+
+
+function turtleAtr(candles, length = 14) {
+  if (!Array.isArray(candles) || candles.length < 2) return [];
+
+  const out = new Array(candles.length).fill(null);
+  let value = null;
+
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    const p = candles[i - 1];
+
+    const high = Number(c?.high);
+    const low = Number(c?.low);
+    const previousClose = Number(p?.close);
+
+    if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+
+    const tr =
+      i === 0 || !Number.isFinite(previousClose)
+        ? high - low
+        : Math.max(
+            high - low,
+            Math.abs(high - previousClose),
+            Math.abs(low - previousClose)
+          );
+
+    value =
+      value === null
+        ? tr
+        : (value * (length - 1) + tr) / length;
+
+    out[i] = value;
+  }
+
+  return out;
+}
+
+
+function turtleConfirmedPivots(candles, length = 10) {
+  const highs = [];
+  const lows = [];
+
+  if (!Array.isArray(candles) || candles.length < length * 2 + 1) {
+    return { highs, lows };
+  }
+
+  for (let i = length; i < candles.length - length; i++) {
+    const high = Number(candles[i]?.high);
+    const low = Number(candles[i]?.low);
+
+    if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+
+    let isHigh = true;
+    let isLow = true;
+
+    for (let j = i - length; j <= i + length; j++) {
+      if (j === i) continue;
+
+      const otherHigh = Number(candles[j]?.high);
+      const otherLow = Number(candles[j]?.low);
+
+      if (!Number.isFinite(otherHigh) || high <= otherHigh) isHigh = false;
+      if (!Number.isFinite(otherLow) || low >= otherLow) isLow = false;
+
+      if (!isHigh && !isLow) break;
+    }
+
+    if (isHigh) {
+      highs.push({
+        index: i,
+        time: Number(candles[i].time),
+        price: high,
+        confirmedIndex: i + length
+      });
+    }
+
+    if (isLow) {
+      lows.push({
+        index: i,
+        time: Number(candles[i].time),
+        price: low,
+        confirmedIndex: i + length
+      });
+    }
+  }
+
+  return { highs, lows };
+}
+
+
+function analyseTurtleSoup() {
+  const preset = TURTLE_SOUP_PRESET;
+  const seconds = Number(intervals[state.tf]);
+  const now =
+    state.replay.active
+      ? Number(state.data.at(-1)?.time) + seconds
+      : Date.now() / 1000;
+
+  const closedResult = primeClosed(state.data, seconds, now);
+
+  if (closedResult.error) {
+    return {
+      ready: false,
+      preset,
+      signals: [],
+      active: null,
+      reason: closedResult.error
+    };
+  }
+
+  const candles = closedResult.candles;
+  const atr = turtleAtr(candles, 14);
+
+  // Requested HTF = 60 minutes. Use the app's already-loaded closed 1H data.
+  const htfRaw =
+    state.primeMtfSymbol === state.symbol
+      ? state.primeMtfData?.['1h']
+      : null;
+
+  const htfClosed =
+    primeClosed(
+      htfRaw,
+      3600,
+      now
+    );
+
+  if (htfClosed.error || htfClosed.candles.length < 25) {
+    return {
+      ready: false,
+      preset,
+      signals: [],
+      active: null,
+      reason:
+        htfClosed.error ||
+        'Need more closed 60-minute candles for Turtle Soup liquidity'
+    };
+  }
+
+  const htfPivots =
+    turtleConfirmedPivots(
+      htfClosed.candles,
+      preset.mssSwingLength
+    );
+
+  if (!htfPivots.highs.length || !htfPivots.lows.length) {
+    return {
+      ready: false,
+      preset,
+      signals: [],
+      active: null,
+      reason: 'Waiting for confirmed 60-minute liquidity pivots'
+    };
+  }
+
+  const signals = [];
+
+  // Match each lower-timeframe candle to the most recent confirmed HTF
+  // liquidity high and low that existed BEFORE that candle.
+  for (let i = 1; i < candles.length; i++) {
+    const c = candles[i];
+    const time = Number(c.time);
+    const high = Number(c.high);
+    const low = Number(c.low);
+    const close = Number(c.close);
+    const open = Number(c.open);
+
+    if (![time, high, low, close, open].every(Number.isFinite)) continue;
+
+    const availableHigh =
+      htfPivots.highs
+        .filter(p => {
+          const confirmed =
+            htfClosed.candles[p.confirmedIndex];
+          return confirmed && Number(confirmed.time) < time;
+        })
+        .at(-1);
+
+    const availableLow =
+      htfPivots.lows
+        .filter(p => {
+          const confirmed =
+            htfClosed.candles[p.confirmedIndex];
+          return confirmed && Number(confirmed.time) < time;
+        })
+        .at(-1);
+
+    if (!availableHigh || !availableLow) continue;
+
+    // Wick mode: wick may take liquidity, but Classic requires price to
+    // reclaim the swept level on the same CLOSED candle.
+    const sweptBuySide =
+      high > availableHigh.price &&
+      close < availableHigh.price;
+
+    const sweptSellSide =
+      low < availableLow.price &&
+      close > availableLow.price;
+
+    if (!sweptBuySide && !sweptSellSide) continue;
+
+    const recentStart = Math.max(0, i - preset.mssSwingLength);
+    const recent = candles.slice(recentStart, i);
+
+    if (!recent.length) continue;
+
+    const localHigh =
+      Math.max(...recent.map(row => Number(row.high)));
+
+    const localLow =
+      Math.min(...recent.map(row => Number(row.low)));
+
+    const bullishMss =
+      sweptSellSide &&
+      (
+        preset.breakoutMethod === 'Wick'
+          ? high > localHigh
+          : close > localHigh
+      );
+
+    const bearishMss =
+      sweptBuySide &&
+      (
+        preset.breakoutMethod === 'Wick'
+          ? low < localLow
+          : close < localLow
+      );
+
+    const side =
+      bullishMss
+        ? 1
+        : bearishMss
+          ? -1
+          : 0;
+
+    if (!side) continue;
+
+    const atrValue = Number(atr[i]);
+    if (!(atrValue > 0)) continue;
+
+    const entry = close;
+
+    const stop =
+      side === 1
+        ? Math.min(low, availableLow.price) -
+          atrValue * preset.stopAtrBuffer
+        : Math.max(high, availableHigh.price) +
+          atrValue * preset.stopAtrBuffer;
+
+    const riskDistance =
+      Math.abs(entry - stop);
+
+    if (!(riskDistance > 0)) continue;
+
+    // Low-risk Dynamic profile:
+    // target starts at 1R and receives the requested 0.4 ATR buffer.
+    const target1 =
+      entry +
+      side * (
+        riskDistance +
+        atrValue * preset.targetAtrBuffer
+      );
+
+    const target2 =
+      entry +
+      side * (
+        riskDistance * 2 +
+        atrValue * preset.targetAtrBuffer
+      );
+
+    signals.push({
+      side,
+      signal: side === 1 ? 'LONG' : 'SHORT',
+      index: i,
+      time,
+      entry,
+      stop,
+      target1,
+      target2,
+      liquidity:
+        side === 1
+          ? availableLow.price
+          : availableHigh.price,
+      liquidityType:
+        side === 1
+          ? 'SELL-SIDE'
+          : 'BUY-SIDE',
+      atr: atrValue,
+      confirmed: true
+    });
+  }
+
+  return {
+    ready: true,
+    preset,
+    signals,
+    active: signals.at(-1) || null,
+    reason:
+      signals.length
+        ? 'Confirmed closed-candle Turtle Soup setup'
+        : 'No confirmed Turtle Soup setup'
+  };
+}
+
+
+function clearTradingViewTurtleSoup() {
+  for (const series of tvLiteTurtleSeries.values()) {
+    try {
+      tvLiteChart?.removeSeries?.(series);
+    } catch {}
+  }
+
+  tvLiteTurtleSeries.clear();
+}
+
+
+function turtleLineSeries(key, color, style) {
+  if (!tvLiteChart) return null;
+
+  let series = tvLiteTurtleSeries.get(key);
+  if (series) return series;
+
+  const L = window.LightweightCharts;
+  if (!L) return null;
+
+  const options = {
+    color,
+    lineWidth: 2,
+    lineStyle: style,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false
+  };
+
+  try {
+    if (L.LineSeries && tvLiteChart.addSeries) {
+      series = tvLiteChart.addSeries(L.LineSeries, options);
+    } else if (tvLiteChart.addLineSeries) {
+      series = tvLiteChart.addLineSeries(options);
+    }
+  } catch (error) {
+    console.warn('Turtle Soup line creation failed:', error);
+    return null;
+  }
+
+  if (series) tvLiteTurtleSeries.set(key, series);
+  return series;
+}
+
+
+function syncTradingViewTurtleSoup() {
+  const name =
+    'Turtle Soup (10, 60, Wick, Classic, Default, Dynamic, Low, 0.3, 0.4)';
+
+  if (!state.overlays.has(name) || !tvLiteChart) {
+    clearTradingViewTurtleSoup();
+    return;
+  }
+
+  const result = analyseTurtleSoup();
+  window.SMRTTurtleSoup = result;
+
+  if (!result.ready || !result.active) {
+    clearTradingViewTurtleSoup();
+    return;
+  }
+
+  const L = window.LightweightCharts;
+  const dotted = L?.LineStyle?.Dotted ?? 1;
+  const dashed = L?.LineStyle?.Dashed ?? 2;
+
+  const signal = result.active;
+  const lastTime = Number(state.data.at(-1)?.time);
+
+  if (!Number.isFinite(lastTime)) return;
+
+  const levels = [
+    ['TS-LIQUIDITY', signal.liquidity, '#9aa8ad', dotted],
+    ['TS-ENTRY', signal.entry, '#f0b45a', dashed],
+    ['TS-STOP', signal.stop, '#f17c86', dotted],
+    ['TS-TARGET1', signal.target1, '#72e4bd', dotted],
+    ['TS-TARGET2', signal.target2, '#58c8dc', dotted]
+  ];
+
+  const wanted = new Set();
+
+  for (const [key, price, color, style] of levels) {
+    if (!Number.isFinite(Number(price))) continue;
+
+    wanted.add(key);
+
+    const series =
+      turtleLineSeries(
+        key,
+        color,
+        style
+      );
+
+    series?.setData?.([
+      {
+        time: signal.time,
+        value: Number(price)
+      },
+      {
+        time: lastTime,
+        value: Number(price)
+      }
+    ]);
+  }
+
+  for (const [key, series] of tvLiteTurtleSeries) {
+    if (wanted.has(key)) continue;
+
+    try {
+      tvLiteChart.removeSeries?.(series);
+    } catch {}
+
+    tvLiteTurtleSeries.delete(key);
   }
 }
 
@@ -4326,6 +4774,8 @@ function syncTradingViewIndicators() {
   }
 
 
+  syncTradingViewTurtleSoup();
+
   syncTradingViewSwing55();
 
   for (
@@ -4473,9 +4923,36 @@ function buildTradingViewMarkers() {
 
   if (
     state.overlays.has(
-      'Swing (5, 5, high, low, Left Side)'
+      'Turtle Soup (10, 60, Wick, Classic, Default, Dynamic, Low, 0.3, 0.4)'
     )
   ) {
+    const turtle = analyseTurtleSoup();
+
+    for (const signal of turtle.signals.slice(-20)) {
+      markers.push({
+        time: signal.time,
+        position:
+          signal.side === 1
+            ? 'belowBar'
+            : 'aboveBar',
+        color:
+          signal.side === 1
+            ? '#72e4bd'
+            : '#f17c86',
+        shape:
+          signal.side === 1
+            ? 'arrowUp'
+            : 'arrowDown',
+        text:
+          signal.side === 1
+            ? 'TS LONG'
+            : 'TS SHORT',
+        size: 2
+      });
+    }
+  }
+
+  if (false) {
     for (const swing of calculateSwing55()) {
       markers.push({
         time: swing.time,
