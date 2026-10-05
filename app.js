@@ -3373,6 +3373,7 @@ const tvLiteIndicatorSeries = new Map();
 let tvLitePriceLines = [];
 const tvLiteSwingSeries = new Map();
 const tvLiteTurtleSeries = new Map();
+const tvLiteTurtleFvgSeries = new Map();
 let tvLiteLastLength = 0;
 let tvLiteLastFirstTime = null;
 let tvLiteLastMarkerKey = '';
@@ -4156,6 +4157,55 @@ function turtleConfirmedPivots(candles, length = 10) {
 }
 
 
+
+function turtleFindFvg(candles, signalIndex, side, lookback = 60) {
+  if (!Array.isArray(candles) || signalIndex < 2) return null;
+
+  const start = Math.max(2, signalIndex - lookback);
+  let found = null;
+
+  for (let i = start; i <= signalIndex; i++) {
+    const a = candles[i - 2];
+    const c = candles[i];
+
+    if (!a || !c) continue;
+
+    const aHigh = Number(a.high);
+    const aLow = Number(a.low);
+    const cHigh = Number(c.high);
+    const cLow = Number(c.low);
+
+    if (![aHigh, aLow, cHigh, cLow].every(Number.isFinite)) continue;
+
+    // Bullish FVG: current low is above the high two candles back.
+    if (side === 1 && cLow > aHigh) {
+      found = {
+        type: 'BULLISH',
+        index: i,
+        time: Number(c.time),
+        low: aHigh,
+        high: cLow,
+        mid: (aHigh + cLow) / 2
+      };
+    }
+
+    // Bearish FVG: current high is below the low two candles back.
+    if (side === -1 && cHigh < aLow) {
+      found = {
+        type: 'BEARISH',
+        index: i,
+        time: Number(c.time),
+        low: cHigh,
+        high: aLow,
+        mid: (cHigh + aLow) / 2
+      };
+    }
+  }
+
+  return found;
+}
+
+
 function analyseTurtleSoup() {
   const preset = TURTLE_SOUP_PRESET;
   const seconds = Number(intervals[state.tf]);
@@ -4335,9 +4385,16 @@ function analyseTurtleSoup() {
         atrValue * preset.targetAtrBuffer
       );
 
+    const fvg = turtleFindFvg(candles, i, side, 60);
+
+    // Liquidity + FVG Setup: require an aligned FVG before accepting
+    // the Turtle Soup setup.
+    if (!fvg) continue;
+
     signals.push({
       side,
       signal: side === 1 ? 'LONG' : 'SHORT',
+      fvg,
       index: i,
       time,
       entry,
@@ -4370,14 +4427,230 @@ function analyseTurtleSoup() {
 }
 
 
+function calculateTurtleSoupBacktest(result) {
+  const signals = Array.isArray(result?.signals) ? result.signals : [];
+  const candles = Array.isArray(state.data) ? state.data : [];
+
+  let wins = 0;
+  let losses = 0;
+  let totalR = 0;
+  const trades = [];
+
+  for (const signal of signals.slice(-500)) {
+    const startIndex = Number(signal.index) + 1;
+    const entry = Number(signal.entry);
+    const stop = Number(signal.stop);
+    const target = Number(signal.target1);
+    const side = Number(signal.side);
+
+    if (
+      !Number.isInteger(startIndex) ||
+      !Number.isFinite(entry) ||
+      !Number.isFinite(stop) ||
+      !Number.isFinite(target) ||
+      ![1, -1].includes(side)
+    ) {
+      continue;
+    }
+
+    const risk = Math.abs(entry - stop);
+    if (!(risk > 0)) continue;
+
+    let outcome = null;
+    let resultR = 0;
+
+    for (let i = startIndex; i < candles.length; i++) {
+      const high = Number(candles[i]?.high);
+      const low = Number(candles[i]?.low);
+
+      if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+
+      const stopHit =
+        side === 1
+          ? low <= stop
+          : high >= stop;
+
+      const targetHit =
+        side === 1
+          ? high >= target
+          : low <= target;
+
+      // Conservative handling when both are touched by the same candle:
+      // count stop first because intrabar order is unknown.
+      if (stopHit) {
+        losses += 1;
+        resultR = -1;
+        outcome = 'LOSS';
+        break;
+      }
+
+      if (targetHit) {
+        wins += 1;
+        resultR = Math.abs(target - entry) / risk;
+        outcome = 'WIN';
+        break;
+      }
+    }
+
+    if (!outcome) continue;
+
+    totalR += resultR;
+
+    trades.push({
+      time: signal.time,
+      side,
+      outcome,
+      resultR
+    });
+  }
+
+  const totalEntries = wins + losses;
+  const winRate =
+    totalEntries > 0
+      ? (wins / totalEntries) * 100
+      : 0;
+
+  const averageR =
+    totalEntries > 0
+      ? totalR / totalEntries
+      : 0;
+
+  return {
+    totalEntries,
+    wins,
+    losses,
+    winRate,
+    averageR,
+    totalR,
+    trades
+  };
+}
+
+
+function ensureTurtleSoupBacktestPanel() {
+  let panel = document.getElementById('smrt-ts-backtest');
+
+  if (panel) return panel;
+
+  const chartWrap =
+    document.querySelector('.chart-wrap') ||
+    document.querySelector('#tradingview-chart')?.parentElement ||
+    document.body;
+
+  panel = document.createElement('div');
+  panel.id = 'smrt-ts-backtest';
+
+  Object.assign(panel.style, {
+    position: 'absolute',
+    top: '52px',
+    right: '12px',
+    zIndex: '25',
+    minWidth: '190px',
+    padding: '10px 12px',
+    borderRadius: '6px',
+    background: 'rgba(17, 24, 29, 0.92)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    color: '#eef4f6',
+    fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+    fontSize: '12px',
+    lineHeight: '1.45',
+    pointerEvents: 'none',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.22)'
+  });
+
+  try {
+    const style = getComputedStyle(chartWrap);
+    if (style.position === 'static') {
+      chartWrap.style.position = 'relative';
+    }
+  } catch {}
+
+  chartWrap.appendChild(panel);
+  return panel;
+}
+
+
+function renderTurtleSoupBacktestPanel(result) {
+  const panel = ensureTurtleSoupBacktestPanel();
+
+  if (!panel) return;
+
+  const stats = calculateTurtleSoupBacktest(result);
+
+  const pct = value =>
+    Number.isFinite(value)
+      ? `${value.toFixed(2)}%`
+      : '—';
+
+  const rValue = value =>
+    Number.isFinite(value)
+      ? `${value >= 0 ? '+' : ''}${value.toFixed(2)}R`
+      : '—';
+
+  panel.innerHTML = `
+    <div style="
+      font-weight:700;
+      font-size:13px;
+      margin-bottom:7px;
+      padding-bottom:6px;
+      border-bottom:1px solid rgba(255,255,255,0.12);
+    ">
+      TS Backtesting
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr auto;gap:4px 14px;">
+      <span>Total Entries</span>
+      <strong>${stats.totalEntries}</strong>
+
+      <span>Wins</span>
+      <strong>${stats.wins}</strong>
+
+      <span>Losses</span>
+      <strong>${stats.losses}</strong>
+
+      <span>Winrate</span>
+      <strong>${pct(stats.winRate)}</strong>
+
+      <span>Average</span>
+      <strong>${rValue(stats.averageR)}</strong>
+
+      <span>Total</span>
+      <strong>${rValue(stats.totalR)}</strong>
+    </div>
+
+    <div style="
+      margin-top:7px;
+      padding-top:6px;
+      border-top:1px solid rgba(255,255,255,0.10);
+      opacity:.68;
+      font-size:10px;
+    ">
+      Liquidity + FVG · closed candles
+    </div>
+  `;
+
+  window.SMRTTurtleSoupBacktest = stats;
+}
+
+
 function clearTradingViewTurtleSoup() {
+  const backtestPanel = document.getElementById('smrt-ts-backtest');
+  if (backtestPanel) backtestPanel.remove();
+
   for (const series of tvLiteTurtleSeries.values()) {
     try {
       tvLiteChart?.removeSeries?.(series);
     } catch {}
   }
 
+  for (const series of tvLiteTurtleFvgSeries.values()) {
+    try {
+      tvLiteChart?.removeSeries?.(series);
+    } catch {}
+  }
+
   tvLiteTurtleSeries.clear();
+  tvLiteTurtleFvgSeries.clear();
 }
 
 
@@ -4415,6 +4688,109 @@ function turtleLineSeries(key, color, style) {
 }
 
 
+function turtleFvgAreaSeries(key, side, boundary) {
+  if (!tvLiteChart) return null;
+
+  let series = tvLiteTurtleFvgSeries.get(key);
+  if (series) return series;
+
+  const L = window.LightweightCharts;
+  if (!L) return null;
+
+  const bullish = side === 1;
+
+  // Semi-transparent fill. Boundary series are paired to visually create
+  // a TradingView-style FVG zone while keeping price scale clean.
+  const topColor =
+    bullish
+      ? 'rgba(55, 190, 135, 0.20)'
+      : 'rgba(225, 80, 95, 0.20)';
+
+  const bottomColor =
+    bullish
+      ? 'rgba(55, 190, 135, 0.04)'
+      : 'rgba(225, 80, 95, 0.04)';
+
+  const lineColor =
+    bullish
+      ? 'rgba(85, 225, 170, 0.55)'
+      : 'rgba(245, 115, 125, 0.55)';
+
+  const options = {
+    lineColor,
+    topColor,
+    bottomColor,
+    lineWidth: boundary === 'mid' ? 1 : 0,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false
+  };
+
+  try {
+    if (L.AreaSeries && tvLiteChart.addSeries) {
+      series = tvLiteChart.addSeries(L.AreaSeries, options);
+    } else if (tvLiteChart.addAreaSeries) {
+      series = tvLiteChart.addAreaSeries(options);
+    }
+  } catch (error) {
+    console.warn('Turtle Soup FVG zone creation failed:', error);
+    return null;
+  }
+
+  if (series) tvLiteTurtleFvgSeries.set(key, series);
+  return series;
+}
+
+
+function syncTradingViewTurtleFvgZone(signal, lastTime) {
+  if (!signal?.fvg || !Number.isFinite(lastTime)) return;
+
+  const startTime =
+    Number(signal.fvg.time) || Number(signal.time);
+
+  const high = Number(signal.fvg.high);
+  const low = Number(signal.fvg.low);
+  const mid = Number(signal.fvg.mid);
+
+  if (
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(high) ||
+    !Number.isFinite(low) ||
+    !Number.isFinite(mid)
+  ) {
+    return;
+  }
+
+  const side = Number(signal.side);
+
+  const highSeries =
+    turtleFvgAreaSeries('TS-FVG-ZONE-HIGH', side, 'high');
+
+  const lowSeries =
+    turtleFvgAreaSeries('TS-FVG-ZONE-LOW', side, 'low');
+
+  const midSeries =
+    turtleFvgAreaSeries('TS-FVG-ZONE-MID', side, 'mid');
+
+  // These paired translucent area boundaries create a clearly visible
+  // FVG band from its origin through the latest candle.
+  highSeries?.setData?.([
+    { time: startTime, value: high },
+    { time: lastTime, value: high }
+  ]);
+
+  lowSeries?.setData?.([
+    { time: startTime, value: low },
+    { time: lastTime, value: low }
+  ]);
+
+  midSeries?.setData?.([
+    { time: startTime, value: mid },
+    { time: lastTime, value: mid }
+  ]);
+}
+
+
 function syncTradingViewTurtleSoup() {
   const name =
     'Turtle Soup (10, 60, Wick, Classic, Default, Dynamic, Low, 0.3, 0.4)';
@@ -4426,6 +4802,10 @@ function syncTradingViewTurtleSoup() {
 
   const result = analyseTurtleSoup();
   window.SMRTTurtleSoup = result;
+
+  if (result.ready) {
+    renderTurtleSoupBacktestPanel(result);
+  }
 
   if (!result.ready || !result.active) {
     clearTradingViewTurtleSoup();
@@ -4441,8 +4821,13 @@ function syncTradingViewTurtleSoup() {
 
   if (!Number.isFinite(lastTime)) return;
 
+  syncTradingViewTurtleFvgZone(signal, lastTime);
+
   const levels = [
-    ['TS-LIQUIDITY', signal.liquidity, '#9aa8ad', dotted],
+    ['TS-LIQUIDITY-FVG', signal.liquidity, '#9aa8ad', dotted],
+    ['TS-FVG-HIGH', signal.fvg?.high, signal.side === 1 ? '#72e4bd' : '#f17c86', dotted],
+    ['TS-FVG-MID', signal.fvg?.mid, '#f0b45a', dashed],
+    ['TS-FVG-LOW', signal.fvg?.low, signal.side === 1 ? '#72e4bd' : '#f17c86', dotted],
     ['TS-ENTRY', signal.entry, '#f0b45a', dashed],
     ['TS-STOP', signal.stop, '#f17c86', dotted],
     ['TS-TARGET1', signal.target1, '#72e4bd', dotted],
@@ -4945,8 +5330,8 @@ function buildTradingViewMarkers() {
             : 'arrowDown',
         text:
           signal.side === 1
-            ? 'TS LONG'
-            : 'TS SHORT',
+            ? 'LIQ + FVG BUY'
+            : 'LIQ + FVG SELL',
         size: 2
       });
     }
