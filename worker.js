@@ -19,7 +19,7 @@ const TIMEFRAMES = {
 };
 
 const IST = "Asia/Kolkata";
-const ALLOWED_USER_EMAIL = "mohanbhyri@gmail.com";
+
 const istFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: IST,
   year: "numeric",
@@ -44,35 +44,18 @@ function json(data, status = 200) {
   });
 }
 
-function authenticatedEmail(request) {
-  return String(
-    request.headers.get("cf-access-authenticated-user-email") ||
-    request.headers.get("x-authenticated-user-email") ||
-    ""
-  ).trim().toLowerCase();
-}
-
-function accessDenied(url) {
-  if (url.pathname.startsWith("/api/")) {
-    return json({
-      live: false,
-      allowed: false,
-      reason:
-        "Access restricted. Sign in with mohanbhyri@gmail.com.",
-    }, 403);
-  }
-
-  return new Response(
-    "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Access restricted</title></head><body style=\"font-family:system-ui,sans-serif;background:#101719;color:#eef7f2;display:grid;min-height:100vh;place-items:center;margin:0\"><main style=\"max-width:520px;padding:32px;text-align:center\"><h1>Access restricted</h1><p>This app is open only for mohanbhyri@gmail.com.</p></main></body></html>",
-    {
-      status: 403,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store, no-cache, must-revalidate",
-      },
-    }
-  );
-}
+/*
+ * OLD EMAIL AUTHENTICATION REMOVED.
+ *
+ * Removed:
+ * ALLOWED_USER_EMAIL
+ * authenticatedEmail()
+ * accessDenied()
+ *
+ * The Worker no longer requires:
+ * cf-access-authenticated-user-email
+ * x-authenticated-user-email
+ */
 
 async function cachedApiResponse(request, ttlSeconds, loader, context) {
   let cache = null;
@@ -88,13 +71,21 @@ async function cachedApiResponse(request, ttlSeconds, loader, context) {
   }
 
   const response = await loader();
-  if (!cache || !response.ok) return response;
+
+  if (!cache || !response.ok) {
+    return response;
+  }
 
   const headers = new Headers(response.headers);
+
   headers.set(
     "cache-control",
-    `public, max-age=0, s-maxage=${Math.max(1, Number(ttlSeconds) || 1)}`
+    `public, max-age=0, s-maxage=${Math.max(
+      1,
+      Number(ttlSeconds) || 1
+    )}`
   );
+
   const cacheable = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -103,10 +94,17 @@ async function cachedApiResponse(request, ttlSeconds, loader, context) {
 
   try {
     const write = cache.put(request, cacheable.clone());
-    if (context?.waitUntil) context.waitUntil(write);
-    else await write;
+
+    if (context?.waitUntil) {
+      context.waitUntil(write);
+    } else {
+      await write;
+    }
   } catch (error) {
-    console.warn("Edge cache write unavailable", error?.message || error);
+    console.warn(
+      "Edge cache write unavailable",
+      error?.message || error
+    );
   }
 
   return cacheable;
@@ -124,7 +122,6 @@ function getISTParts(value = Date.now()) {
 
 function todayIST() {
   const p = getISTParts();
-
   return `${p.year}-${p.month}-${p.day}`;
 }
 
@@ -212,15 +209,13 @@ function normalizeRegularSessionCandle(row) {
     openInterest,
   ] = row;
 
-  const ms =
-    new Date(timestamp).getTime();
+  const ms = new Date(timestamp).getTime();
 
   if (!Number.isFinite(ms)) {
     return null;
   }
 
-  const p =
-    getISTParts(ms);
+  const p = getISTParts(ms);
 
   const minutes =
     Number(p.hour) * 60 +
@@ -234,20 +229,13 @@ function normalizeRegularSessionCandle(row) {
   }
 
   const candle = {
-    time:
-      Math.floor(ms / 1000),
-    open:
-      Number(open),
-    high:
-      Number(high),
-    low:
-      Number(low),
-    close:
-      Number(close),
-    volume:
-      Number(volume) || 0,
-    openInterest:
-      Number(openInterest) || 0,
+    time: Math.floor(ms / 1000),
+    open: Number(open),
+    high: Number(high),
+    low: Number(low),
+    close: Number(close),
+    volume: Number(volume) || 0,
+    openInterest: Number(openInterest) || 0,
   };
 
   if (
@@ -265,7 +253,6 @@ function normalizeRegularSessionCandle(row) {
 
   return candle;
 }
-
 
 function normalizeCandleForISTDate(row, dateText) {
   if (!Array.isArray(row) || row.length < 6) {
@@ -287,6 +274,7 @@ function normalizeCandleForISTDate(row, dateText) {
   if (!Number.isFinite(ms)) return null;
 
   const p = getISTParts(ms);
+
   const candleDate =
     `${p.year}-${p.month}-${p.day}`;
 
@@ -333,29 +321,28 @@ function normalizeCandleForISTDate(row, dateText) {
   return candle;
 }
 
-
 function istDateMinusDays(days) {
-  const base =
-    new Date(
-      todayIST() +
-      "T12:00:00+05:30"
-    );
+  const base = new Date(
+    todayIST() +
+    "T12:00:00+05:30"
+  );
 
-  const target =
-    new Date(
-      base.getTime() -
-      days * 86400000
-    );
+  const target = new Date(
+    base.getTime() -
+    days * 86400000
+  );
 
-  const p =
-    getISTParts(
-      target.getTime()
-    );
+  const p = getISTParts(
+    target.getTime()
+  );
 
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-// Cooldowns are shared by credential within this Worker instance.
+// ----------------------------------------------------
+// UPSTOX CACHE / RATE LIMIT PROTECTION
+// ----------------------------------------------------
+
 const upstoxCooldowns = new Map();
 const upstoxResponseCache = new Map();
 const upstoxInFlight = new Map();
@@ -367,33 +354,80 @@ function cloneJson(value) {
 }
 
 function upstoxCacheTtl(endpoint) {
-  if (endpoint.includes('/market-quote/quotes')) return 15000;
-  if (endpoint.includes('/option/chain')) return 60000;
-  if (endpoint.includes('/option/contract')) return 6 * 60 * 60 * 1000;
-  if (endpoint.includes('/historical-candle/')) return 30000;
-  if (endpoint.includes('/instruments/search')) return 6 * 60 * 60 * 1000;
+  if (endpoint.includes('/market-quote/quotes')) {
+    return 15000;
+  }
+
+  if (endpoint.includes('/option/chain')) {
+    return 60000;
+  }
+
+  if (endpoint.includes('/option/contract')) {
+    return 6 * 60 * 60 * 1000;
+  }
+
+  if (endpoint.includes('/historical-candle/')) {
+    return 30000;
+  }
+
+  if (endpoint.includes('/instruments/search')) {
+    return 6 * 60 * 60 * 1000;
+  }
+
   return 10000;
 }
 
 function upstoxCooldownError(until) {
-  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  const error = new Error(
+    'Upstox rate limit reached. Waiting before retry.'
+  );
+
   error.status = 429;
   error.rateLimited = true;
-  error.retryAfterMs = Math.max(1000, until - Date.now());
+
+  error.retryAfterMs =
+    Math.max(
+      1000,
+      until - Date.now()
+    );
+
   return error;
 }
+
 async function upstoxFetch(endpoint, token) {
-  const cacheKey = token + '|' + endpoint;
-  const cached = upstoxResponseCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cloneJson(cached.body);
+  const cacheKey =
+    token + '|' + endpoint;
+
+  const cached =
+    upstoxResponseCache.get(cacheKey);
+
+  if (
+    cached &&
+    cached.expiresAt > Date.now()
+  ) {
+    return cloneJson(cached.body);
+  }
+
   upstoxResponseCache.delete(cacheKey);
 
-  const pending = upstoxInFlight.get(cacheKey);
-  if (pending) return cloneJson(await pending);
+  const pending =
+    upstoxInFlight.get(cacheKey);
 
-  const until = upstoxCooldowns.get(token) || 0;
-  if (until > Date.now()) throw upstoxCooldownError(until);
+  if (pending) {
+    return cloneJson(
+      await pending
+    );
+  }
+
+  const until =
+    upstoxCooldowns.get(token) || 0;
+
+  if (until > Date.now()) {
+    throw upstoxCooldownError(until);
+  }
+
   upstoxCooldowns.delete(token);
+
   const request = (async () => {
     const response = await fetch(endpoint, {
       method: "GET",
@@ -404,7 +438,8 @@ async function upstoxFetch(endpoint, token) {
     });
 
     if (!response.ok) {
-      const details = await response.text().catch(() => "");
+      const details =
+        await response.text().catch(() => "");
 
       console.error(
         "Upstox error",
@@ -412,101 +447,179 @@ async function upstoxFetch(endpoint, token) {
         details
       );
 
-      const error = new Error(
-        `Upstox returned HTTP ${response.status}.`
-      );
+      const error =
+        new Error(
+          `Upstox returned HTTP ${response.status}.`
+        );
 
-      // Preserve HTTP status for all callers
-      error.status = response.status;
+      error.status =
+        response.status;
 
-      // Special handling for Upstox rate limit
-      error.rateLimited = response.status === 429;
+      error.rateLimited =
+        response.status === 429;
 
-      // Respect Retry-After when Upstox provides it.
-      const retryHeader = response.headers.get('retry-after');
-      const seconds = retryHeader && Number.isFinite(Number(retryHeader))
-        ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
-      error.retryAfterMs = response.status === 429
-        ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
-      if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
+      const retryHeader =
+        response.headers.get(
+          'retry-after'
+        );
 
-      error.details = details;
+      const seconds =
+        retryHeader &&
+        Number.isFinite(
+          Number(retryHeader)
+        )
+          ? Number(retryHeader)
+          : retryHeader
+            ? (
+                Date.parse(retryHeader) -
+                Date.now()
+              ) / 1000
+            : 0;
+
+      error.retryAfterMs =
+        response.status === 429
+          ? Math.max(
+              60000,
+              Number.isFinite(seconds)
+                ? seconds * 1000
+                : 0
+            )
+          : 0;
+
+      if (error.rateLimited) {
+        upstoxCooldowns.set(
+          token,
+          Date.now() +
+          error.retryAfterMs
+        );
+      }
+
+      error.details =
+        details;
 
       throw error;
     }
 
-    const body = await response.json();
-    upstoxResponseCache.set(cacheKey, {
-      body,
-      expiresAt: Date.now() + upstoxCacheTtl(endpoint)
-    });
+    const body =
+      await response.json();
+
+    upstoxResponseCache.set(
+      cacheKey,
+      {
+        body,
+        expiresAt:
+          Date.now() +
+          upstoxCacheTtl(endpoint),
+      }
+    );
+
     return body;
   })().finally(() => {
-    upstoxInFlight.delete(cacheKey);
+    upstoxInFlight.delete(
+      cacheKey
+    );
   });
 
-  upstoxInFlight.set(cacheKey, request);
-  return cloneJson(await request);
+  upstoxInFlight.set(
+    cacheKey,
+    request
+  );
+
+  return cloneJson(
+    await request
+  );
 }
+
 // ----------------------------------------------------
 // LIVE QUOTE
 // ----------------------------------------------------
 
 async function liveQuote(url, token) {
   const symbol =
-    (url.searchParams.get("symbol") || "NIFTY")
-      .toUpperCase();
+    (
+      url.searchParams.get("symbol") ||
+      "NIFTY"
+    ).toUpperCase();
 
-  const instrumentKey = SYMBOLS[symbol];
+  const instrumentKey =
+    SYMBOLS[symbol];
 
   if (!instrumentKey) {
     return json({
       live: false,
       source: "UPSTOX",
-      reason: "Unsupported instrument.",
+      reason:
+        "Unsupported instrument.",
     });
   }
 
   const endpoint =
     "https://api.upstox.com/v3/market-quote/quotes" +
     "?instrument_key=" +
-    encodeURIComponent(instrumentKey);
+    encodeURIComponent(
+      instrumentKey
+    );
 
   try {
-    const body = await upstoxFetch(endpoint, token);
+    const body =
+      await upstoxFetch(
+        endpoint,
+        token
+      );
 
     const quote =
-      Object.values(body?.data ?? {})[0];
+      Object.values(
+        body?.data ?? {}
+      )[0];
 
     const price =
-      Number(quote?.last_price);
+      Number(
+        quote?.last_price
+      );
 
     if (!Number.isFinite(price)) {
       return json({
         live: false,
         source: "UPSTOX",
-        reason: "Upstox returned an invalid price.",
+        reason:
+          "Upstox returned an invalid price.",
       });
     }
 
     const netChange =
-      Number(quote?.net_change);
+      Number(
+        quote?.net_change
+      );
 
     const previousCloseRaw =
-      Number(quote?.prev_close_price);
+      Number(
+        quote?.prev_close_price
+      );
 
     const previousClose =
-  Number.isFinite(previousCloseRaw) &&
-  previousCloseRaw > 0
-    ? previousCloseRaw
-    : Number.isFinite(netChange)
-      ? price - netChange
-      : null;
+      Number.isFinite(
+        previousCloseRaw
+      ) &&
+      previousCloseRaw > 0
+        ? previousCloseRaw
+        : Number.isFinite(
+            netChange
+          )
+          ? price - netChange
+          : null;
+
     const changePercent =
-      Number.isFinite(netChange) &&
-      Number.isFinite(previousClose) &&
+      Number.isFinite(
+        netChange
+      ) &&
+      Number.isFinite(
+        previousClose
+      ) &&
       previousClose !== 0
-        ? (netChange / previousClose) * 100
+        ? (
+            netChange /
+            previousClose
+          ) * 100
         : null;
 
     return json({
@@ -515,33 +628,49 @@ async function liveQuote(url, token) {
       symbol,
       instrumentKey,
       price,
+
       netChange:
         Number.isFinite(netChange)
           ? netChange
           : null,
+
       previousClose:
         Number.isFinite(previousClose)
           ? previousClose
           : null,
+
       changePercent:
         Number.isFinite(changePercent)
           ? changePercent
           : null,
+
       sessionOpen:
         Number.isFinite(
-          Number(quote?.ohlc?.open)
+          Number(
+            quote?.ohlc?.open
+          )
         )
-          ? Number(quote.ohlc.open)
+          ? Number(
+              quote.ohlc.open
+            )
           : null,
+
       volume:
         Number.isFinite(
-          Number(quote?.volume)
+          Number(
+            quote?.volume
+          )
         )
-          ? Number(quote.volume)
+          ? Number(
+              quote.volume
+            )
           : 0,
+
       time:
         Number.isFinite(
-          Number(quote?.last_trade_time)
+          Number(
+            quote?.last_trade_time
+          )
         )
           ? Math.floor(
               Number(
@@ -551,39 +680,49 @@ async function liveQuote(url, token) {
           : Math.floor(
               Date.now() / 1000
             ),
+
       timestamp:
         quote?.timestamp ??
         quote?.last_trade_time ??
         Date.now(),
     });
+
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
+
+    if (
+      error?.rateLimited === true ||
+      error?.status === 429
+    ) {
+      console.warn(
+        "Upstox rate limited live quote. Fallback blocked."
+      );
+
+      return json({
+        live: false,
+        source: "UPSTOX",
+        symbol,
+        rateLimited: true,
+
+        retryAfterMs:
+          error?.retryAfterMs ||
+          60000,
+
+        reason:
+          "Upstox rate limit reached. Waiting before retry.",
+      }, 429);
+    }
+
     console.warn(
-      "Upstox rate limited live quote. Fallback blocked."
+      "Primary live quote failed, using intraday fallback",
+      error?.message || error
     );
-
-    return json({
-      live: false,
-      source: "UPSTOX",
-      symbol,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
-    }, 429);
-  }
-
-  console.warn(
-    "Primary live quote failed, using intraday fallback",
-    error?.message || error
-  );
 
     try {
       const fallbackEndpoint =
         "https://api.upstox.com/v3/historical-candle/intraday/" +
-        encodeURIComponent(instrumentKey) +
+        encodeURIComponent(
+          instrumentKey
+        ) +
         "/minutes/1";
 
       const fallbackBody =
@@ -594,7 +733,9 @@ async function liveQuote(url, token) {
 
       const rows =
         Array.isArray(
-          fallbackBody?.data?.candles
+          fallbackBody
+            ?.data
+            ?.candles
         )
           ? fallbackBody.data.candles
           : [];
@@ -605,7 +746,8 @@ async function liveQuote(url, token) {
           .filter(Boolean)
           .sort(
             (x, y) =>
-              x.time - y.time
+              x.time -
+              y.time
           );
 
       const latest =
@@ -614,36 +756,51 @@ async function liveQuote(url, token) {
       if (latest) {
         return json({
           live: true,
+
           source:
             "UPSTOX_INTRADAY_FALLBACK",
+
           symbol,
           instrumentKey,
+
           price:
             latest.close,
+
           netChange:
             null,
+
           previousClose:
             null,
+
           changePercent:
             null,
+
           sessionOpen:
-            candles[0]?.open ?? null,
+            candles[0]
+              ?.open ??
+            null,
+
           volume:
-            latest.volume || 0,
+            latest.volume ||
+            0,
+
           time:
             latest.time,
+
           timestamp:
-            latest.time * 1000,
+            latest.time *
+            1000,
+
           fallback:
             true,
+
           primaryError:
             error?.message ||
             "Primary quote unavailable.",
         });
       }
-    } catch (
-      fallbackError
-    ) {
+
+    } catch (fallbackError) {
       console.warn(
         "Intraday live quote fallback failed",
         fallbackError?.message ||
@@ -654,12 +811,17 @@ async function liveQuote(url, token) {
     return json({
       live: false,
       source: "UPSTOX",
+
       reason:
         error?.message ||
         "Unable to retrieve live quote.",
     });
   }
 }
+
+// ----------------------------------------------------
+// PREVIOUS TRADING SESSION
+// ----------------------------------------------------
 
 async function previousTradingSession(
   instrumentKey,
@@ -678,7 +840,9 @@ async function previousTradingSession(
 
     const endpoint =
       "https://api.upstox.com/v3/historical-candle/" +
-      encodeURIComponent(instrumentKey) +
+      encodeURIComponent(
+        instrumentKey
+      ) +
       "/minutes/" +
       interval +
       "/" +
@@ -712,7 +876,8 @@ async function previousTradingSession(
           .filter(Boolean)
           .sort(
             (a, b) =>
-              a.time - b.time
+              a.time -
+              b.time
           );
 
       if (candles.length) {
@@ -721,27 +886,30 @@ async function previousTradingSession(
           candles,
         };
       }
-    } catch (error) {
-  // IMPORTANT: stop immediately when Upstox rate-limits us.
-  // Do not continue requesting additional previous dates.
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429 ||
-    String(error?.message || "").includes("HTTP 429")
-  ) {
-    console.warn(
-      "Upstox 429 rate limit - stopping previous-session fallback",
-      date
-    );
-    throw error;
-  }
 
-  console.warn(
-    "Previous-session candle fetch failed",
-    date,
-    error?.message || error
-  );
-}
+    } catch (error) {
+
+      if (
+        error?.rateLimited === true ||
+        error?.status === 429 ||
+        String(
+          error?.message || ""
+        ).includes("HTTP 429")
+      ) {
+        console.warn(
+          "Upstox 429 rate limit - stopping previous-session fallback",
+          date
+        );
+
+        throw error;
+      }
+
+      console.warn(
+        "Previous-session candle fetch failed",
+        date,
+        error?.message || error
+      );
+    }
   }
 
   return {
@@ -750,18 +918,21 @@ async function previousTradingSession(
   };
 }
 
-
 // ----------------------------------------------------
 // INTRADAY HISTORY
 // ----------------------------------------------------
 
 async function intradayHistory(url, token) {
   const symbol =
-    (url.searchParams.get("symbol") || "NIFTY")
-      .toUpperCase();
+    (
+      url.searchParams.get("symbol") ||
+      "NIFTY"
+    ).toUpperCase();
 
   const timeframe =
-    url.searchParams.get("timeframe") || "1m";
+    url.searchParams.get(
+      "timeframe"
+    ) || "1m";
 
   const instrumentKey =
     SYMBOLS[symbol];
@@ -773,7 +944,8 @@ async function intradayHistory(url, token) {
     return json({
       live: false,
       source: "UPSTOX",
-      reason: "Unsupported instrument.",
+      reason:
+        "Unsupported instrument.",
       candles: [],
     });
   }
@@ -782,14 +954,17 @@ async function intradayHistory(url, token) {
     return json({
       live: false,
       source: "UPSTOX",
-      reason: "Unsupported timeframe.",
+      reason:
+        "Unsupported timeframe.",
       candles: [],
     });
   }
 
   const intradayEndpoint =
     "https://api.upstox.com/v3/historical-candle/intraday/" +
-    encodeURIComponent(instrumentKey) +
+    encodeURIComponent(
+      instrumentKey
+    ) +
     "/minutes/" +
     interval;
 
@@ -798,7 +973,9 @@ async function intradayHistory(url, token) {
 
   const historicalTodayEndpoint =
     "https://api.upstox.com/v3/historical-candle/" +
-    encodeURIComponent(instrumentKey) +
+    encodeURIComponent(
+      instrumentKey
+    ) +
     "/minutes/" +
     interval +
     "/" +
@@ -818,28 +995,36 @@ async function intradayHistory(url, token) {
 
       if (
         Array.isArray(
-          intradayBody?.data?.candles
+          intradayBody
+            ?.data
+            ?.candles
         )
       ) {
         rows =
-          intradayBody.data.candles;
+          intradayBody
+            .data
+            .candles;
       }
-   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
-    console.warn(
-      "Upstox 429 - stopping intraday history fallback"
-    );
-    throw error;
-  }
 
-  console.warn(
-    "Primary intraday candle fetch failed",
-    error?.message || error
-  );
-}
+    } catch (error) {
+
+      if (
+        error?.rateLimited === true ||
+        error?.status === 429
+      ) {
+        console.warn(
+          "Upstox 429 - stopping intraday history fallback"
+        );
+
+        throw error;
+      }
+
+      console.warn(
+        "Primary intraday candle fetch failed",
+        error?.message || error
+      );
+    }
+
     if (!rows.length) {
       try {
         const historicalTodayBody =
@@ -850,28 +1035,35 @@ async function intradayHistory(url, token) {
 
         if (
           Array.isArray(
-            historicalTodayBody?.data?.candles
+            historicalTodayBody
+              ?.data
+              ?.candles
           )
         ) {
           rows =
-            historicalTodayBody.data.candles;
+            historicalTodayBody
+              .data
+              .candles;
         }
-       } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
-    console.warn(
-      "Upstox 429 - stopping today historical fallback"
-    );
-    throw error;
-  }
 
-  console.warn(
-    "Today historical-candle fallback failed",
-    error?.message || error
-  );
-}
+      } catch (error) {
+
+        if (
+          error?.rateLimited === true ||
+          error?.status === 429
+        ) {
+          console.warn(
+            "Upstox 429 - stopping today historical fallback"
+          );
+
+          throw error;
+        }
+
+        console.warn(
+          "Today historical-candle fallback failed",
+          error?.message || error
+        );
+      }
     }
 
     if (!rows.length) {
@@ -891,26 +1083,48 @@ async function intradayHistory(url, token) {
           symbol,
           timeframe,
           instrumentKey,
-          sessionStart: "09:15",
-          timezone: IST,
+
+          sessionStart:
+            "09:15",
+
+          timezone:
+            IST,
+
           count:
-            previous.candles.length,
+            previous
+              .candles
+              .length,
+
           currentSessionDate:
             today,
+
           currentSessionCount:
             0,
+
           sessionDate:
             previous.date,
+
           marketOpen:
             false,
+
           historyMode:
             "previous-session-preopen-fallback",
+
           firstCandleTime:
-            previous.candles[0].time,
+            previous
+              .candles[0]
+              .time,
+
           lastCandleTime:
-            previous.candles[
-              previous.candles.length - 1
-            ].time,
+            previous
+              .candles[
+                previous
+                  .candles
+                  .length -
+                1
+              ]
+              .time,
+
           candles:
             previous.candles,
         });
@@ -921,73 +1135,95 @@ async function intradayHistory(url, token) {
         source: "UPSTOX",
         symbol,
         timeframe,
+
         reason:
           "No current or previous-session candles returned by Upstox.",
+
         candles: [],
       });
     }
 
     const todayCandles =
-  rows
-    .map(normalizeCandle)
-    .filter(Boolean)
-    .sort((a, b) => a.time - b.time);
+      rows
+        .map(normalizeCandle)
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            a.time -
+            b.time
+        );
 
-// Prime / Advanced Engine requires 220 closed candles.
-// If today's session has fewer than 260 candles,
-// add the most recent previous trading session.
-let previousCandles = [];
-
-if (todayCandles.length < 260) {
-  try {
-    const previousSession =
-      await previousTradingSession(
-        instrumentKey,
-        interval,
-        token
-      );
+    let previousCandles = [];
 
     if (
-      previousSession &&
-      Array.isArray(previousSession.candles)
+      todayCandles.length <
+      260
     ) {
-      previousCandles =
-        previousSession.candles;
-    }
-  } catch (error) {
-    if (
-      error?.rateLimited === true ||
-      error?.status === 429
-    ) {
-      throw error;
+      try {
+        const previousSession =
+          await previousTradingSession(
+            instrumentKey,
+            interval,
+            token
+          );
+
+        if (
+          previousSession &&
+          Array.isArray(
+            previousSession.candles
+          )
+        ) {
+          previousCandles =
+            previousSession.candles;
+        }
+
+      } catch (error) {
+
+        if (
+          error?.rateLimited === true ||
+          error?.status === 429
+        ) {
+          throw error;
+        }
+
+        console.warn(
+          "Previous-session warm-up fetch failed",
+          error?.message || error
+        );
+      }
     }
 
-    console.warn(
-      "Previous-session warm-up fetch failed",
-      error?.message || error
-    );
-  }
-}
-
-let candles = [
-  ...previousCandles,
-  ...todayCandles
-]
-  .sort((a, b) => a.time - b.time)
-  .slice(-260);
+    let candles = [
+      ...previousCandles,
+      ...todayCandles
+    ]
+      .sort(
+        (a, b) =>
+          a.time -
+          b.time
+      )
+      .slice(-260);
 
     const unique = [];
 
-    for (const candle of candles) {
+    for (
+      const candle of candles
+    ) {
       const previous =
-        unique[unique.length - 1];
+        unique[
+          unique.length -
+          1
+        ];
 
       if (
         previous &&
-        previous.time === candle.time
+        previous.time ===
+        candle.time
       ) {
-        unique[unique.length - 1] =
-          candle;
+        unique[
+          unique.length -
+          1
+        ] = candle;
       } else {
         unique.push(candle);
       }
@@ -1001,10 +1237,16 @@ let candles = [
         source: "UPSTOX",
         symbol,
         timeframe,
-        sessionStart: "09:15",
-        timezone: IST,
+
+        sessionStart:
+          "09:15",
+
+        timezone:
+          IST,
+
         reason:
           "No current or previous-session candles available from 09:15 IST.",
+
         candles: [],
       });
     }
@@ -1015,58 +1257,90 @@ let candles = [
       symbol,
       timeframe,
       instrumentKey,
-      sessionStart: "09:15",
-      timezone: IST,
-      count: candles.length,
+
+      sessionStart:
+        "09:15",
+
+      timezone:
+        IST,
+
+      count:
+        candles.length,
+
       currentSessionDate:
         todayIST(),
+
       currentSessionCount:
         todayCandles.length,
+
       historyMode:
         "intraday-with-historical-fallback",
+
       firstCandleTime:
         candles[0].time,
+
       lastCandleTime:
-        candles[candles.length - 1].time,
+        candles[
+          candles.length -
+          1
+        ].time,
+
       candles,
     });
+
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
+
+    if (
+      error?.rateLimited === true ||
+      error?.status === 429
+    ) {
+      return json({
+        live: false,
+        source: "UPSTOX",
+        symbol,
+        timeframe,
+        rateLimited: true,
+
+        retryAfterMs:
+          error?.retryAfterMs ||
+          60000,
+
+        reason:
+          "Upstox rate limit reached. Waiting before retry.",
+
+        candles: [],
+      }, 429);
+    }
+
     return json({
       live: false,
       source: "UPSTOX",
       symbol,
       timeframe,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
+
+      reason:
+        error?.message ||
+        "Unable to load intraday candles.",
+
       candles: [],
-    }, 429);
+    });
   }
-
-  return json({
-    live: false,
-    source: "UPSTOX",
-    symbol,
-    timeframe,
-    reason:
-      error?.message ||
-      "Unable to load intraday candles.",
-    candles: [],
-  });
-}
 }
 
-async function previousSessionHistory(url, token) {
+async function previousSessionHistory(
+  url,
+  token
+) {
   const symbol =
-    (url.searchParams.get("symbol") || "NIFTY")
-      .toUpperCase();
+    (
+      url.searchParams.get("symbol") ||
+      "NIFTY"
+    ).toUpperCase();
 
   const timeframe =
-    url.searchParams.get("timeframe") || "5m";
+    url.searchParams.get(
+      "timeframe"
+    ) || "5m";
 
   const instrumentKey =
     SYMBOLS[symbol];
@@ -1074,11 +1348,17 @@ async function previousSessionHistory(url, token) {
   const interval =
     TIMEFRAMES[timeframe];
 
-  if (!instrumentKey || !interval) {
+  if (
+    !instrumentKey ||
+    !interval
+  ) {
     return json({
       live: false,
       source: "UPSTOX",
-      reason: "Unsupported instrument or timeframe.",
+
+      reason:
+        "Unsupported instrument or timeframe.",
+
       candles: [],
     });
   }
@@ -1091,54 +1371,83 @@ async function previousSessionHistory(url, token) {
     );
 
   return json({
-    live: previous.candles.length > 0,
-    source: "UPSTOX",
+    live:
+      previous
+        .candles
+        .length > 0,
+
+    source:
+      "UPSTOX",
+
     symbol,
     timeframe,
-    sessionDate: previous.date,
-    count: previous.candles.length,
-    candles: previous.candles,
+
+    sessionDate:
+      previous.date,
+
+    count:
+      previous
+        .candles
+        .length,
+
+    candles:
+      previous.candles,
   });
 }
 
+// ----------------------------------------------------
+// MULTI TIMEFRAME HISTORY
+// ----------------------------------------------------
 
 async function mtfHistory(url, token) {
   const symbol =
-    (url.searchParams.get("symbol") || "NIFTY")
-      .toUpperCase();
+    (
+      url.searchParams.get("symbol") ||
+      "NIFTY"
+    ).toUpperCase();
 
   const timeframe =
-    url.searchParams.get("timeframe") || "5m";
+    url.searchParams.get(
+      "timeframe"
+    ) || "5m";
 
   const instrumentKey =
     SYMBOLS[symbol];
 
   const config = {
-  "5m": {
-    unit: "minutes",
-    interval: 5,
-    lookbackDays: 10,
-  },
-  "15m": {
-    unit: "minutes",
-    interval: 15,
-    lookbackDays: 18,
-  },
-  "1h": {
-    unit: "hours",
-    interval: 1,
-    lookbackDays: 60,
-  },
-}[timeframe];
+    "5m": {
+      unit: "minutes",
+      interval: 5,
+      lookbackDays: 10,
+    },
 
-  if (!instrumentKey || !config) {
+    "15m": {
+      unit: "minutes",
+      interval: 15,
+      lookbackDays: 18,
+    },
+
+    "1h": {
+      unit: "hours",
+      interval: 1,
+      lookbackDays: 60,
+    },
+
+  }[timeframe];
+
+  if (
+    !instrumentKey ||
+    !config
+  ) {
     return json({
       live: false,
       source: "UPSTOX",
       symbol,
       timeframe,
+
       reason:
         "Unsupported MTF instrument or timeframe.",
+
       candles: [],
     });
   }
@@ -1153,7 +1462,9 @@ async function mtfHistory(url, token) {
 
   const historicalEndpoint =
     "https://api.upstox.com/v3/historical-candle/" +
-    encodeURIComponent(instrumentKey) +
+    encodeURIComponent(
+      instrumentKey
+    ) +
     "/" +
     config.unit +
     "/" +
@@ -1165,7 +1476,9 @@ async function mtfHistory(url, token) {
 
   const intradayEndpoint =
     "https://api.upstox.com/v3/historical-candle/intraday/" +
-    encodeURIComponent(instrumentKey) +
+    encodeURIComponent(
+      instrumentKey
+    ) +
     "/" +
     config.unit +
     "/" +
@@ -1174,83 +1487,109 @@ async function mtfHistory(url, token) {
   try {
     const results = [];
 
-try {
-  // Historical V3 can lag the current trading session.
-  // Load historical candles for warm-up, then append today's
-  // intraday candles so the latest MTF candle stays current.
-  const historicalBody = await upstoxFetch(
-    historicalEndpoint,
-    token
-  );
-
-  results.push({
-    status: "fulfilled",
-    value: historicalBody
-  });
-
-  // Keep requests sequential to reduce Upstox 429 pressure.
-  const intradayBody = await upstoxFetch(
-    intradayEndpoint,
-    token
-  );
-
-  results.push({
-    status: "fulfilled",
-    value: intradayBody
-  });
-} catch (error) {
-  // Never make another Upstox request after HTTP 429.
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
-    throw error;
-  }
-
-  console.warn(
-    "MTF history/intraday merge fetch failed",
-    error?.message || error
-  );
-
-  // If historical failed before intraday was loaded, make one
-  // intraday fallback request. Existing fulfilled data is kept.
-  if (!results.length) {
     try {
-      const intradayBody = await upstoxFetch(
-        intradayEndpoint,
-        token
-      );
+      const historicalBody =
+        await upstoxFetch(
+          historicalEndpoint,
+          token
+        );
 
       results.push({
-        status: "fulfilled",
-        value: intradayBody
+        status:
+          "fulfilled",
+
+        value:
+          historicalBody,
       });
-    } catch (fallbackError) {
+
+      const intradayBody =
+        await upstoxFetch(
+          intradayEndpoint,
+          token
+        );
+
+      results.push({
+        status:
+          "fulfilled",
+
+        value:
+          intradayBody,
+      });
+
+    } catch (error) {
+
       if (
-        fallbackError?.rateLimited === true ||
-        fallbackError?.status === 429
+        error?.rateLimited === true ||
+        error?.status === 429
       ) {
-        throw fallbackError;
+        throw error;
       }
 
       console.warn(
-        "MTF intraday fallback failed",
-        fallbackError?.message || fallbackError
+        "MTF history/intraday merge fetch failed",
+        error?.message || error
       );
+
+      if (!results.length) {
+        try {
+          const intradayBody =
+            await upstoxFetch(
+              intradayEndpoint,
+              token
+            );
+
+          results.push({
+            status:
+              "fulfilled",
+
+            value:
+              intradayBody,
+          });
+
+        } catch (
+          fallbackError
+        ) {
+
+          if (
+            fallbackError
+              ?.rateLimited ===
+              true ||
+            fallbackError
+              ?.status ===
+              429
+          ) {
+            throw fallbackError;
+          }
+
+          console.warn(
+            "MTF intraday fallback failed",
+            fallbackError
+              ?.message ||
+            fallbackError
+          );
+        }
+      }
     }
-  }
-}
+
     const rows = [];
 
-    for (const result of results) {
+    for (
+      const result of results
+    ) {
       if (
-        result.status === "fulfilled" &&
+        result.status ===
+          "fulfilled" &&
         Array.isArray(
-          result.value?.data?.candles
+          result.value
+            ?.data
+            ?.candles
         )
       ) {
         rows.push(
-          ...result.value.data.candles
+          ...result
+            .value
+            .data
+            .candles
         );
       }
     }
@@ -1263,185 +1602,167 @@ try {
         .filter(Boolean)
         .sort(
           (x, y) =>
-            x.time - y.time
+            x.time -
+            y.time
         );
 
     const unique = [];
 
-    for (const candle of candles) {
+    for (
+      const candle of candles
+    ) {
       const last =
-        unique[unique.length - 1];
+        unique[
+          unique.length -
+          1
+        ];
 
       if (
         last &&
-        last.time === candle.time
+        last.time ===
+        candle.time
       ) {
         unique[
-          unique.length - 1
+          unique.length -
+          1
         ] = candle;
       } else {
         unique.push(candle);
       }
     }
 
-    const requestedCount = Math.max(
-  220,
-  Math.min(
-    500,
-    Number(url.searchParams.get("count")) || 260
-  )
-);
+    const requestedCount =
+      Math.max(
+        220,
+        Math.min(
+          500,
+          Number(
+            url.searchParams.get(
+              "count"
+            )
+          ) || 260
+        )
+      );
 
-const trimmed =
-  unique.slice(-requestedCount);
+    const trimmed =
+      unique.slice(
+        -requestedCount
+      );
 
     return json({
       live:
-        trimmed.length > 0,
-      source: "UPSTOX",
+        trimmed.length >
+        0,
+
+      source:
+        "UPSTOX",
+
       symbol,
       timeframe,
+
       unit:
         config.unit,
+
       interval:
         config.interval,
+
       fromDate,
+
       toDate:
         today,
+
       count:
         trimmed.length,
+
       candles:
         trimmed,
     });
+
   } catch (error) {
-  if (
-    error?.rateLimited === true ||
-    error?.status === 429
-  ) {
+
+    if (
+      error?.rateLimited === true ||
+      error?.status === 429
+    ) {
+      return json({
+        live: false,
+        source: "UPSTOX",
+        symbol,
+        timeframe,
+        rateLimited: true,
+
+        retryAfterMs:
+          error?.retryAfterMs ||
+          60000,
+
+        reason:
+          "Upstox rate limit reached. Waiting before retry.",
+
+        candles: [],
+      }, 429);
+    }
+
     return json({
       live: false,
       source: "UPSTOX",
       symbol,
       timeframe,
-      rateLimited: true,
-      retryAfterMs: error?.retryAfterMs || 60000,
-      reason: "Upstox rate limit reached. Waiting before retry.",
+
+      reason:
+        error?.message ||
+        "Unable to load multi-timeframe history.",
+
       candles: [],
-    }, 429);
+    });
   }
-
-  return json({
-    live: false,
-    source: "UPSTOX",
-    symbol,
-    timeframe,
-    reason:
-      error?.message ||
-      "Unable to load multi-timeframe history.",
-    candles: [],
-  });
 }
-}
-
 
 // ----------------------------------------------------
 // NIFTY FUTURES CONTRACT DISCOVERY
 // ----------------------------------------------------
 
 function expiryMs(value) {
-  if (value === null || value === undefined) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return NaN;
   }
 
-  if (typeof value === "number") {
-    return value < 100000000000
+  if (
+    typeof value ===
+    "number"
+  ) {
+    return value <
+      100000000000
       ? value * 1000
       : value;
   }
 
-  const text = String(value).trim();
+  const text =
+    String(value).trim();
 
   if (/^\d+$/.test(text)) {
-    const number = Number(text);
+    const number =
+      Number(text);
 
-    return number < 100000000000
+    return number <
+      100000000000
       ? number * 1000
       : number;
   }
 
-  const parsed =
-    new Date(
-      `${text.substring(0, 10)}T23:59:59+05:30`
-    ).getTime();
-
-  return parsed;
+  return new Date(
+    `${text.substring(
+      0,
+      10
+    )}T23:59:59+05:30`
+  ).getTime();
 }
 
-function findNearestNiftyFuture(instruments) {
-  const now = Date.now();
-
-  return instruments
-    .filter((item) => {
-      const type =
-        String(
-          item?.instrument_type || ""
-        ).toUpperCase();
-
-      const segment =
-        String(
-          item?.segment || ""
-        ).toUpperCase();
-
-      const symbol =
-        String(
-          item?.trading_symbol ||
-          item?.tradingsymbol ||
-          ""
-        ).toUpperCase();
-
-      const name =
-        String(
-          item?.name || ""
-        ).toUpperCase();
-
-      const underlying =
-        String(
-          item?.underlying_symbol ||
-          item?.asset_symbol ||
-          ""
-        ).toUpperCase();
-
-      const expiry =
-        expiryMs(item?.expiry);
-
-      const nifty =
-        underlying === "NIFTY" ||
-        name === "NIFTY" ||
-        symbol.startsWith("NIFTY");
-
-      const bankNifty =
-        underlying === "BANKNIFTY" ||
-        name === "BANKNIFTY" ||
-        symbol.startsWith("BANKNIFTY");
-
-      return (
-        type === "FUT" &&
-        segment === "NSE_FO" &&
-        nifty &&
-        !bankNifty &&
-        Number.isFinite(expiry) &&
-        expiry >= now &&
-        item?.instrument_key
-      );
-    })
-    .sort(
-      (a, b) =>
-        expiryMs(a.expiry) -
-        expiryMs(b.expiry)
-    )[0] || null;
-}
-
-async function findNearestNiftyFutureViaSearch(token) {
+async function findNearestNiftyFutureViaSearch(
+  token
+) {
   const endpoint =
     "https://api.upstox.com/v2/instruments/search" +
     "?query=NIFTY" +
@@ -1459,7 +1780,9 @@ async function findNearestNiftyFutureViaSearch(token) {
     );
 
   const rows =
-    Array.isArray(body?.data)
+    Array.isArray(
+      body?.data
+    )
       ? body.data
       : [];
 
@@ -1468,50 +1791,73 @@ async function findNearestNiftyFutureViaSearch(token) {
 
   const candidates =
     rows
-      .filter((item) => {
-        const type =
-          String(
-            item?.instrument_type || ""
-          ).toUpperCase();
+      .filter(
+        item => {
+          const type =
+            String(
+              item
+                ?.instrument_type ||
+              ""
+            ).toUpperCase();
 
-        const segment =
-          String(
-            item?.segment || ""
-          ).toUpperCase();
+          const segment =
+            String(
+              item?.segment ||
+              ""
+            ).toUpperCase();
 
-        const underlying =
-          String(
-            item?.underlying_symbol || ""
-          ).toUpperCase();
+          const underlying =
+            String(
+              item
+                ?.underlying_symbol ||
+              ""
+            ).toUpperCase();
 
-        const symbol =
-          String(
-            item?.trading_symbol || ""
-          ).toUpperCase();
+          const symbol =
+            String(
+              item
+                ?.trading_symbol ||
+              ""
+            ).toUpperCase();
 
-        const expiry =
-          expiryMs(
-            item?.expiry
+          const expiry =
+            expiryMs(
+              item?.expiry
+            );
+
+          return (
+            type === "FUT" &&
+            segment ===
+              "NSE_FO" &&
+            (
+              underlying ===
+                "NIFTY" ||
+              symbol.startsWith(
+                "NIFTY "
+              ) ||
+              symbol.startsWith(
+                "NIFTY FUT"
+              )
+            ) &&
+            !symbol.startsWith(
+              "BANKNIFTY"
+            ) &&
+            Number.isFinite(
+              expiry
+            ) &&
+            expiry >= now &&
+            item?.instrument_key
           );
-
-        return (
-          type === "FUT" &&
-          segment === "NSE_FO" &&
-          (
-            underlying === "NIFTY" ||
-            symbol.startsWith("NIFTY ") ||
-            symbol.startsWith("NIFTY FUT")
-          ) &&
-          !symbol.startsWith("BANKNIFTY") &&
-          Number.isFinite(expiry) &&
-          expiry >= now &&
-          item?.instrument_key
-        );
-      })
+        }
+      )
       .sort(
         (a, b) =>
-          expiryMs(a.expiry) -
-          expiryMs(b.expiry)
+          expiryMs(
+            a.expiry
+          ) -
+          expiryMs(
+            b.expiry
+          )
       );
 
   if (!candidates.length) {
@@ -1531,12 +1877,18 @@ function calculateVWAP(candles) {
   let priceVolume = 0;
   let totalVolume = 0;
 
-  for (const candle of candles) {
+  for (
+    const candle of candles
+  ) {
     const volume =
-      Number(candle.volume);
+      Number(
+        candle.volume
+      );
 
     if (
-      !Number.isFinite(volume) ||
+      !Number.isFinite(
+        volume
+      ) ||
       volume <= 0
     ) {
       continue;
@@ -1550,34 +1902,48 @@ function calculateVWAP(candles) {
       ) / 3;
 
     priceVolume +=
-      typicalPrice * volume;
+      typicalPrice *
+      volume;
 
-    totalVolume += volume;
+    totalVolume +=
+      volume;
   }
 
-  if (totalVolume <= 0) {
+  if (
+    totalVolume <= 0
+  ) {
     return null;
   }
 
   return {
     value:
-      priceVolume / totalVolume,
-    volume: totalVolume,
+      priceVolume /
+      totalVolume,
+
+    volume:
+      totalVolume,
   };
 }
 
-async function futuresVWAP(url, token) {
+async function futuresVWAP(
+  url,
+  token
+) {
   try {
     const requested =
       Number(
-        url.searchParams.get("interval") || 1
+        url.searchParams.get(
+          "interval"
+        ) || 1
       );
 
     const allowed =
       [1, 3, 5, 15];
 
     const interval =
-      allowed.includes(requested)
+      allowed.includes(
+        requested
+      )
         ? requested
         : 1;
 
@@ -1586,22 +1952,14 @@ async function futuresVWAP(url, token) {
         token
       );
 
-    if (!contract) {
-      return json({
-        live: false,
-        source: "UPSTOX",
-        type: "FUTURES_VWAP",
-        reason:
-          "No active NIFTY futures contract found.",
-      });
-    }
-
     const instrumentKey =
       contract.instrument_key;
 
     const endpoint =
       "https://api.upstox.com/v3/historical-candle/intraday/" +
-      encodeURIComponent(instrumentKey) +
+      encodeURIComponent(
+        instrumentKey
+      ) +
       "/minutes/" +
       interval;
 
@@ -1614,11 +1972,15 @@ async function futuresVWAP(url, token) {
     const rows =
       body?.data?.candles;
 
-    if (!Array.isArray(rows)) {
+    if (
+      !Array.isArray(rows)
+    ) {
       return json({
         live: false,
         source: "UPSTOX",
-        type: "FUTURES_VWAP",
+        type:
+          "FUTURES_VWAP",
+
         reason:
           "Upstox did not return futures candles.",
       });
@@ -1630,38 +1992,50 @@ async function futuresVWAP(url, token) {
         .filter(Boolean)
         .sort(
           (a, b) =>
-            a.time - b.time
+            a.time -
+            b.time
         );
 
     if (!candles.length) {
       return json({
         live: false,
         source: "UPSTOX",
-        type: "FUTURES_VWAP",
+        type:
+          "FUTURES_VWAP",
+
         reason:
           "No NIFTY futures candles available from 09:15 IST.",
       });
     }
 
     const result =
-      calculateVWAP(candles);
+      calculateVWAP(
+        candles
+      );
 
     if (!result) {
       return json({
         live: false,
         source: "UPSTOX",
-        type: "FUTURES_VWAP",
+        type:
+          "FUTURES_VWAP",
+
         reason:
           "Genuine futures volume is unavailable; VWAP was not fabricated.",
       });
     }
 
     const latest =
-      candles[candles.length - 1];
+      candles[
+        candles.length -
+        1
+      ];
 
     const vwap =
       Number(
-        result.value.toFixed(2)
+        result.value.toFixed(
+          2
+        )
       );
 
     const futuresPrice =
@@ -1677,13 +2051,21 @@ async function futuresVWAP(url, token) {
     return json({
       live: true,
       source: "UPSTOX",
-      type: "FUTURES_VWAP",
-      label: "Futures VWAP",
-      underlying: "NIFTY",
+
+      type:
+        "FUTURES_VWAP",
+
+      label:
+        "Futures VWAP",
+
+      underlying:
+        "NIFTY",
 
       contract:
-        contract.trading_symbol ||
-        contract.tradingsymbol ||
+        contract
+          .trading_symbol ||
+        contract
+          .tradingsymbol ||
         contract.name,
 
       expiry:
@@ -1721,6 +2103,7 @@ async function futuresVWAP(url, token) {
       lastCandleTime:
         latest.time,
     });
+
   } catch (error) {
     console.error(
       "Futures VWAP error",
@@ -1730,7 +2113,10 @@ async function futuresVWAP(url, token) {
     return json({
       live: false,
       source: "UPSTOX",
-      type: "FUTURES_VWAP",
+
+      type:
+        "FUTURES_VWAP",
+
       reason:
         error?.message ||
         "Unable to calculate Futures VWAP.",
@@ -1738,147 +2124,188 @@ async function futuresVWAP(url, token) {
   }
 }
 
+// ----------------------------------------------------
+// EXTERNAL NIFTY SOURCES
+// ----------------------------------------------------
+
 async function externalNiftySources() {
   const sources = [];
   const errors = [];
 
-  const yahooTask = (async () => {
-    const endpoint =
-      "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI" +
-      "?interval=5m&range=1d&includePrePost=false";
+  const yahooTask =
+    (async () => {
+      const endpoint =
+        "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI" +
+        "?interval=5m&range=1d&includePrePost=false";
 
-    const response =
-      await fetch(endpoint, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0",
-          Accept:
-            "application/json",
-        },
-      });
+      const response =
+        await fetch(
+          endpoint,
+          {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0",
 
-    if (!response.ok) {
-      throw new Error(
-        "Yahoo Finance HTTP " +
-        response.status
-      );
-    }
-
-    const body =
-      await response.json();
-
-    const result =
-      body?.chart?.result?.[0];
-
-    const meta =
-      result?.meta || {};
-
-    const timestamps =
-      Array.isArray(
-        result?.timestamp
-      )
-        ? result.timestamp
-        : [];
-
-    const closes =
-      Array.isArray(
-        result
-          ?.indicators
-          ?.quote
-          ?.[0]
-          ?.close
-      )
-        ? result.indicators.quote[0].close
-        : [];
-
-    const validCloses =
-      closes
-        .map(Number)
-        .filter(
-          Number.isFinite
+              Accept:
+                "application/json",
+            },
+          }
         );
 
-    const price =
-      Number(
-        meta.regularMarketPrice
-      );
+      if (!response.ok) {
+        throw new Error(
+          "Yahoo Finance HTTP " +
+          response.status
+        );
+      }
 
-    const previousClose =
-      Number(
-        meta.chartPreviousClose ??
-        meta.previousClose
-      );
+      const body =
+        await response.json();
 
-    const changePercent =
-      Number.isFinite(price) &&
-      Number.isFinite(previousClose) &&
-      previousClose !== 0
-        ? (
-            (
-              price -
+      const result =
+        body?.chart
+          ?.result?.[0];
+
+      const meta =
+        result?.meta ||
+        {};
+
+      const timestamps =
+        Array.isArray(
+          result?.timestamp
+        )
+          ? result.timestamp
+          : [];
+
+      const closes =
+        Array.isArray(
+          result
+            ?.indicators
+            ?.quote?.[0]
+            ?.close
+        )
+          ? result
+              .indicators
+              .quote[0]
+              .close
+          : [];
+
+      const validCloses =
+        closes
+          .map(Number)
+          .filter(
+            Number.isFinite
+          );
+
+      const price =
+        Number(
+          meta
+            .regularMarketPrice
+        );
+
+      const previousClose =
+        Number(
+          meta
+            .chartPreviousClose ??
+          meta
+            .previousClose
+        );
+
+      const changePercent =
+        Number.isFinite(
+          price
+        ) &&
+        Number.isFinite(
+          previousClose
+        ) &&
+        previousClose !== 0
+          ? (
+              (
+                price -
+                previousClose
+              ) /
               previousClose
-            ) /
-            previousClose
-          ) * 100
-        : null;
+            ) * 100
+          : null;
 
-    let momentum =
-      0;
-
-    if (
-      validCloses.length >= 4
-    ) {
-      const latest =
-        validCloses.at(-1);
-
-      const prior =
-        validCloses.at(-4);
+      let momentum = 0;
 
       if (
-        Number.isFinite(latest) &&
-        Number.isFinite(prior) &&
-        prior !== 0
+        validCloses.length >=
+        4
       ) {
-        momentum =
-          (
-            (
-              latest -
-              prior
-            ) /
-            prior
-          ) * 100;
-      }
-    }
+        const latest =
+          validCloses.at(-1);
 
-    return {
-      name:
-        "Yahoo Finance",
-      live:
-        Number.isFinite(price),
-      price:
-        Number.isFinite(price)
-          ? price
-          : null,
-      previousClose:
-        Number.isFinite(previousClose)
-          ? previousClose
-          : null,
-      changePercent:
-        Number.isFinite(changePercent)
-          ? changePercent
-          : null,
-      momentum:
-        Number.isFinite(momentum)
-          ? momentum
-          : 0,
-      timestamp:
-        Number(
-          meta.regularMarketTime
-        ) ||
-        timestamps.at(-1) ||
-        null,
-    };
-  })();
+        const prior =
+          validCloses.at(-4);
+
+        if (
+          Number.isFinite(
+            latest
+          ) &&
+          Number.isFinite(
+            prior
+          ) &&
+          prior !== 0
+        ) {
+          momentum =
+            (
+              (
+                latest -
+                prior
+              ) /
+              prior
+            ) * 100;
+        }
+      }
+
+      return {
+        name:
+          "Yahoo Finance",
+
+        live:
+          Number.isFinite(
+            price
+          ),
+
+        price:
+          Number.isFinite(
+            price
+          )
+            ? price
+            : null,
+
+        previousClose:
+          Number.isFinite(
+            previousClose
+          )
+            ? previousClose
+            : null,
+
+        changePercent:
+          Number.isFinite(
+            changePercent
+          )
+            ? changePercent
+            : null,
+
+        momentum:
+          Number.isFinite(
+            momentum
+          )
+            ? momentum
+            : 0,
+
+        timestamp:
+          Number(
+            meta
+              .regularMarketTime
+          ) ||
+          timestamps.at(-1) ||
+          null,
+      };
+    })();
 
   const tradingViewTask =
     (async () => {
@@ -1887,24 +2314,30 @@ async function externalNiftySources() {
           "https://scanner.tradingview.com/india/scan",
           {
             method: "POST",
+
             headers: {
               "content-type":
                 "application/json",
+
               Accept:
                 "application/json",
+
               "User-Agent":
                 "Mozilla/5.0",
             },
+
             body:
               JSON.stringify({
                 symbols: {
                   tickers: [
                     "NSE:NIFTY"
                   ],
+
                   query: {
                     types: []
                   }
                 },
+
                 columns: [
                   "close",
                   "change",
@@ -1949,164 +2382,78 @@ async function externalNiftySources() {
         macdSignal,
         ema20,
         ema50
-      ] = row.map(
-        value =>
-          value == null
-            ? null
-            : Number(value)
-      );
+      ] =
+        row.map(
+          value =>
+            value == null
+              ? null
+              : Number(value)
+        );
 
       return {
         name:
           "TradingView",
+
         live:
-          Number.isFinite(close),
+          Number.isFinite(
+            close
+          ),
+
         price:
-          Number.isFinite(close)
+          Number.isFinite(
+            close
+          )
             ? close
             : null,
+
         changePercent:
-          Number.isFinite(change)
+          Number.isFinite(
+            change
+          )
             ? change
             : null,
+
         recommendAll:
           Number.isFinite(
             recommendAll
           )
             ? recommendAll
             : null,
+
         rsi:
-          Number.isFinite(rsi)
+          Number.isFinite(
+            rsi
+          )
             ? rsi
             : null,
+
         macd:
-          Number.isFinite(macd)
+          Number.isFinite(
+            macd
+          )
             ? macd
             : null,
+
         macdSignal:
           Number.isFinite(
             macdSignal
           )
             ? macdSignal
             : null,
+
         ema20:
-          Number.isFinite(ema20)
+          Number.isFinite(
+            ema20
+          )
             ? ema20
             : null,
+
         ema50:
-          Number.isFinite(ema50)
+          Number.isFinite(
+            ema50
+          )
             ? ema50
             : null,
-      };
-    })();
-
-  const moneycontrolTask =
-    (async () => {
-      const response = await fetch(
-        "https://www.moneycontrol.com/markets/technicals/",
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            Accept: "text/html"
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          "Moneycontrol HTTP " +
-          response.status
-        );
-      }
-
-      const html =
-        await response.text();
-
-      const match =
-        html.match(
-          /NIFTY\s*50[\s\S]{0,3000}?(VERY\s+BULLISH|VERY\s+BEARISH|BULLISH|BEARISH|NEUTRAL)/i
-        );
-
-      if (!match) {
-        throw new Error(
-          "Moneycontrol NIFTY technical rating unavailable"
-        );
-      }
-
-      return {
-        name: "Moneycontrol",
-        live: true,
-        technicalRating:
-          String(match[1])
-            .replace(/\s+/g, " ")
-            .toUpperCase(),
-        price: null
-      };
-    })();
-
-  const trendlyneTask =
-    (async () => {
-      const response = await fetch(
-        "https://trendlyne.com/equity/technical-analysis/NIFTY/1887/nifty-50/",
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            Accept: "text/html"
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          "Trendlyne HTTP " +
-          response.status
-        );
-      }
-
-      const html =
-        await response.text();
-
-      const bullishMatch =
-        html.match(
-          /Bullish Moving Averages\s*([0-9]+)/i
-        );
-
-      const bearishMatch =
-        html.match(
-          /Bearish Moving Averages\s*([0-9]+)/i
-        );
-
-      const bullish =
-        Number(
-          bullishMatch?.[1]
-        );
-
-      const bearish =
-        Number(
-          bearishMatch?.[1]
-        );
-
-      if (
-        !Number.isFinite(bullish) ||
-        !Number.isFinite(bearish)
-      ) {
-        throw new Error(
-          "Trendlyne NIFTY technical counts unavailable"
-        );
-      }
-
-      return {
-        name: "Trendlyne",
-        live: true,
-        bullishCount: bullish,
-        bearishCount: bearish,
-        technicalRating:
-          bullish > bearish
-            ? "BULLISH"
-            : bearish > bullish
-              ? "BEARISH"
-              : "NEUTRAL",
-        price: null
       };
     })();
 
@@ -2114,8 +2461,6 @@ async function externalNiftySources() {
     await Promise.allSettled([
       yahooTask,
       tradingViewTask,
-      moneycontrolTask,
-      trendlyneTask
     ]);
 
   for (
@@ -2145,68 +2490,115 @@ async function externalNiftySources() {
         source =>
           source.live
       ),
+
     symbol:
       "NIFTY 50",
+
     sourceCount:
       sources.length,
+
     sources,
+
     errors,
+
     timestamp:
       new Date()
         .toISOString(),
   });
 }
 
+// ----------------------------------------------------
+// GLOBAL MARKET WATCH
+// ----------------------------------------------------
 
 async function globalMarketWatch() {
   const symbols = [
     {
-      key: "sp500_futures",
-      name: "S&P 500 Futures",
-      symbol: "ES=F",
-      role: "risk"
+      key:
+        "sp500_futures",
+      name:
+        "S&P 500 Futures",
+      symbol:
+        "ES=F",
+      role:
+        "risk"
     },
+
     {
-      key: "nasdaq_futures",
-      name: "Nasdaq Futures",
-      symbol: "NQ=F",
-      role: "risk"
+      key:
+        "nasdaq_futures",
+      name:
+        "Nasdaq Futures",
+      symbol:
+        "NQ=F",
+      role:
+        "risk"
     },
+
     {
-      key: "dow_futures",
-      name: "Dow Futures",
-      symbol: "YM=F",
-      role: "risk"
+      key:
+        "dow_futures",
+      name:
+        "Dow Futures",
+      symbol:
+        "YM=F",
+      role:
+        "risk"
     },
+
     {
-      key: "vix",
-      name: "VIX",
-      symbol: "^VIX",
-      role: "inverse"
+      key:
+        "vix",
+      name:
+        "VIX",
+      symbol:
+        "^VIX",
+      role:
+        "inverse"
     },
+
     {
-      key: "usd_inr",
-      name: "USD/INR",
-      symbol: "INR=X",
-      role: "inverse_small"
+      key:
+        "usd_inr",
+      name:
+        "USD/INR",
+      symbol:
+        "INR=X",
+      role:
+        "inverse_small"
     },
+
     {
-      key: "nikkei",
-      name: "Nikkei 225",
-      symbol: "^N225",
-      role: "risk"
+      key:
+        "nikkei",
+      name:
+        "Nikkei 225",
+      symbol:
+        "^N225",
+      role:
+        "risk"
     },
+
     {
-      key: "hang_seng",
-      name: "Hang Seng",
-      symbol: "^HSI",
-      role: "risk"
+      key:
+        "hang_seng",
+      name:
+        "Hang Seng",
+      symbol:
+        "^HSI",
+      role:
+        "risk"
     },
+
     {
-      key: "gift_nifty_reference",
-      name: "NIFTY 50 Reference",
-      symbol: "^NSEI",
-      role: "context"
+      key:
+        "gift_nifty_reference",
+      name:
+        "NIFTY 50 Reference",
+      symbol:
+        "^NSEI",
+      role:
+        "context"
     }
   ];
 
@@ -2226,6 +2618,7 @@ async function globalMarketWatch() {
             headers: {
               "User-Agent":
                 "Mozilla/5.0",
+
               Accept:
                 "application/json",
             },
@@ -2244,7 +2637,8 @@ async function globalMarketWatch() {
         await response.json();
 
       const result =
-        body?.chart?.result?.[0];
+        body?.chart
+          ?.result?.[0];
 
       if (!result) {
         throw new Error(
@@ -2260,11 +2654,13 @@ async function globalMarketWatch() {
         Array.isArray(
           result
             ?.indicators
-            ?.quote
-            ?.[0]
+            ?.quote?.[0]
             ?.close
         )
-          ? result.indicators.quote[0].close
+          ? result
+              .indicators
+              .quote[0]
+              .close
           : [];
 
       const valid =
@@ -2276,18 +2672,25 @@ async function globalMarketWatch() {
 
       const price =
         Number(
-          meta.regularMarketPrice
+          meta
+            .regularMarketPrice
         );
 
       const previousClose =
         Number(
-          meta.chartPreviousClose ??
-          meta.previousClose
+          meta
+            .chartPreviousClose ??
+          meta
+            .previousClose
         );
 
       const changePercent =
-        Number.isFinite(price) &&
-        Number.isFinite(previousClose) &&
+        Number.isFinite(
+          price
+        ) &&
+        Number.isFinite(
+          previousClose
+        ) &&
         previousClose !== 0
           ? (
               (
@@ -2298,7 +2701,8 @@ async function globalMarketWatch() {
             ) * 100
           : null;
 
-      let momentum = null;
+      let momentum =
+        null;
 
       if (
         valid.length >= 4
@@ -2310,8 +2714,12 @@ async function globalMarketWatch() {
           valid.at(-4);
 
         if (
-          Number.isFinite(latest) &&
-          Number.isFinite(prior) &&
+          Number.isFinite(
+            latest
+          ) &&
+          Number.isFinite(
+            prior
+          ) &&
           prior !== 0
         ) {
           momentum =
@@ -2328,42 +2736,55 @@ async function globalMarketWatch() {
       return {
         key:
           item.key,
+
         name:
           item.name,
+
         symbol:
           item.symbol,
+
         role:
           item.role,
+
         price:
-          Number.isFinite(price)
+          Number.isFinite(
+            price
+          )
             ? price
             : null,
+
         previousClose:
           Number.isFinite(
             previousClose
           )
             ? previousClose
             : null,
+
         changePercent:
           Number.isFinite(
             changePercent
           )
             ? changePercent
             : null,
+
         momentum:
           Number.isFinite(
             momentum
           )
             ? momentum
             : null,
+
         marketState:
           meta.marketState ||
           null,
+
         timestamp:
           Number(
-            meta.regularMarketTime
+            meta
+              .regularMarketTime
           ) ||
-          result.timestamp?.at(-1) ||
+          result.timestamp
+            ?.at(-1) ||
           null,
       };
     };
@@ -2402,24 +2823,37 @@ async function globalMarketWatch() {
   return json({
     live:
       items.length > 0,
+
     type:
       "GLOBAL_MARKET_WATCH",
+
     label:
       "24/7 Global Watch",
+
     source:
       "YAHOO_FINANCE",
+
     count:
       items.length,
+
     items,
+
     errors,
+
     timestamp:
       new Date()
         .toISOString(),
   });
 }
 
+// ----------------------------------------------------
+// DAILY NIFTY HISTORY
+// ----------------------------------------------------
 
-async function niftyDailyHistory(url, token) {
+async function niftyDailyHistory(
+  url,
+  token
+) {
   const instrumentKey =
     SYMBOLS.NIFTY;
 
@@ -2429,7 +2863,9 @@ async function niftyDailyHistory(url, token) {
       Math.min(
         180,
         Number(
-          url.searchParams.get("days")
+          url.searchParams.get(
+            "days"
+          )
         ) || 90
       )
     );
@@ -2444,7 +2880,9 @@ async function niftyDailyHistory(url, token) {
 
   const endpoint =
     "https://api.upstox.com/v3/historical-candle/" +
-    encodeURIComponent(instrumentKey) +
+    encodeURIComponent(
+      instrumentKey
+    ) +
     "/days/1/" +
     toDate +
     "/" +
@@ -2469,7 +2907,9 @@ async function niftyDailyHistory(url, token) {
         .map(
           row => {
             if (
-              !Array.isArray(row) ||
+              !Array.isArray(
+                row
+              ) ||
               row.length < 6
             ) {
               return null;
@@ -2490,7 +2930,9 @@ async function niftyDailyHistory(url, token) {
               ).getTime();
 
             if (
-              !Number.isFinite(ms)
+              !Number.isFinite(
+                ms
+              )
             ) {
               return null;
             }
@@ -2500,16 +2942,22 @@ async function niftyDailyHistory(url, token) {
                 Math.floor(
                   ms / 1000
                 ),
+
               open:
                 Number(open),
+
               high:
                 Number(high),
+
               low:
                 Number(low),
+
               close:
                 Number(close),
+
               volume:
-                Number(volume) || 0
+                Number(volume) ||
+                0
             };
 
             return [
@@ -2527,147 +2975,410 @@ async function niftyDailyHistory(url, token) {
         .filter(Boolean)
         .sort(
           (x, y) =>
-            x.time - y.time
+            x.time -
+            y.time
         );
 
     return json({
       live:
-        candles.length > 0,
+        candles.length >
+        0,
+
       source:
         "UPSTOX",
+
       symbol:
         "NIFTY 50",
+
       timeframe:
         "1d",
+
       fromDate,
       toDate,
+
       count:
         candles.length,
+
       candles
     });
 
   } catch (error) {
+
     return json({
       live: false,
+
       source:
         "UPSTOX",
+
       symbol:
         "NIFTY 50",
+
       timeframe:
         "1d",
+
       reason:
         error?.message ||
         "Unable to load daily NIFTY history.",
+
       candles: []
     });
   }
 }
 
+// ----------------------------------------------------
+// OPTIONS / BREADTH
+// ----------------------------------------------------
+
+let optionsPending = null;
+
+let breadthPending = null;
+let breadthCached = null;
+let breadthCachedAt = 0;
+
+let constituentKeys = null;
+let constituentDate = null;
+
+async function niftyBreadth(token) {
+  if (!regularNseHours()) {
+    return json({
+      live: false,
+      reason:
+        'MARKET CLOSED'
+    });
+  }
+
+  if (
+    breadthCached &&
+    Date.now() -
+      breadthCachedAt <
+      60000
+  ) {
+    return json(
+      breadthCached
+    );
+  }
+
+  if (!breadthPending) {
+
+    breadthPending =
+      (async () => {
+        try {
+
+          if (
+            !constituentKeys ||
+            constituentDate !==
+              todayIST()
+          ) {
+            const response =
+              await fetch(
+                'https://niftyindices.com/IndexConstituent/ind_nifty50list.csv',
+                {
+                  signal:
+                    AbortSignal.timeout(
+                      15000
+                    )
+                }
+              );
+
+            if (!response.ok) {
+              throw new Error(
+                'Official constituent list unavailable'
+              );
+            }
+
+            const rows =
+              parse(
+                await response.text(),
+                {
+                  columns: true,
+                  bom: true,
+                  skip_empty_lines:
+                    true,
+                  trim: true
+                }
+              );
+
+            const keys =
+              rows.map(
+                row =>
+                  row[
+                    'ISIN Code'
+                  ]
+              );
+
+            if (
+              rows.length !==
+                50 ||
+              new Set(keys)
+                .size !==
+                50 ||
+              rows.some(
+                row =>
+                  row.Series !==
+                  'EQ'
+              ) ||
+              keys.some(
+                key =>
+                  !/^INE[A-Z0-9]{9}$/.test(
+                    key
+                  )
+              )
+            ) {
+              throw new Error(
+                'Official constituent list invalid'
+              );
+            }
+
+            constituentKeys =
+              keys.map(
+                key =>
+                  'NSE_EQ|' +
+                  key
+              );
+
+            constituentDate =
+              todayIST();
+          }
+
+          const quotes =
+            await upstoxFetch(
+              'https://api.upstox.com/v3/market-quote/quotes?instrument_key=' +
+              encodeURIComponent(
+                constituentKeys.join(
+                  ','
+                )
+              ),
+              token
+            );
+
+          return summarizeBreadth(
+            quotes.data,
+            constituentKeys
+          );
+
+        } catch (error) {
+
+          return {
+            live: false,
+            reason:
+              error.message
+          };
+        }
+
+      })()
+        .then(
+          result => {
+            breadthCached =
+              result;
+
+            breadthCachedAt =
+              Date.now();
+
+            return result;
+          }
+        )
+        .finally(
+          () => {
+            breadthPending =
+              null;
+          }
+        );
+  }
+
+  return json(
+    await breadthPending
+  );
+}
+
+let optionsCached = null;
+let optionsCachedAt = 0;
+
+let optionsExpiry = null;
+let optionsExpiryDate = null;
+
+async function niftyOptions(token) {
+  if (!regularNseHours()) {
+    return json({
+      available: false,
+      live: false,
+      reason:
+        'MARKET CLOSED'
+    });
+  }
+
+  if (
+    optionsCached &&
+    Date.now() -
+      optionsCachedAt <
+      60000
+  ) {
+    return json(
+      optionsCached
+    );
+  }
+
+  if (!optionsPending) {
+
+    optionsPending =
+      (async () => {
+        try {
+
+          const today =
+            todayIST();
+
+          if (
+            !optionsExpiry ||
+            optionsExpiryDate !==
+              today
+          ) {
+            const contracts =
+              await upstoxFetch(
+                'https://api.upstox.com/v2/option/contract?instrument_key=' +
+                encodeURIComponent(
+                  SYMBOLS.NIFTY
+                ),
+                token
+              );
+
+            optionsExpiry =
+              [
+                ...new Set(
+                  (
+                    contracts.data ||
+                    []
+                  ).map(
+                    row =>
+                      row.expiry
+                  )
+                )
+              ]
+                .filter(
+                  expiry =>
+                    /^\d{4}-\d{2}-\d{2}$/.test(
+                      expiry
+                    ) &&
+                    expiry >=
+                      today
+                )
+                .sort()[0];
+
+            optionsExpiryDate =
+              today;
+          }
+
+          if (!optionsExpiry) {
+            throw new Error(
+              'No current NIFTY expiry available'
+            );
+          }
+
+          const chain =
+            await upstoxFetch(
+              'https://api.upstox.com/v2/option/chain?instrument_key=' +
+              encodeURIComponent(
+                SYMBOLS.NIFTY
+              ) +
+              '&expiry_date=' +
+              optionsExpiry,
+              token
+            );
+
+          return summarizeOptions(
+            chain.data,
+            optionsExpiry
+          );
+
+        } catch (error) {
+
+          return {
+            available: false,
+            live: false,
+            reason:
+              error.message
+          };
+        }
+
+      })()
+        .then(
+          result => {
+            optionsCached =
+              result;
+
+            optionsCachedAt =
+              Date.now();
+
+            return result;
+          }
+        )
+        .finally(
+          () => {
+            optionsPending =
+              null;
+          }
+        );
+  }
+
+  return json(
+    await optionsPending
+  );
+}
 
 // ----------------------------------------------------
 // WORKER ROUTER
 // ----------------------------------------------------
 
-let optionsPending = null;
-let breadthPending = null;
-let breadthCached = null;
-let breadthCachedAt = 0;
-let constituentKeys = null;
-let constituentDate = null;
-
-async function niftyBreadth(token) {
-  if (!regularNseHours()) return json({ live: false, reason: 'MARKET CLOSED' });
-  if (breadthCached && Date.now() - breadthCachedAt < 60000) return json(breadthCached);
-  if (!breadthPending) {
-    breadthPending = (async () => {
-      try {
-        if (!constituentKeys || constituentDate !== todayIST()) {
-          const response = await fetch('https://niftyindices.com/IndexConstituent/ind_nifty50list.csv',
-            { signal: AbortSignal.timeout(15000) });
-          if (!response.ok) throw new Error('Official constituent list unavailable');
-          const rows = parse(await response.text(), { columns: true, bom: true, skip_empty_lines: true, trim: true });
-          const keys = rows.map(row => row['ISIN Code']);
-          if (rows.length !== 50 || new Set(keys).size !== 50 ||
-              rows.some(row => row.Series !== 'EQ') || keys.some(key => !/^INE[A-Z0-9]{9}$/.test(key))) {
-            throw new Error('Official constituent list invalid');
-          }
-          constituentKeys = keys.map(key => 'NSE_EQ|' + key);
-          constituentDate = todayIST();
-        }
-        const quotes = await upstoxFetch('https://api.upstox.com/v3/market-quote/quotes?instrument_key=' +
-          encodeURIComponent(constituentKeys.join(',')), token);
-        return summarizeBreadth(quotes.data, constituentKeys);
-      } catch (error) {
-        return { live: false, reason: error.message };
-      }
-    })().then(result => {
-      breadthCached = result;
-      breadthCachedAt = Date.now();
-      return result;
-    }).finally(() => { breadthPending = null; });
-  }
-  return json(await breadthPending);
-}
-
-let optionsCached = null;
-let optionsCachedAt = 0;
-let optionsExpiry = null;
-let optionsExpiryDate = null;
-
-async function niftyOptions(token) {
-  if (!regularNseHours()) return json({ available: false, live: false, reason: 'MARKET CLOSED' });
-  if (optionsCached && Date.now() - optionsCachedAt < 60000) return json(optionsCached);
-  if (!optionsPending) {
-    optionsPending = (async () => {
-      try {
-        const today = todayIST();
-        if (!optionsExpiry || optionsExpiryDate !== today) {
-          const contracts = await upstoxFetch('https://api.upstox.com/v2/option/contract?instrument_key=' +
-            encodeURIComponent(SYMBOLS.NIFTY), token);
-          optionsExpiry = [...new Set((contracts.data || []).map(row => row.expiry))]
-            .filter(expiry => /^\d{4}-\d{2}-\d{2}$/.test(expiry) && expiry >= today).sort()[0];
-          optionsExpiryDate = today;
-        }
-        if (!optionsExpiry) throw new Error('No current NIFTY expiry available');
-        const chain = await upstoxFetch('https://api.upstox.com/v2/option/chain?instrument_key=' +
-          encodeURIComponent(SYMBOLS.NIFTY) + '&expiry_date=' + optionsExpiry, token);
-        return summarizeOptions(chain.data, optionsExpiry);
-      } catch (error) {
-        return { available: false, live: false, reason: error.message };
-      }
-    })().then(result => {
-      optionsCached = result;
-      optionsCachedAt = Date.now();
-      return result;
-    }).finally(() => { optionsPending = null; });
-  }
-  return json(await optionsPending);
-}
-
 export default {
-  async fetch(request, env, context) {
+
+  async fetch(
+    request,
+    env,
+    context
+  ) {
+
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
-
+    // CORS preflight
     if (
-      request.method === "OPTIONS" &&
-      url.pathname.startsWith("/api/")
+      request.method ===
+        "OPTIONS" &&
+      url.pathname.startsWith(
+        "/api/"
+      )
     ) {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, OPTIONS",
-          "access-control-allow-headers": "Content-Type, Authorization",
-          "access-control-max-age": "86400",
-        },
-      });
+      return new Response(
+        null,
+        {
+          status: 204,
+
+          headers: {
+            "access-control-allow-origin":
+              "*",
+
+            "access-control-allow-methods":
+              "GET, OPTIONS",
+
+            "access-control-allow-headers":
+              "Content-Type, Authorization",
+
+            "access-control-max-age":
+              "86400",
+          },
+        }
+      );
     }
 
-    if (authenticatedEmail(request) !== ALLOWED_USER_EMAIL) {
-      return accessDenied(url);
-    }
+    /*
+     * IMPORTANT:
+     * Old email restriction has been removed.
+     *
+     * There is no:
+     * authenticatedEmail()
+     * ALLOWED_USER_EMAIL
+     * accessDenied()
+     */
 
     const token =
       env.UPSTOX_EXTENDED_TOKEN ||
@@ -2675,39 +3386,60 @@ export default {
       env.UPSTOX_ACCESS_TOKEN ||
       env.UPSTOX_TOKEN;
 
+    // External NIFTY
     if (
-      url.pathname === "/api/external-nifty"
+      url.pathname ===
+      "/api/external-nifty"
     ) {
       return externalNiftySources();
     }
 
+    // Global Watch
     if (
-      url.pathname === "/api/global-watch"
+      url.pathname ===
+      "/api/global-watch"
     ) {
       return globalMarketWatch();
     }
 
+    // Health
     if (
-      url.pathname === "/api/health"
+      url.pathname ===
+      "/api/health"
     ) {
+
       if (!token) {
         return json({
           live: false,
-          source: "UPSTOX",
-          tokenConfigured: false,
-          tokenValid: false,
-          service: "Stride Trading Desk",
+          source:
+            "UPSTOX",
+
+          tokenConfigured:
+            false,
+
+          tokenValid:
+            false,
+
+          service:
+            "Stride Trading Desk",
+
           reason:
             "Upstox token is not configured.",
-          timestamp: new Date().toISOString(),
+
+          timestamp:
+            new Date()
+              .toISOString(),
         });
       }
 
       try {
+
         const endpoint =
           "https://api.upstox.com/v3/market-quote/quotes" +
           "?instrument_key=" +
-          encodeURIComponent(SYMBOLS.NIFTY);
+          encodeURIComponent(
+            SYMBOLS.NIFTY
+          );
 
         const body =
           await upstoxFetch(
@@ -2717,7 +3449,8 @@ export default {
 
         const quote =
           Object.values(
-            body?.data ?? {}
+            body?.data ??
+            {}
           )[0];
 
         const price =
@@ -2727,51 +3460,110 @@ export default {
 
         return json({
           live:
-            Number.isFinite(price),
-          source: "UPSTOX",
-          tokenConfigured: true,
+            Number.isFinite(
+              price
+            ),
+
+          source:
+            "UPSTOX",
+
+          tokenConfigured:
+            true,
+
           tokenValid:
-            Number.isFinite(price),
+            Number.isFinite(
+              price
+            ),
+
           price:
-            Number.isFinite(price)
+            Number.isFinite(
+              price
+            )
               ? price
               : null,
-          service: "Stride Trading Desk",
-          timestamp: new Date().toISOString(),
+
+          service:
+            "Stride Trading Desk",
+
+          timestamp:
+            new Date()
+              .toISOString(),
         });
+
       } catch (error) {
+
         return json({
           live: false,
-          source: "UPSTOX",
-          tokenConfigured: true,
-          tokenValid: false,
-          service: "Stride Trading Desk",
+
+          source:
+            "UPSTOX",
+
+          tokenConfigured:
+            true,
+
+          tokenValid:
+            false,
+
+          service:
+            "Stride Trading Desk",
+
           reason:
             "Upstox token expired or is invalid. Generate today's token or configure UPSTOX_EXTENDED_TOKEN.",
-          timestamp: new Date().toISOString(),
+
+          timestamp:
+            new Date()
+              .toISOString(),
         });
       }
     }
 
+    // All remaining Upstox APIs need token
     if (!token) {
       return json({
         live: false,
-        source: "UPSTOX",
+
+        source:
+          "UPSTOX",
+
         reason:
           "Upstox token is not configured. Add UPSTOX_EXTENDED_TOKEN or today's UPSTOX_ANALYTICS_TOKEN in Cloudflare secrets.",
+
       }, 503);
     }
 
-    if (url.pathname === '/api/nifty-options') {
-      return cachedApiResponse(request, 60, () => niftyOptions(token), context);
-    }
-
-    if (url.pathname === '/api/nifty-breadth') {
-      return cachedApiResponse(request, 60, () => niftyBreadth(token), context);
+    if (
+      url.pathname ===
+      '/api/nifty-options'
+    ) {
+      return cachedApiResponse(
+        request,
+        60,
+        () =>
+          niftyOptions(
+            token
+          ),
+        context
+      );
     }
 
     if (
-      url.pathname === "/api/live-quote"
+      url.pathname ===
+      '/api/nifty-breadth'
+    ) {
+      return cachedApiResponse(
+        request,
+        60,
+        () =>
+          niftyBreadth(
+            token
+          ),
+        context
+      );
+    }
+
+    if (
+      url.pathname ===
+      "/api/live-quote"
     ) {
       return liveQuote(
         url,
@@ -2780,67 +3572,105 @@ export default {
     }
 
     if (
-      url.pathname === "/api/upstox-history"
+      url.pathname ===
+      "/api/upstox-history"
     ) {
       return cachedApiResponse(
         request,
         60,
-        () => intradayHistory(url, token),
+
+        () =>
+          intradayHistory(
+            url,
+            token
+          ),
+
         context
       );
     }
 
     if (
-      url.pathname === "/api/upstox-previous-history"
+      url.pathname ===
+      "/api/upstox-previous-history"
     ) {
       return cachedApiResponse(
         request,
         3600,
-        () => previousSessionHistory(url, token),
+
+        () =>
+          previousSessionHistory(
+            url,
+            token
+          ),
+
         context
       );
     }
 
     if (
-      url.pathname === "/api/upstox-mtf-history"
+      url.pathname ===
+      "/api/upstox-mtf-history"
     ) {
       return cachedApiResponse(
         request,
         300,
-        () => mtfHistory(url, token),
+
+        () =>
+          mtfHistory(
+            url,
+            token
+          ),
+
         context
       );
     }
 
     if (
-      url.pathname === "/api/nifty-daily-history"
+      url.pathname ===
+      "/api/nifty-daily-history"
     ) {
       return cachedApiResponse(
         request,
         300,
-        () => niftyDailyHistory(url, token),
+
+        () =>
+          niftyDailyHistory(
+            url,
+            token
+          ),
+
         context
       );
     }
 
     if (
-      url.pathname === "/api/nifty-futures-vwap"
+      url.pathname ===
+      "/api/nifty-futures-vwap"
     ) {
       return cachedApiResponse(
         request,
         30,
-        () => futuresVWAP(url, token),
+
+        () =>
+          futuresVWAP(
+            url,
+            token
+          ),
+
         context
       );
     }
 
-    /*
-     * Serve the existing Pro Scalper static site.
-     * ASSETS is supplied by the Wrangler assets binding.
-     */
+    // ------------------------------------------------
+    // STATIC APP
+    // ------------------------------------------------
+
     if (env.ASSETS) {
+
       const response =
-        await env.ASSETS.fetch(request);
+        await env.ASSETS.fetch(
+          request
+        );
 
       const headers =
         new Headers(
@@ -2848,10 +3678,17 @@ export default {
         );
 
       if (
-        url.pathname === "/" ||
-        url.pathname.endsWith(".html") ||
-        url.pathname.endsWith(".js") ||
-        url.pathname.endsWith(".css")
+        url.pathname ===
+          "/" ||
+        url.pathname.endsWith(
+          ".html"
+        ) ||
+        url.pathname.endsWith(
+          ".js"
+        ) ||
+        url.pathname.endsWith(
+          ".css"
+        )
       ) {
         headers.set(
           "cache-control",
@@ -2874,8 +3711,10 @@ export default {
         {
           status:
             response.status,
+
           statusText:
             response.statusText,
+
           headers,
         }
       );
@@ -2885,6 +3724,7 @@ export default {
       "Pro Scalper API",
       {
         status: 200,
+
         headers: {
           "content-type":
             "text/plain; charset=utf-8",
