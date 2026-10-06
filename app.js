@@ -2905,15 +2905,13 @@ function renderProSuiteSummary() {
       : "NO TRADE";
 
   // =========================================================
-  // CONFIDENCE
-  // Use corrected All Indicators confidence.
+  // CONFLUENCE / ALIGNMENT SCORE
+  // This is indicator agreement, not win-rate probability.
+  // Never substitute NIFTY Edge score for final consensus.
   // =========================================================
   const confidenceRaw = samplePreview
     ? Number(edgeLatest?.score) * 10
-    : displaySignal === 'NO TRADE' &&
-      Number.isFinite(Number(edgeLatest?.score))
-      ? Number(edgeLatest.score) * 10
-      : Number(consensus?.confidence);
+    : Number(consensus?.confidence);
 
   const confidence =
     Number.isFinite(confidenceRaw)
@@ -4678,11 +4676,23 @@ function setChartView(
   if (
     tvProStatus
   ) {
+    const feedLabel =
+      state.feedStatus === 'LIVE'
+        ? 'UPSTOX LIVE'
+        : state.feedStatus === 'CLOSED'
+          ? 'MARKET CLOSED · LAST SESSION DATA'
+          : state.feedStatus === 'STALE'
+            ? 'UPSTOX STALE'
+            : state.feedStatus === 'RECONNECTING'
+              ? 'UPSTOX RECONNECTING'
+              : state.feedStatus === 'DATA UNAVAILABLE'
+                ? 'DATA UNAVAILABLE'
+                : 'UPSTOX DATA';
+
     tvProStatus.textContent =
-      state.tvChartMode ===
-        'tradingview'
-        ? 'TRADINGVIEW STYLE · UPSTOX LIVE'
-        : 'CLASSIC CHART · UPSTOX LIVE';
+      state.tvChartMode === 'tradingview'
+        ? 'TRADINGVIEW STYLE · ' + feedLabel
+        : 'CLASSIC CHART · ' + feedLabel;
   }
 
 
@@ -13773,7 +13783,7 @@ function allIndicatorsChatAnswer(
     return (
       'All-indicator consensus: ' +
       signal +
-      ' · Confidence ' +
+      ' · Confluence ' +
       confidence +
       '. ' +
       voteText
@@ -13788,7 +13798,7 @@ function allIndicatorsChatAnswer(
     return (
       'Current consensus signal: ' +
       signal +
-      ' · Confidence ' +
+      ' · Confluence ' +
       confidence +
       '. Bull weight ' +
       (
@@ -13964,9 +13974,9 @@ function allIndicatorsChatAnswer(
     ) +
     '. Consensus: ' +
     signal +
-    ' (' +
+    ' · Confluence ' +
     confidence +
-    '). Ask: Signal now, All indicators, Why no trade, Trend, Trade plan, or Support/Resistance.'
+    '. Ask: Signal now, All indicators, Why no trade, Trend, Trade plan, or Support/Resistance.'
   );
 }
 
