@@ -1,3 +1,4 @@
+import { renderMapIndicators } from './market-map-indicators.js';
 import { supportResistance, drawSupportResistance } from './support-resistance.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
@@ -830,6 +831,10 @@ import { momentumSignals } from './momentum.js';
       renderPrimeMarket();
       renderAiIndicator();
       renderSmartMoneyTools();
+      const mapNow = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now()/1000;
+      const mapClosed = primeClosed(state.data,Number(intervals[state.tf]),mapNow);
+      renderMapIndicators(mapClosed.error ? [] : mapClosed.candles,state,{seconds:Number(intervals[state.tf]),now:mapNow});
+
     }
 
     function renderSmartMoneyTools() {
