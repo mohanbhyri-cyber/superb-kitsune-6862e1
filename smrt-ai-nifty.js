@@ -3,6 +3,7 @@
 // SMRT AI NIFTY 50
 // Multi-source deterministic decision-support engine.
 // Combines Upstox app state with independent external sources.
+// External/MTF inputs may confirm or veto, but never create direction.
 // No automatic order placement and no guaranteed accuracy.
 // ============================================================
 
@@ -129,14 +130,27 @@ export function analyseSmrtAiNifty({
   let score = 0;
 
   const finalizerState =
-    finalizer?.state ||
-    'NO TRADE';
+    String(
+      finalizer?.state ||
+      'NO TRADE'
+    ).toUpperCase();
 
-  if (
-    finalizerState.includes(
-      'BUY'
-    )
-  ) {
+  const finalizerBuy =
+    /\bBUY\b/.test(finalizerState) ||
+    finalizerState.includes('BUY+');
+
+  const finalizerSell =
+    /\bSELL\b/.test(finalizerState) ||
+    finalizerState.includes('SELL+');
+
+  const finalizerSide =
+    finalizerBuy === finalizerSell
+      ? 0
+      : finalizerBuy
+        ? 1
+        : -1;
+
+  if (finalizerSide === 1) {
     score +=
       finalizerState.includes(
         'STRONG'
@@ -147,11 +161,7 @@ export function analyseSmrtAiNifty({
     reasons.push(
       'SMRT Finalizer bullish'
     );
-  } else if (
-    finalizerState.includes(
-      'SELL'
-    )
-  ) {
+  } else if (finalizerSide === -1) {
     score -=
       finalizerState.includes(
         'STRONG'
@@ -161,6 +171,10 @@ export function analyseSmrtAiNifty({
 
     reasons.push(
       'SMRT Finalizer bearish'
+    );
+  } else {
+    reasons.push(
+      'SMRT Finalizer has no actionable direction'
     );
   }
 
@@ -330,21 +344,29 @@ export function analyseSmrtAiNifty({
   let signal =
     'NO TRADE';
 
+  // Finalizer is the mandatory direction source. MTF and external feeds
+  // are confirmation/veto layers only; they cannot manufacture BUY/SELL.
   if (
+    finalizerSide === 1 &&
     score >= 45 &&
     (
       externalBull >= 1 ||
       mtfBull >= 2
-    )
+    ) &&
+    mtfBear === 0 &&
+    externalBear === 0
   ) {
     signal =
       'BUY';
   } else if (
+    finalizerSide === -1 &&
     score <= -45 &&
     (
       externalBear >= 1 ||
       mtfBear >= 2
-    )
+    ) &&
+    mtfBull === 0 &&
+    externalBull === 0
   ) {
     signal =
       'SELL';
@@ -362,9 +384,30 @@ export function analyseSmrtAiNifty({
     );
   }
 
+  if (
+    finalizerSide === 1 &&
+    (mtfBear > 0 || externalBear > 0)
+  ) {
+    signal = 'NO TRADE';
+    reasons.push(
+      'Bullish Finalizer blocked by bearish confirmation conflict'
+    );
+  }
+
+  if (
+    finalizerSide === -1 &&
+    (mtfBull > 0 || externalBull > 0)
+  ) {
+    signal = 'NO TRADE';
+    reasons.push(
+      'Bearish Finalizer blocked by bullish confirmation conflict'
+    );
+  }
+
   const plan =
     signal !==
       'NO TRADE' &&
+    finalizerSide !== 0 &&
     finalizer?.plan
       ? finalizer.plan
       : null;
@@ -372,7 +415,9 @@ export function analyseSmrtAiNifty({
   return {
     signal,
     confidence:
-      absScore,
+      signal === 'NO TRADE'
+        ? Math.min(absScore, 64)
+        : absScore,
     rawScore:
       score,
     externalBull,
