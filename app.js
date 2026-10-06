@@ -15224,11 +15224,26 @@ import { momentumSignals } from './momentum.js';
           : 'muted'
     );
 
+    const structureValue =
+      state.primeMarket?.structure ??
+      map?.structure ??
+      'WAITING';
+
     const structureText =
-      String(
-        state.primeMarket?.structure ||
-        map.structure ||
-        'WAITING'
+      (
+        typeof structureValue === 'object' && structureValue !== null
+          ? (
+              typeof structureValue.label === 'string'
+                ? structureValue.label
+                : typeof structureValue.state === 'string'
+                  ? structureValue.state
+                  : structureValue.direction === 1
+                    ? 'BULLISH'
+                    : structureValue.direction === -1
+                      ? 'BEARISH'
+                      : 'RANGE / MIXED'
+            )
+          : String(structureValue)
       ).toUpperCase();
 
     set(
