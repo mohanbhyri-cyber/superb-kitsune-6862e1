@@ -1,3 +1,4 @@
+import { supportResistance, drawSupportResistance } from './support-resistance.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -3226,6 +3227,18 @@ import { momentumSignals } from './momentum.js';
 
     let tvLiteChart = null;
     let tvLiteSeries = null;
+    const tvLiteSRLines = new Map();
+    function syncSupportResistanceLines() {
+      if (!tvLiteSeries?.createPriceLine) return;
+      const levels = supportResistance(state.data, {seconds:Number(intervals[state.tf]), now:state.replay.active ? Number(state.data.at(-1)?.time) : Date.now()/1000});
+      for (const [key,color,title] of [['support','#20c997','Support'],['resistance','#f15b6c','Resistance']]) {
+        const row=levels[key], previous=tvLiteSRLines.get(key);
+        if (!row) { if(previous) tvLiteSeries.removePriceLine(previous); tvLiteSRLines.delete(key); continue; }
+        const options={price:row.price,color,lineWidth:2,lineStyle:2,axisLabelVisible:true,title};
+        if(previous) previous.applyOptions(options); else tvLiteSRLines.set(key,tvLiteSeries.createPriceLine(options));
+      }
+    }
+
     let tvLiteVolumeSeries = null;
     let tvLiteMarkers = null;
     const tvLiteIndicatorSeries = new Map();
@@ -4372,6 +4385,8 @@ import { momentumSignals } from './momentum.js';
             );
           }
         }
+
+        syncSupportResistanceLines();
 
       } catch (error) {
         console.warn(
@@ -5577,6 +5592,8 @@ import { momentumSignals } from './momentum.js';
         }
       );
 
+
+      drawSupportResistance(ctx, supportResistance(state.data.slice(0,end), {seconds:Number(intervals[state.tf]), now:state.replay.active ? Number(state.data.at(-1)?.time) : Date.now()/1000}), {y,plot,top,bottom});
 
       /*
         MOVING AVERAGES
