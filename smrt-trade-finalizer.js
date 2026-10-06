@@ -1,76 +1,42 @@
-// smrt-trade-finalizer.js
-// ============================================================
-// SMRT TRADE FINALIZER - NIFTY 50 PRIME
-//
-// Closed-candle deterministic decision support.
-// No automatic order placement.
-//
-// PRIME RULE:
-// Mandatory trend/momentum/MTF alignment must pass BEFORE
-// weighted confluence can create BUY / SELL.
-//
-// Missing or conflicting mandatory evidence => NO TRADE.
-// ============================================================
+// smrt-trade-finalizer.js //
+============================================================ // SMRT
+TRADE FINALIZER - NIFTY 50 PRIME // // Closed-candle deterministic
+decision support. // No automatic order placement. // // PRIME RULE: //
+Mandatory trend/momentum/MTF alignment must pass BEFORE // weighted
+confluence can create BUY / SELL. // // Missing or conflicting mandatory
+evidence => NO TRADE. //
+============================================================
 
-const finite = v =>
-  v !== null &&
-  v !== undefined &&
-  v !== '' &&
-  Number.isFinite(Number(v));
+const finite = v => v !== null && v !== undefined && v !== ’’ &&
+Number.isFinite(Number(v));
 
-const sideFromText = value => {
-  const text = String(value || '')
-    .trim()
-    .toUpperCase();
+const sideFromText = value => { const text = String(value || ’’) .trim()
+.toUpperCase();
 
-  if (
-    text.includes('BUY') ||
-    text.includes('BULLISH') ||
-    text.startsWith('LONG')
-  ) {
-    return 1;
-  }
+// Fail closed on neutral, unavailable, warming, or conflicting states.
+if ( !text ||
+/NOTRADE|WAIT(?:ING)?|MIXED|CONFLICT(?:ING)?|UNAVAILABLE|NOTREADY|WARM(?:ING)?(?:UP)?|NEUTRAL|N/?A|NA).test(text)
+) { return 0; }
 
-  if (
-    text.includes('SELL') ||
-    text.includes('BEARISH') ||
-    text.startsWith('SHORT')
-  ) {
-    return -1;
-  }
+const bullish = /BUY|BULLISH|LONG|CALL).test(text);
 
-  return 0;
-};
+const bearish = /SELL|BEARISH|SHORT|PUT).test(text);
 
-function currentClosedEdge(edge) {
-  const row = edge?.latest;
+// Any ambiguous text containing both directions is neutral. if (bullish
+=== bearish) { return 0; }
 
-  if (!row) {
-    return null;
-  }
+return bullish ? 1 : -1; };
 
-  return [
-    'BUY+',
-    'SELL+',
-    'BUY',
-    'SELL'
-  ].includes(row.signal)
-    ? row
-    : null;
-}
+function currentClosedEdge(edge) { const row = edge?.latest;
 
-function noTrade({
-  reason,
-  time = null,
-  bullScore = 0,
-  bearScore = 0,
-  score = 0,
-  mandatory = null
-}) {
-  return {
-    state: 'NO TRADE',
-    score,
-    side: 0,
+if (!row) { return null; }
+
+return [ ‘BUY+’, ‘SELL+’, ‘BUY’, ‘SELL’ ].includes(row.signal) ? row :
+null; }
+
+function noTrade({ reason, time = null, bullScore = 0, bearScore = 0,
+score = 0, mandatory = null }) { return { state: ‘NO TRADE’, score,
+side: 0,
 
     bullScore,
     bearScore,
@@ -84,237 +50,118 @@ function noTrade({
     mandatory,
 
     time
-  };
+
+}; }
+
+export function finalizeTrade({ edge, marketMap, candleSetup, mtf, calc,
+trend, data, futuresVWAP, efficiency }) {
+
+// ========================================================== // CLOSED
+CANDLE // ========================================================== //
+// The app currently supplies the live/forming candle as the // final
+array element. Therefore index length - 2 is the // latest completed
+candle. // ==========================================================
+
+if ( !Array.isArray(data) || data.length < 3 || !calc || !trend ) {
+return noTrade({ reason: ‘Waiting for enough closed-candle data’ }); }
+
+const closed = data.length - 2;
+
+const candle = data[closed];
+
+if (!candle) { return noTrade({ reason: ‘Closed candle unavailable’ });
 }
 
-export function finalizeTrade({
-  edge,
-  marketMap,
-  candleSetup,
-  mtf,
-  calc,
-  trend,
-  data,
-  futuresVWAP,
-  efficiency
-}) {
+const time = candle.time ?? null;
 
-  // ==========================================================
-  // CLOSED CANDLE
-  // ==========================================================
-  //
-  // The app currently supplies the live/forming candle as the
-  // final array element. Therefore index length - 2 is the
-  // latest completed candle.
-  // ==========================================================
+// ========================================================== //
+TECHNICAL VALUES //
+==========================================================
 
-  if (
-    !Array.isArray(data) ||
-    data.length < 3 ||
-    !calc ||
-    !trend
-  ) {
-    return noTrade({
-      reason: 'Waiting for enough closed-candle data'
-    });
-  }
+const close = Number(candle.close);
 
-  const closed =
-    data.length - 2;
+const e9 = calc.e9?.[closed];
 
-  const candle =
-    data[closed];
+const e21 = calc.e21?.[closed];
 
-  if (!candle) {
-    return noTrade({
-      reason: 'Closed candle unavailable'
-    });
-  }
+const e50 = calc.e50?.[closed];
 
-  const time =
-    candle.time ?? null;
+const rsi = calc.rsi?.[closed];
 
-  // ==========================================================
-  // TECHNICAL VALUES
-  // ==========================================================
+const hist = calc.hist?.[closed];
 
-  const close =
-    Number(candle.close);
+const st = trend.direction?.[closed];
 
-  const e9 =
-    calc.e9?.[closed];
+const adx = trend.adx?.[closed];
 
-  const e21 =
-    calc.e21?.[closed];
+const plusDI = trend.plusDI?.[closed];
 
-  const e50 =
-    calc.e50?.[closed];
+const minusDI = trend.minusDI?.[closed];
 
-  const rsi =
-    calc.rsi?.[closed];
+// Prefer trend engine ATR. // Market Map ATR remains fallback. const
+trendATR = trend.atr?.[closed];
 
-  const hist =
-    calc.hist?.[closed];
+const mapATR = marketMap?.atr;
 
-  const st =
-    trend.direction?.[closed];
+const atr = finite(trendATR) ? Number(trendATR) : finite(mapATR) ?
+Number(mapATR) : null;
 
-  const adx =
-    trend.adx?.[closed];
+const indexVWAP = calc.vwap?.[closed];
 
-  const plusDI =
-    trend.plusDI?.[closed];
+// IMPORTANT: // Never manufacture NIFTY index VWAP. // futuresVWAP is
+only used if supplied by the app. const vwap = finite(indexVWAP) ?
+Number(indexVWAP) : finite(futuresVWAP) ? Number(futuresVWAP) : null;
 
-  const minusDI =
-    trend.minusDI?.[closed];
+// ========================================================== //
+READINESS // ==========================================================
 
-  // Prefer trend engine ATR.
-  // Market Map ATR remains fallback.
-  const trendATR =
-    trend.atr?.[closed];
+const mandatoryValuesReady = [ close, e9, e21, e50, rsi, hist, adx,
+plusDI, minusDI ].every(finite) && ( st === 1 || st === -1 );
 
-  const mapATR =
-    marketMap?.atr;
+if (!mandatoryValuesReady) { return noTrade({ reason: ‘Prime mandatory
+indicators are not ready’, time }); }
 
-  const atr =
-    finite(trendATR)
-      ? Number(trendATR)
-      : finite(mapATR)
-        ? Number(mapATR)
-        : null;
+// ========================================================== // MTF //
+==========================================================
 
-  const indexVWAP =
-    calc.vwap?.[closed];
+const mtfOverall = String( mtf?.overall || ‘NO TRADE’ ).toUpperCase();
 
-  // IMPORTANT:
-  // Never manufacture NIFTY index VWAP.
-  // futuresVWAP is only used if supplied by the app.
-  const vwap =
-    finite(indexVWAP)
-      ? Number(indexVWAP)
-      : finite(futuresVWAP)
-        ? Number(futuresVWAP)
-        : null;
+const mtfSide = sideFromText(mtfOverall);
 
-  // ==========================================================
-  // READINESS
-  // ==========================================================
+// MTF is mandatory. if ( mtfSide !== 1 && mtfSide !== -1 ) { return
+noTrade({ reason: ‘5m / 15m / 1h confirmation is not ready’, time }); }
 
-  const mandatoryValuesReady =
-    [
-      close,
-      e9,
-      e21,
-      e50,
-      rsi,
-      hist,
-      adx,
-      plusDI,
-      minusDI
-    ].every(finite) &&
-    (
-      st === 1 ||
-      st === -1
-    );
+// ========================================================== // PRIME
+MANDATORY CONDITIONS //
+==========================================================
 
-  if (!mandatoryValuesReady) {
-    return noTrade({
-      reason:
-        'Prime mandatory indicators are not ready',
-      time
-    });
-  }
+const emaBull = Number(e9) > Number(e21) && Number(e21) > Number(e50);
 
-  // ==========================================================
-  // MTF
-  // ==========================================================
+const emaBear = Number(e9) < Number(e21) && Number(e21) < Number(e50);
 
-  const mtfOverall =
-    String(
-      mtf?.overall ||
-      'NO TRADE'
-    ).toUpperCase();
+const supertrendBull = Number(st) === 1;
 
-  const mtfSide =
-    sideFromText(mtfOverall);
+const supertrendBear = Number(st) === -1;
 
-  // MTF is mandatory.
-  if (
-    mtfSide !== 1 &&
-    mtfSide !== -1
-  ) {
-    return noTrade({
-      reason:
-        '5m / 15m / 1h confirmation is not ready',
-      time
-    });
-  }
+const dmiBull = Number(adx) >= 22 && Number(plusDI) > Number(minusDI);
 
-  // ==========================================================
-  // PRIME MANDATORY CONDITIONS
-  // ==========================================================
+const dmiBear = Number(adx) >= 22 && Number(minusDI) > Number(plusDI);
 
-  const emaBull =
-    Number(e9) >
-      Number(e21) &&
-    Number(e21) >
-      Number(e50);
+const rsiBull = Number(rsi) >= 52 && Number(rsi) <= 68;
 
-  const emaBear =
-    Number(e9) <
-      Number(e21) &&
-    Number(e21) <
-      Number(e50);
+const rsiBear = Number(rsi) >= 32 && Number(rsi) <= 48;
 
-  const supertrendBull =
-    Number(st) === 1;
+const macdBull = Number(hist) > 0;
 
-  const supertrendBear =
-    Number(st) === -1;
+const macdBear = Number(hist) < 0;
 
-  const dmiBull =
-    Number(adx) >= 22 &&
-    Number(plusDI) >
-      Number(minusDI);
+const buyEligible = emaBull && supertrendBull && dmiBull && rsiBull &&
+macdBull && mtfSide === 1;
 
-  const dmiBear =
-    Number(adx) >= 22 &&
-    Number(minusDI) >
-      Number(plusDI);
+const sellEligible = emaBear && supertrendBear && dmiBear && rsiBear &&
+macdBear && mtfSide === -1;
 
-  const rsiBull =
-    Number(rsi) >= 52 &&
-    Number(rsi) <= 68;
-
-  const rsiBear =
-    Number(rsi) >= 32 &&
-    Number(rsi) <= 48;
-
-  const macdBull =
-    Number(hist) > 0;
-
-  const macdBear =
-    Number(hist) < 0;
-
-  const buyEligible =
-    emaBull &&
-    supertrendBull &&
-    dmiBull &&
-    rsiBull &&
-    macdBull &&
-    mtfSide === 1;
-
-  const sellEligible =
-    emaBear &&
-    supertrendBear &&
-    dmiBear &&
-    rsiBear &&
-    macdBear &&
-    mtfSide === -1;
-
-  const mandatory = {
-    emaBull,
-    emaBear,
+const mandatory = { emaBull, emaBear,
 
     supertrendBull,
     supertrendBear,
@@ -336,235 +183,173 @@ export function finalizeTrade({
 
     rsi: Number(rsi),
     macdHistogram: Number(hist)
-  };
 
-  // ==========================================================
-  // FAIL CLOSED
-  // ==========================================================
+};
 
-  if (
-    !buyEligible &&
-    !sellEligible
-  ) {
-    return noTrade({
-      reason:
-        'Prime mandatory conditions are not aligned',
-      time,
-      mandatory
-    });
-  }
+// ========================================================== // FAIL
+CLOSED // ==========================================================
 
-  const primeSide =
-    buyEligible
-      ? 1
-      : -1;
+if ( !buyEligible && !sellEligible ) { return noTrade({ reason: ‘Prime
+mandatory conditions are not aligned’, time, mandatory }); }
 
-  // ==========================================================
-  // TREND QUALITY / NOISE GATE
-  // ==========================================================
-  // Efficiency is context-only and never creates direction.
-  // A clearly low-quality/choppy regime can veto an otherwise
-  // aligned setup; unavailable/warming data does not invent a pass.
-  if (
-    efficiency?.ready === true &&
-    (
-      Number(efficiency.score) < 35 ||
-      String(efficiency.noise || '').toUpperCase() === 'HIGH' ||
-      String(efficiency.regime || '').toUpperCase() === 'CHOPPY'
-    )
-  ) {
-    return noTrade({
-      reason:
-        'Trend quality too low / market too choppy',
-      time,
-      mandatory: {
-        ...mandatory,
-        efficiencyScore:
-          Number(efficiency.score),
-        efficiencyQuality:
-          efficiency.quality || null,
-        efficiencyNoise:
-          efficiency.noise || null,
-        efficiencyRegime:
-          efficiency.regime || null
-      }
-    });
-  }
+const primeSide = buyEligible ? 1 : -1;
+
+// ========================================================== // TREND
+QUALITY / NOISE GATE //
+========================================================== // Efficiency
+is context-only and never creates direction. // A clearly
+low-quality/choppy regime can veto an otherwise // aligned setup;
+unavailable/warming data does not invent a pass. if ( efficiency?.ready
+=== true && ( Number(efficiency.score) < 35 || String(efficiency.noise
+|| ’‘).toUpperCase() === ’HIGH’ || String(efficiency.regime ||
+’‘).toUpperCase() === ’CHOPPY’ ) ) { return noTrade({ reason: ‘Trend
+quality too low / market too choppy’, time, mandatory: { …mandatory,
+efficiencyScore: Number(efficiency.score), efficiencyQuality:
+efficiency.quality || null, efficiencyNoise: efficiency.noise || null,
+efficiencyRegime: efficiency.regime || null } }); }
 
     // ==========================================================
-  // WEIGHTED CONFLUENCE
-  // ==========================================================
 
-  let bull = 0;
-  let bear = 0;
+// WEIGHTED CONFLUENCE //
+==========================================================
 
-  const bullReasons = [];
-  const bearReasons = [];
-  const riskReasons = [];
+let bull = 0; let bear = 0;
 
-  const edgeNow =
-    currentClosedEdge(edge);
+const bullReasons = []; const bearReasons = []; const riskReasons = [];
 
-  // ----------------------------------------------------------
-  // NIFTY EDGE
-  // ----------------------------------------------------------
+const edgeNow = currentClosedEdge(edge);
 
-  if (
-    edgeNow?.side === 1
-  ) {
-    bull +=
-      edgeNow.signal === 'BUY+'
-        ? 18
-        : 14;
+// ———————————————————- // NIFTY EDGE // ———————————————————-
+
+if ( edgeNow?.side === 1 ) { bull += edgeNow.signal === ‘BUY+’ ? 18 :
+14;
 
     bullReasons.push(
       'SMRT NIFTY EDGE bullish'
     );
-  }
 
-  if (
-    edgeNow?.side === -1
-  ) {
-    bear +=
-      edgeNow.signal === 'SELL+'
-        ? 18
-        : 14;
+}
+
+if ( edgeNow?.side === -1 ) { bear += edgeNow.signal === ‘SELL+’ ? 18 :
+14;
 
     bearReasons.push(
       'SMRT NIFTY EDGE bearish'
     );
-  }
 
-  // ----------------------------------------------------------
-  // MTF
-  // ----------------------------------------------------------
+}
 
-  if (mtfSide === 1) {
-    bull += 18;
+// ———————————————————- // MTF // ———————————————————-
+
+if (mtfSide === 1) { bull += 18;
 
     bullReasons.push(
       '5m / 15m / 1h aligned bullish'
     );
-  }
 
-  if (mtfSide === -1) {
-    bear += 18;
+}
+
+if (mtfSide === -1) { bear += 18;
 
     bearReasons.push(
       '5m / 15m / 1h aligned bearish'
     );
-  }
 
-  // ----------------------------------------------------------
-  // EMA
-  // ----------------------------------------------------------
+}
 
-  if (emaBull) {
-    bull += 10;
+// ———————————————————- // EMA // ———————————————————-
+
+if (emaBull) { bull += 10;
 
     bullReasons.push(
       'EMA 9 > 21 > 50'
     );
-  }
 
-  if (emaBear) {
-    bear += 10;
+}
+
+if (emaBear) { bear += 10;
 
     bearReasons.push(
       'EMA 9 < 21 < 50'
     );
-  }
 
-  // ----------------------------------------------------------
-  // SUPERTREND
-  // ----------------------------------------------------------
+}
 
-  if (supertrendBull) {
-    bull += 8;
+// ———————————————————- // SUPERTREND // ———————————————————-
+
+if (supertrendBull) { bull += 8;
 
     bullReasons.push(
       'Supertrend bullish'
     );
-  }
 
-  if (supertrendBear) {
-    bear += 8;
+}
+
+if (supertrendBear) { bear += 8;
 
     bearReasons.push(
       'Supertrend bearish'
     );
-  }
 
-  // ----------------------------------------------------------
-  // ADX / DMI
-  // ----------------------------------------------------------
+}
 
-  if (dmiBull) {
-    bull += 10;
+// ———————————————————- // ADX / DMI // ———————————————————-
+
+if (dmiBull) { bull += 10;
 
     bullReasons.push(
       'ADX/DMI bullish trend strength'
     );
-  }
 
-  if (dmiBear) {
-    bear += 10;
+}
+
+if (dmiBear) { bear += 10;
 
     bearReasons.push(
       'ADX/DMI bearish trend strength'
     );
-  }
 
-  // ----------------------------------------------------------
-  // RSI
-  // ----------------------------------------------------------
+}
 
-  if (rsiBull) {
-    bull += 6;
+// ———————————————————- // RSI // ———————————————————-
+
+if (rsiBull) { bull += 6;
 
     bullReasons.push(
       'RSI bullish regime'
     );
-  }
 
-  if (rsiBear) {
-    bear += 6;
+}
+
+if (rsiBear) { bear += 6;
 
     bearReasons.push(
       'RSI bearish regime'
     );
-  }
 
-  // ----------------------------------------------------------
-  // MACD
-  // ----------------------------------------------------------
+}
 
-  if (macdBull) {
-    bull += 5;
+// ———————————————————- // MACD // ———————————————————-
+
+if (macdBull) { bull += 5;
 
     bullReasons.push(
       'MACD momentum positive'
     );
-  }
 
-  if (macdBear) {
-    bear += 5;
+}
+
+if (macdBear) { bear += 5;
 
     bearReasons.push(
       'MACD momentum negative'
     );
-  }
 
-  // ----------------------------------------------------------
-  // VWAP
-  // ----------------------------------------------------------
+}
 
-  if (finite(vwap)) {
-    if (
-      close >
-      Number(vwap)
-    ) {
-      bull += 6;
+// ———————————————————- // VWAP // ———————————————————-
+
+if (finite(vwap)) { if ( close > Number(vwap) ) { bull += 6;
 
       bullReasons.push(
         'Price above VWAP'
@@ -580,135 +365,94 @@ export function finalizeTrade({
         'Price below VWAP'
       );
     }
-  }
 
-  // ----------------------------------------------------------
-  // MARKET MAP
-  // ----------------------------------------------------------
+}
 
-  if (
-    marketMap?.trend
-      ?.toUpperCase()
-      .includes('BULLISH')
-  ) {
-    bull += 6;
+// ———————————————————- // MARKET MAP // ———————————————————-
+
+if ( marketMap?.trend ?.toUpperCase() .includes(‘BULLISH’) ) { bull +=
+6;
 
     bullReasons.push(
       'Market Map bullish'
     );
-  }
 
-  if (
-    marketMap?.trend
-      ?.toUpperCase()
-      .includes('BEARISH')
-  ) {
-    bear += 6;
+}
+
+if ( marketMap?.trend ?.toUpperCase() .includes(‘BEARISH’) ) { bear +=
+6;
 
     bearReasons.push(
       'Market Map bearish'
     );
-  }
 
-  if (
-    marketMap?.breakout ===
-    'BREAKOUT UP'
-  ) {
-    bull += 6;
+}
+
+if ( marketMap?.breakout === ‘BREAKOUT UP’ ) { bull += 6;
 
     bullReasons.push(
       'Breakout confirmed'
     );
-  }
 
-  if (
-    marketMap?.breakout ===
-    'BREAKDOWN'
-  ) {
-    bear += 6;
+}
+
+if ( marketMap?.breakout === ‘BREAKDOWN’ ) { bear += 6;
 
     bearReasons.push(
       'Breakdown confirmed'
     );
-  }
 
-  if (
-    marketMap?.reversal ===
-    'BULLISH REVERSAL'
-  ) {
-    bull += 5;
+}
+
+if ( marketMap?.reversal === ‘BULLISH REVERSAL’ ) { bull += 5;
 
     bullReasons.push(
       'Bullish reversal confirmation'
     );
-  }
 
-  if (
-    marketMap?.reversal ===
-    'BEARISH REVERSAL'
-  ) {
-    bear += 5;
+}
+
+if ( marketMap?.reversal === ‘BEARISH REVERSAL’ ) { bear += 5;
 
     bearReasons.push(
       'Bearish reversal confirmation'
     );
-  }
 
-  // ----------------------------------------------------------
-  // CANDLE SCANNER
-  // ----------------------------------------------------------
+}
 
-  const candleAction =
-    String(
-      candleSetup?.action || ''
-    ).toUpperCase();
+// ———————————————————- // CANDLE SCANNER // ———————————————————-
 
-  if (
-    candleAction.startsWith('BUY')
-  ) {
-    bull += 7;
+const candleAction = String( candleSetup?.action || ’’ ).toUpperCase();
+
+if ( candleAction.startsWith(‘BUY’) ) { bull += 7;
 
     bullReasons.push(
       'Candlestick confluence bullish'
     );
-  }
 
-  if (
-    candleAction.startsWith('SELL')
-  ) {
-    bear += 7;
+}
+
+if ( candleAction.startsWith(‘SELL’) ) { bear += 7;
 
     bearReasons.push(
       'Candlestick confluence bearish'
     );
-  }
 
-  // ==========================================================
-  // SUPPORT / RESISTANCE RISK
-  // ==========================================================
+}
 
-  const resistance =
-    marketMap?.nearestResistance
-      ?.price;
+// ========================================================== // SUPPORT
+/ RESISTANCE RISK //
+==========================================================
 
-  const support =
-    marketMap?.nearestSupport
-      ?.price;
+const resistance = marketMap?.nearestResistance ?.price;
 
-  let bullPenalty = 0;
-  let bearPenalty = 0;
+const support = marketMap?.nearestSupport ?.price;
 
-  if (
-    finite(atr) &&
-    Number(atr) > 0
-  ) {
-    if (
-      finite(resistance) &&
-      Number(resistance) > close
-    ) {
-      const distance =
-        Number(resistance) -
-        close;
+let bullPenalty = 0; let bearPenalty = 0;
+
+if ( finite(atr) && Number(atr) > 0 ) { if ( finite(resistance) &&
+Number(resistance) > close ) { const distance = Number(resistance) -
+close;
 
       if (
         distance <
@@ -741,114 +485,57 @@ export function finalizeTrade({
         );
       }
     }
-  }
 
-  bull =
-    Math.max(
-      0,
-      bull - bullPenalty
-    );
+}
 
-  bear =
-    Math.max(
-      0,
-      bear - bearPenalty
-    );
+bull = Math.max( 0, bull - bullPenalty );
 
-  // ==========================================================
-  // SCORE
-  // ==========================================================
+bear = Math.max( 0, bear - bearPenalty );
 
-  const winning =
-    primeSide === 1
-      ? bull
-      : bear;
+// ========================================================== // SCORE
+// ==========================================================
 
-  const losing =
-    primeSide === 1
-      ? bear
-      : bull;
+const winning = primeSide === 1 ? bull : bear;
 
-  const separation =
-    winning - losing;
+const losing = primeSide === 1 ? bear : bull;
 
-  const score =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Math.round(
-          winning -
-          losing * 0.35
-        )
-      )
-    );
+const separation = winning - losing;
 
-  // ==========================================================
-  // FINAL STATE
-  // ==========================================================
+const score = Math.max( 0, Math.min( 100, Math.round( winning - losing *
+0.35 ) ) );
 
-  let state =
-    'NO TRADE';
+// ========================================================== // FINAL
+STATE // ==========================================================
 
-  if (
-    primeSide === 1 &&
-    score >= 82 &&
-    separation >= 28
-  ) {
-    state =
-      'STRONG BUY SETUP';
+let state = ‘NO TRADE’;
 
-  } else if (
-    primeSide === 1 &&
-    score >= 68 &&
-    separation >= 20
-  ) {
-    state =
-      'BUY SETUP';
+if ( primeSide === 1 && score >= 82 && separation >= 28 ) { state =
+‘STRONG BUY SETUP’;
 
-  } else if (
-    primeSide === -1 &&
-    score >= 82 &&
-    separation >= 28
-  ) {
-    state =
-      'STRONG SELL SETUP';
+} else if ( primeSide === 1 && score >= 68 && separation >= 20 ) { state
+= ‘BUY SETUP’;
 
-  } else if (
-    primeSide === -1 &&
-    score >= 68 &&
-    separation >= 20
-  ) {
-    state =
-      'SELL SETUP';
-  }
+} else if ( primeSide === -1 && score >= 82 && separation >= 28 ) {
+state = ‘STRONG SELL SETUP’;
 
-  // ==========================================================
-  // FINAL SAFETY CHECK
-  // ==========================================================
+} else if ( primeSide === -1 && score >= 68 && separation >= 20 ) {
+state = ‘SELL SETUP’; }
 
-  const stateSide =
-    sideFromText(state);
+// ========================================================== // FINAL
+SAFETY CHECK //
+==========================================================
 
-  if (
-    stateSide !== 0 &&
-    stateSide !== primeSide
-  ) {
-    state =
-      'NO TRADE';
-  }
+const stateSide = sideFromText(state);
 
-  // ==========================================================
-  // TRADE PLAN
-  // ==========================================================
+if ( stateSide !== 0 && stateSide !== primeSide ) { state = ‘NO TRADE’;
+}
 
-  let plan =
-    null;
+// ========================================================== // TRADE
+PLAN // ==========================================================
 
-  if (
-    state !== 'NO TRADE'
-  ) {
+let plan = null;
+
+if ( state !== ‘NO TRADE’ ) {
 
     // Prefer NIFTY EDGE plan only when
     // EDGE direction matches final direction.
@@ -954,74 +641,42 @@ export function finalizeTrade({
         };
       }
     }
-  }
 
-  // ==========================================================
-  // INVALIDATION
-  // ==========================================================
+}
 
-  let invalidation;
+// ========================================================== //
+INVALIDATION //
+==========================================================
 
-  if (
-    state.includes('BUY')
-  ) {
-    invalidation =
-      finite(support)
-        ? 'Invalid below support ₹' +
-          Number(support)
-            .toFixed(2)
-        : 'Invalid if bullish structure fails';
+let invalidation;
 
-  } else if (
-    state.includes('SELL')
-  ) {
-    invalidation =
-      finite(resistance)
-        ? 'Invalid above resistance ₹' +
-          Number(resistance)
-            .toFixed(2)
-        : 'Invalid if bearish structure fails';
+if ( state.includes(‘BUY’) ) { invalidation = finite(support) ? ‘Invalid
+below support ₹’ + Number(support) .toFixed(2) : ‘Invalid if bullish
+structure fails’;
 
-  } else if (
-    separation < 20
-  ) {
-    invalidation =
-      'Confluence separation below trade threshold';
+} else if ( state.includes(‘SELL’) ) { invalidation = finite(resistance)
+? ‘Invalid above resistance ₹’ + Number(resistance) .toFixed(2) :
+‘Invalid if bearish structure fails’;
 
-  } else {
-    invalidation =
-      'Prime confluence below trade threshold';
-  }
+} else if ( separation < 20 ) { invalidation = ‘Confluence separation
+below trade threshold’;
 
-  // ==========================================================
-  // REASONS
-  // ==========================================================
+} else { invalidation = ‘Prime confluence below trade threshold’; }
 
-  const directionalReasons =
-    primeSide === 1
-      ? bullReasons
-      : bearReasons;
+// ========================================================== // REASONS
+// ==========================================================
 
-  const reasons = [
-    ...directionalReasons,
-    ...riskReasons
-  ].slice(0, 10);
+const directionalReasons = primeSide === 1 ? bullReasons : bearReasons;
 
-  if (
-    state === 'NO TRADE' &&
-    reasons.length === 0
-  ) {
-    reasons.push(
-      'Prime confluence below trade threshold'
-    );
-  }
+const reasons = [ …directionalReasons, …riskReasons ].slice(0, 10);
 
-  // ==========================================================
-  // RESULT
-  // ==========================================================
+if ( state === ‘NO TRADE’ && reasons.length === 0 ) { reasons.push(
+‘Prime confluence below trade threshold’ ); }
 
-  return {
-    state,
+// ========================================================== // RESULT
+// ==========================================================
+
+return { state,
 
     score,
 
@@ -1051,5 +706,5 @@ export function finalizeTrade({
     mandatory,
 
     time
-  };
-}
+
+}; }
