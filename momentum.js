@@ -6,6 +6,17 @@ const finite = value =>
   value !== '' &&
   Number.isFinite(Number(value));
 
+/*
+  MOMENTUM ENGINE - CLOSED CANDLES ONLY
+
+  Uses:
+  - EMA 9 / 21 / 50 structure
+  - RSI 14 regime / transition
+  - MACD histogram confirmation
+  - No live/forming-candle signals
+  - No repeated BUY / SELL on every aligned candle
+  - No random/demo/fallback signals
+*/
 export function momentumSignals(candles) {
   const out = Array(candles?.length || 0).fill(null);
 
@@ -15,9 +26,10 @@ export function momentumSignals(candles) {
 
   const calc = indicators(candles);
 
-  // Last candle is assumed to be live/forming.
-  // Signals are generated only from completed candles.
+  // The last candle is treated as live/forming.
+  // Confirmed signals stop at the prior closed candle.
   const lastClosed = candles.length - 2;
+  let previousDirection = 0;
 
   for (let i = 51; i <= lastClosed; i++) {
     const price = Number(candles[i]?.close);
@@ -53,12 +65,13 @@ export function momentumSignals(candles) {
         time: candles[i]?.time,
         signal: null,
         side: 0,
+        direction: 0,
         strength: 0,
         bullScore: 0,
         bearScore: 0,
         reason: 'Momentum indicators not ready'
       };
-
+      previousDirection = 0;
       continue;
     }
 
@@ -68,17 +81,9 @@ export function momentumSignals(candles) {
     const bullReasons = [];
     const bearReasons = [];
 
-    // ---------------------------------------------------------
-    // EMA STRUCTURE
-    // ---------------------------------------------------------
-
-    const emaBull =
-      e9 > e21 &&
-      e21 > e50;
-
-    const emaBear =
-      e9 < e21 &&
-      e21 < e50;
+    // EMA structure.
+    const emaBull = e9 > e21 && e21 > e50;
+    const emaBear = e9 < e21 && e21 < e50;
 
     if (emaBull) {
       bullScore += 2;
@@ -90,30 +95,18 @@ export function momentumSignals(candles) {
       bearReasons.push('EMA 9 < 21 < 50');
     }
 
-    // ---------------------------------------------------------
-    // EMA SLOPE
-    // ---------------------------------------------------------
-
-    if (
-      e9 > prevE9 &&
-      e21 >= prevE21
-    ) {
+    // EMA slope.
+    if (e9 > prevE9 && e21 >= prevE21) {
       bullScore += 1;
       bullReasons.push('EMA slope rising');
     }
 
-    if (
-      e9 < prevE9 &&
-      e21 <= prevE21
-    ) {
+    if (e9 < prevE9 && e21 <= prevE21) {
       bearScore += 1;
       bearReasons.push('EMA slope falling');
     }
 
-    // ---------------------------------------------------------
-    // PRICE LOCATION
-    // ---------------------------------------------------------
-
+    // Price location.
     if (price > e9 && price > e21) {
       bullScore += 1;
       bullReasons.push('Price above fast EMAs');
@@ -124,17 +117,9 @@ export function momentumSignals(candles) {
       bearReasons.push('Price below fast EMAs');
     }
 
-    // ---------------------------------------------------------
-    // RSI
-    // ---------------------------------------------------------
-
-    const rsiBull =
-      rsi >= 52 &&
-      rsi <= 68;
-
-    const rsiBear =
-      rsi <= 48 &&
-      rsi >= 32;
+    // RSI regime. These are strategy filters, not universal RSI levels.
+    const rsiBull = rsi >= 52 && rsi <= 68;
+    const rsiBear = rsi <= 48 && rsi >= 32;
 
     if (rsiBull) {
       bullScore += 1;
@@ -146,26 +131,17 @@ export function momentumSignals(candles) {
       bearReasons.push('RSI bearish regime');
     }
 
-    if (
-      prevRsi <= 52 &&
-      rsi > 52
-    ) {
+    if (prevRsi <= 52 && rsi > 52) {
       bullScore += 1;
       bullReasons.push('RSI bullish transition');
     }
 
-    if (
-      prevRsi >= 48 &&
-      rsi < 48
-    ) {
+    if (prevRsi >= 48 && rsi < 48) {
       bearScore += 1;
       bearReasons.push('RSI bearish transition');
     }
 
-    // ---------------------------------------------------------
-    // MACD HISTOGRAM
-    // ---------------------------------------------------------
-
+    // MACD histogram.
     const macdBull = hist > 0;
     const macdBear = hist < 0;
 
@@ -179,29 +155,18 @@ export function momentumSignals(candles) {
       bearReasons.push('MACD negative');
     }
 
-    if (
-      hist > 0 &&
-      hist > prevHist
-    ) {
+    if (hist > 0 && hist > prevHist) {
       bullScore += 1;
       bullReasons.push('MACD momentum increasing');
     }
 
-    if (
-      hist < 0 &&
-      hist < prevHist
-    ) {
+    if (hist < 0 && hist < prevHist) {
       bearScore += 1;
       bearReasons.push('MACD downside momentum increasing');
     }
 
-    // ---------------------------------------------------------
-    // FINAL MOMENTUM GATE
-    // ---------------------------------------------------------
-
-    let signal = null;
-    let side = 0;
-
+    // Alignment state. BUY/SELL alerts are emitted only on a new
+    // transition into an aligned state, preventing repeated signals.
     const buyEligible =
       emaBull &&
       rsiBull &&
@@ -216,54 +181,55 @@ export function momentumSignals(candles) {
       bearScore >= 5 &&
       bullScore <= 1;
 
-    if (buyEligible) {
-      signal = 'Buy';
-      side = 1;
-    } else if (sellEligible) {
-      signal = 'Sell';
-      side = -1;
-    }
+    const direction = buyEligible ? 1 : sellEligible ? -1 : 0;
+
+    const signal =
+      direction !== 0 && direction !== previousDirection
+        ? direction === 1
+          ? 'Buy'
+          : 'Sell'
+        : null;
 
     const strength =
-      side === 1
+      direction === 1
         ? bullScore
-        : side === -1
+        : direction === -1
           ? bearScore
           : Math.max(bullScore, bearScore);
 
     out[i] = {
       time: candles[i]?.time,
-
       signal,
-      side,
+      side: direction,
+      direction,
       strength,
-
       bullScore,
       bearScore,
-
       price,
-
       ema9: Number(e9),
       ema21: Number(e21),
       ema50: Number(e50),
-
       rsi: Number(rsi),
       macdHistogram: Number(hist),
-
       confirmations:
-        side === 1
+        direction === 1
           ? bullReasons
-          : side === -1
+          : direction === -1
             ? bearReasons
             : [],
-
       reason:
-        side === 0
+        direction === 0
           ? 'Momentum conditions not fully aligned'
-          : side === 1
-            ? 'Bullish momentum confirmed'
-            : 'Bearish momentum confirmed'
+          : signal
+            ? direction === 1
+              ? 'New bullish momentum alignment confirmed'
+              : 'New bearish momentum alignment confirmed'
+            : direction === 1
+              ? 'Bullish momentum remains aligned'
+              : 'Bearish momentum remains aligned'
     };
+
+    previousDirection = direction;
   }
 
   return out;
