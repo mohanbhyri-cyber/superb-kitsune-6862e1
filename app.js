@@ -1,3 +1,4 @@
+import { renderNewIndicators } from './new-trading-indicators.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -654,6 +655,7 @@ import { momentumSignals } from './momentum.js';
       technicalIndicators;
 
     renderIndicatorReadout(advancedCandles, technicalIndicators);
+    renderNewIndicators(advancedCandles);
 
     window.SMRTAdvancedIndicatorStatus = {
       sourceCount:
