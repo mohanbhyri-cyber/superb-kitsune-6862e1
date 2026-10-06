@@ -1,6 +1,8 @@
 // smrt-all-indicators.js
 // SMRT ALL INDICATORS CONSENSUS - NIFTY 50 PRIME
 // Fail closed: WAIT / NO TRADE / NOT READY / unavailable states never vote.
+// Correlated engines are deliberately capped so the same EMA/RSI/MACD/ADX
+// evidence cannot be counted repeatedly as independent confirmation.
 
 const neutralState = value => {
   const text = String(value || '').trim().toUpperCase();
@@ -35,7 +37,10 @@ export function analyseAllIndicators({
   technicalIndicators
 } = {}) {
   const votes = [];
-  const TOTAL_GROUPS = 11;
+  // Count only groups that are permitted to vote independently. AI NIFTY is
+  // currently a derived Finalizer/MTF view, and Global Watch has no verified
+  // live feed in this app, so neither is allowed to inflate participation.
+  const TOTAL_GROUPS = 9;
   const MIN_ACTIVE_GROUPS = 6;
 
   const pushVote = (name, side, weight, detail) => {
@@ -55,7 +60,9 @@ export function analyseAllIndicators({
         ? Number(edgeLatest.side)
         : sideFromText(edgeSignal))
     : 0;
-  pushVote('NIFTY EDGE', edgeSide, 3, edgeLatest?.signal);
+  // NIFTY Edge shares several core trend/momentum inputs with Finalizer.
+  // Keep it as a small corroborating vote, not an independent heavy vote.
+  pushVote('NIFTY EDGE', edgeSide, 1, edgeLatest?.signal);
 
   // An explicit Market Map action is authoritative. If it says NO TRADE / WAIT /
   // NOT READY, it must remain neutral and must NOT fall back to the trend label.
@@ -64,7 +71,8 @@ export function analyseAllIndicators({
   const mapSide = mapAction
     ? sideFromText(mapAction)
     : sideFromText(marketMap?.trend);
-  pushVote('Market Map', mapSide, 2, mapAction || marketMap?.trend);
+  // Market Map also shares trend inputs, therefore it is context-weighted only.
+  pushVote('Market Map', mapSide, 1, mapAction || marketMap?.trend);
 
   const mtfSide = sideFromText(mtf?.overall);
   pushVote('MTF 5m/15m/1h', mtfSide, 4, mtf?.overall);
@@ -75,13 +83,17 @@ export function analyseAllIndicators({
         ? Number(gainz.latest.side)
         : sideFromText(gainzSignal))
     : 0;
-  pushVote('SSL + QQE', gainzSide, 3, gainz?.latest?.signal);
+  pushVote('SSL + QQE', gainzSide, 2, gainz?.latest?.signal);
 
+  // AI NIFTY currently derives its view from other SMRT engines. Keep the
+  // diagnostic value for callers, but do not double-count it as a vote.
   const aiSide = sideFromText(aiNifty?.signal);
-  pushVote('AI NIFTY', aiSide, 2, aiNifty?.signal);
 
-  const globalSide = sideFromText(globalWatch?.bias);
-  pushVote('Global Watch', globalSide, 1, globalWatch?.bias);
+  // Global Watch has no verified live/timestamped feed in the current app.
+  // It must remain informational until the caller explicitly proves freshness.
+  const globalFresh = globalWatch?.fresh === true &&
+    Number(globalWatch?.sourceCount) >= 2;
+  const globalSide = globalFresh ? sideFromText(globalWatch?.bias) : 0;
 
   const technical = technicalIndicators && typeof technicalIndicators === 'object'
     ? technicalIndicators
@@ -95,8 +107,6 @@ export function analyseAllIndicators({
       if (typeof value === 'number') {
         side = value === 1 || value === -1 ? value : 0;
       } else if (value && typeof value === 'object') {
-        // Advanced indicators expose numeric side. Prefer it so WAIT side=0 can
-        // never be reinterpreted from descriptive text.
         const numericSide = Number(value.side);
         if (numericSide === 1 || numericSide === -1) side = numericSide;
         else if (numericSide === 0 || neutralState(value.signal ?? value.state ?? value.bias ?? value.direction)) side = 0;
@@ -121,7 +131,7 @@ export function analyseAllIndicators({
     technical.specialK,
     technical.coppock
   ]);
-  pushVote('Trend Composite', trendComposite.side, 3,
+  pushVote('Trend Composite', trendComposite.side, 2,
     `${trendComposite.bullish} bullish / ${trendComposite.bearish} bearish`);
 
   const momentumComposite = compositeSide([
@@ -134,7 +144,7 @@ export function analyseAllIndicators({
     technical.stochasticRsi,
     technical.connorsRsi
   ]);
-  pushVote('Momentum Composite', momentumComposite.side, 3,
+  pushVote('Momentum Composite', momentumComposite.side, 2,
     `${momentumComposite.bullish} bullish / ${momentumComposite.bearish} bearish`);
 
   const reversalComposite = compositeSide([
@@ -214,9 +224,9 @@ export function analyseAllIndicators({
   if (gateReason) reason = gateReason;
   else if (activeGroups === 0) reason = 'Indicator confirmation is not ready.';
   else if (activeGroups < MIN_ACTIVE_GROUPS) {
-    reason = `${activeGroups} of ${TOTAL_GROUPS} indicator groups are active. Waiting for broader confirmation.`;
+    reason = `${activeGroups} of ${TOTAL_GROUPS} independent indicator groups are active. Waiting for broader confirmation.`;
   } else if (signal === 'NO TRADE') reason = 'Indicators do not meet the Prime confirmation threshold.';
-  else reason = `${alignedCount} indicator groups align with the ${side === 1 ? 'bullish' : 'bearish'} Prime direction.`;
+  else reason = `${alignedCount} independent indicator groups align with the ${side === 1 ? 'bullish' : 'bearish'} Prime direction.`;
 
   return {
     signal,
@@ -238,6 +248,9 @@ export function analyseAllIndicators({
     finalizerSide,
     mtfSide,
     gainzSide,
+    aiSide,
+    globalSide,
+    globalFresh,
     reason
   };
 }
