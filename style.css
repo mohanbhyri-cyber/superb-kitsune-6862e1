@@ -754,3 +754,7 @@ body.light .tv-shell-mode .chart-footer{
   .chart-controls #replay-speed { width:72px; min-width:72px; }
   .chart-controls #replay-status { align-self:center; white-space:nowrap; }
 }
+
+.smrt-features{margin:16px;padding:16px;border:1px solid #526078;border-radius:12px}.smrt-features summary{cursor:pointer;font-weight:700}#smrt-feature-panel p{overflow-wrap:anywhere;font-size:13px;line-height:1.6}
+
+#smrt-indicator-status{overflow-x:auto}#smrt-indicator-status table{width:100%;border-collapse:collapse;font-size:12px}#smrt-indicator-status th,#smrt-indicator-status td{text-align:left;padding:8px;border-bottom:1px solid #526078;overflow-wrap:anywhere;max-width:340px}

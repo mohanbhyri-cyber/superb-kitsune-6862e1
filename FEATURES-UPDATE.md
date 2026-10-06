@@ -1,0 +1,13 @@
+# SMRT Algo Pro feature update
+
+Added Keltner, Choppiness, Aroon, CCI, MFI, OBV, CMF, relative volume/spikes, session volume profile, daily/weekly pivots and CPR, prior period levels, 15-minute ORB, opening gaps, confirmed swings, breakout/retest and false-breakout checks, regime/session quality, EMA/VWAP distance checks, ATR plans with T1/T2/T3 and invalidation, cooldown, confidence and reasons.
+
+The expandable panel appears near the bottom of the page. Existing Upstox routes, authentication and data-loading code are preserved. Final approval requires existing Prime/MTF confirmation, All Indicators Consensus, Risk Engine and the new filters. Sample signal shortcuts are disabled. Missing volume/VWAP blocks approval; no index volume is invented.
+
+Volume Profile uses an explicitly labelled OHLCV allocation estimate (32 bins, 70% value area), not exchange tick-level volume-at-price. Previous-day/week levels use loaded candle history; load the complete prior periods for complete levels. ORB requires a 09:15 candle and completes at 09:30 IST. Session approval runs 09:30–15:15 IST on weekdays; exchange holidays still depend on the existing feed/session checks. Confidence measures confluence, not probability of profit. Default cooldown is 900 seconds, distance limit 2 ATR and relative-volume minimum 1.1.
+
+Plans use a 1.2 ATR initial stop, widened to confirmed swing structure where available. Targets are 1.25R, 2R and 3R. Forward replay follows approved setups; subsequent closed candles update a 1.5 ATR trailing stop and exit at stop or T3. Stop wins ambiguous bars. Gaps through a stop exit at the bar open. Metrics use realized points before transaction costs; open trades are excluded. Session ledger resets on reload or timeframe changes. It is decision support, with no order placement.
+
+Historical backtest accepts a JSON file containing candles, signals and intervalSeconds. Candles contain time (Unix seconds), open, high, low, close and real volume. Each signal contains time, ema, verified vwap, decision (side, state, score, reasons), consensus (side) and risk (ready, quality). Use actual recorded approvals. Historical replay reevaluates feature filters using only candle prefixes. It does not regenerate the entire original multi-timeframe strategy from a single timeframe file. No example trades or fabricated performance are bundled.
+
+Validation: JavaScript syntax checks and 13 automated tests cover existing confirmation/indicator behavior plus missing volume, invalid candles, stale/forming data, consensus/risk vetoes, cooldown, sample rejection, directional plans, trailing, replay exits and metrics. Browser rendering and authenticated Upstox live operation have not been verified in this environment.

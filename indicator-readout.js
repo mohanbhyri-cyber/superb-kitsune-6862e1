@@ -2,7 +2,7 @@ import { indicators } from './market.js';
 
 export function indicatorReadout(candles, technical) {
   const waiting = { bands: 'WAIT', stochastic: 'WAIT', cloud: 'WAIT' };
-  if (!Array.isArray(candles) || candles.length < 220) return waiting;
+  if (!Array.isArray(candles) || candles.length < 20) return waiting;
   if (candles.some(c => ['time', 'high', 'low', 'close'].some(k => c?.[k] == null || !Number.isFinite(Number(c[k]))))) return waiting;
   const number = value => Number.isFinite(value) ? value.toFixed(2) : 'Unavailable';
   const bands = indicators(candles).bb.at(-1);
@@ -11,6 +11,7 @@ export function indicatorReadout(candles, technical) {
     return (Math.max(...window.map(c => Number(c.high))) + Math.min(...window.map(c => Number(c.low)))) / 2;
   };
   const end = candles.length - 1;
+  if (candles.length < 78) return {bands: bands ? `Upper ${number(bands.upper)} | Middle ${number(bands.mid)} | Lower ${number(bands.lower)}` : 'WAIT', stochastic: technical?.stochasticRsi?.value != null && Number.isFinite(technical.stochasticRsi.value) ? `${number(technical.stochasticRsi.value * 100)} / 100 | ${technical.stochasticRsi.signal}` : 'WAIT', cloud: 'WAIT: needs 78 closed candles'};
   const tenkan = midpoint(end, 9), kijun = midpoint(end, 26);
   // The cloud at the current candle was calculated 26 candles earlier.
   const spanA = (midpoint(end - 26, 9) + midpoint(end - 26, 26)) / 2;

@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {analyseAdvancedIndicators} from './smrt-advanced-indicators.js';
+import {indicatorStatuses} from './indicator-status.js';
+import {indicatorReadout} from './indicator-readout.js';
+const c=Array.from({length:300},(_,i)=>({time:1700000000+i*300,open:100+i*.2,high:103+i*.2,low:98+i*.2,close:101+i*.2+Math.sin(i),volume:1000+i*5}));
+test('all twenty advanced calculations return structured finite or waiting results',()=>{const r=analyseAdvancedIndicators(c);assert.equal(r.candleCount,300);const rows=Object.values(r).filter(v=>v&&typeof v==='object'&&'signal'in v);assert.equal(rows.length,20);for(const row of rows){assert.ok(['BULLISH','BEARISH','WAIT'].includes(row.signal));assert.ok(row.value===null||typeof row.value==='object'||Number.isFinite(row.value));}});
+test('missing OHLC never becomes a zero or silently bridges invalid bars',()=>{for(const v of [null,undefined,'',NaN]){const x=c.map(b=>({...b}));x[40].close=v;const r=analyseAdvancedIndicators(x);assert.equal(r.ready,false);assert.equal(r.candleCount,0);}});
+test('missing volume cannot create PVO or Chaikin directions',()=>{const r=analyseAdvancedIndicators(c.map(b=>({...b,volume:null})));assert.equal(r.pvo.side,0);assert.equal(r.chaikin.side,0);});
+test('Bollinger readout is available after twenty candles rather than 220',()=>{assert.match(indicatorReadout(c.slice(0,20)).bands,/Upper/);assert.match(indicatorReadout(c.slice(0,20)).cloud,/78/);});
+test('status table reports missing values as WAIT rather than numeric zero',()=>{const r=indicatorStatuses({calc:{e9:[null],e21:[12]}});assert.equal(r.find(x=>x.name==='EMA 9').status,'WAIT');assert.equal(r.find(x=>x.name==='EMA 21').value,12);assert.equal(r.find(x=>x.name==='mfi').value,null);});

@@ -13,7 +13,7 @@
 // ============================================================
 
 const finite = value =>
-  Number.isFinite(Number(value));
+  value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 
 const num = value =>
   finite(value) ? Number(value) : NaN;
@@ -46,15 +46,13 @@ const neutral = (value = null, reason = '') => ({
   reason
 });
 
-const validCandles = candles =>
-  Array.isArray(candles)
-    ? candles.filter(c =>
-        finite(c?.open) &&
-        finite(c?.high) &&
-        finite(c?.low) &&
-        finite(c?.close)
-      )
-    : [];
+const validCandles = candles => {
+  if (!Array.isArray(candles) || candles.some(c =>
+    !['open','high','low','close'].every(k => finite(c?.[k])) ||
+    Number(c.high) < Math.max(Number(c.open), Number(c.close)) ||
+    Number(c.low) > Math.min(Number(c.open), Number(c.close)) || Number(c.high) < Number(c.low))) return [];
+  return candles.map(c => ({...c, open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)}));
+};
 
 const closes = candles =>
   candles.map(c => num(c.close));
@@ -1358,13 +1356,13 @@ function ultimateOscillatorSignal(candles) {
 // ============================================================
 
 function ichimokuSignal(candles) {
-  if (candles.length < 52) {
+  if (candles.length < 78) {
     return wait();
   }
 
-  const midpoint = period => {
+  const midpoint = (period, displacement = 0) => {
     const window =
-      candles.slice(-period);
+      candles.slice(candles.length-displacement-period, candles.length-displacement);
 
     const hh =
       Math.max(
@@ -1394,14 +1392,8 @@ function ichimokuSignal(candles) {
   const kijun =
     midpoint(26);
 
-  const spanA =
-    (
-      tenkan +
-      kijun
-    ) / 2;
-
-  const spanB =
-    midpoint(52);
+  const spanA = (midpoint(9, 26) + midpoint(26, 26)) / 2;
+  const spanB = midpoint(52, 26);
 
   const close =
     num(

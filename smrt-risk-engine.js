@@ -1,11 +1,12 @@
 // smrt-risk-engine.js
 // Trade-plan quality control. It does not create BUY/SELL direction.
 
-const finite=v=>Number.isFinite(Number(v));
+const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
 
 export function analyseRisk(plan,{atr=null,side=0}={}){
   if(!plan) return {ready:false,state:'NO ACTIVE PLAN',quality:'WAIT',score:0};
 
+  if (![plan.entry, plan.stopLoss ?? plan.stop, plan.target1, plan.target2, plan.target3].every(finite)) return {ready:false,state:'INVALID PLAN',quality:'BLOCK',score:0};
   const entry=Number(plan.entry);
   const stop=Number(plan.stopLoss ?? plan.stop);
   const t1=Number(plan.target1);
