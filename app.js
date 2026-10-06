@@ -1,4 +1,4 @@
-    import { momentumSignals } from './momentum.js';
+import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
     import { trendIndicators } from './trend-indicators.js';
