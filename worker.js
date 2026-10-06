@@ -5,7 +5,6 @@
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
 import { parse } from 'csv-parse/sync';
-import { authResponse } from './auth.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -2637,10 +2636,7 @@ export default {
     // Every dashboard and API route is protected by a signed
     // HttpOnly session cookie. Credentials are Cloudflare secrets.
     // ----------------------------------------------------
-    const auth = await authResponse(request, env);
-    if (auth) return auth;
-
-    const token =
+       const token =
       env.UPSTOX_EXTENDED_TOKEN ||
       env.UPSTOX_ANALYTICS_TOKEN ||
       env.UPSTOX_ACCESS_TOKEN ||
