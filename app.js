@@ -1,4 +1,5 @@
 import { confirmedTrigger } from './confirmed-trigger.js';
+import { renderMarketMapExtras } from './market-map-extras.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
@@ -14476,6 +14477,7 @@ import { momentumSignals } from './momentum.js';
 
 
     function updateMarketMapPanel() {
+      renderMarketMapExtras(state.aiIndicatorCandles, Number(intervals[state.tf]), state.marketMap?.time);
 
       const map =
         state.marketMap;
