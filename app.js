@@ -1,7 +1,3 @@
-import { renderIndicatorStatuses } from './indicator-status.js';
-import { analyseFeatures, buildFeaturePlan, gateFeatures, renderFeatures, advanceReplay, mountReplayTools } from './smrt-feature-engine.js';
-const featureMemory = {};
-const featureLedger = { trades: [], active: null };
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -658,17 +654,6 @@ import { momentumSignals } from './momentum.js';
       technicalIndicators;
 
     renderIndicatorReadout(advancedCandles, technicalIndicators);
-    const statusCalc = indicators(advancedCandles);
-    state.featureAnalysis = analyseFeatures(advancedCandles, {
-      ema: statusCalc.e21?.at(-1), vwap: statusCalc.vwap?.at(-1) ?? state.futuresVWAP
-    });
-    renderIndicatorStatuses({calc: statusCalc, trend: trendIndicators(advancedCandles),
-      technical: technicalIndicators, features: state.featureAnalysis,
-      engines: {'5m / 15m / 1h': state.mtf, 'All Indicators Consensus':state.allIndicatorsConsensus,
-        'Risk Engine':state.riskEngine, 'Trade Finalizer':state.tradeFinalizer,
-        'Market Map':state.marketMap, 'Session Quality':state.sessionQuality,
-        'Efficiency Engine':state.efficiencyEngine}});
-
 
     window.SMRTAdvancedIndicatorStatus = {
       sourceCount:
@@ -833,18 +818,6 @@ import { momentumSignals } from './momentum.js';
           state.primeMarket
         );
 
-      state.tradeFinalizer = gateFeatures(state.tradeFinalizer, state.featureAnalysis, {
-        consensus: state.allIndicatorsConsensus, risk: state.riskEngine,
-        memory: featureMemory, intervalSeconds: Number(intervals[state.tf]),
-        sample: new URLSearchParams(location.search).get('sample') === '1'
-      });
-      if (!state.tradeFinalizer.side && state.allIndicatorsConsensus) {
-        state.allIndicatorsConsensus = {...state.allIndicatorsConsensus, signal: 'NO TRADE', side: 0,
-          reasons: state.tradeFinalizer.reasons};
-      }
-      const featureClosed = state.data.filter(b => Number(b.time) + Number(intervals[state.tf]) <= Date.now()/1000);
-      const featureMetrics = advanceReplay(featureLedger, featureClosed, state.tradeFinalizer, state.featureAnalysis);
-      renderFeatures(state.featureAnalysis, state.tradeFinalizer, {...featureMetrics, activeTrailingStop: featureLedger.active?.stop ?? null});
       state.liveTradeFinalizer =
         state.tradeFinalizer;
 
@@ -860,7 +833,7 @@ import { momentumSignals } from './momentum.js';
 
     function renderSmartMoneyTools() {
       const samplePreview =
-        false /* demo signals disabled */;
+        new URLSearchParams(window.location.search).get('sample') === '1';
 
       const sampleEdge = state.niftyEdge?.latest;
       let structure = state.primeMarket?.structure;
@@ -2710,7 +2683,7 @@ import { momentumSignals } from './momentum.js';
       state.triggerSignal = confirmedTrigger({
         finalizer: state.tradeFinalizer, consensus: state.allIndicatorsConsensus,
         seconds: Number(intervals[state.tf]), replay: state.replay.active,
-        sample: new URLSearchParams(location.search).get('sample') === '1'
+        sample: new URLSearchParams(window.location.search).get('sample') === '1'
       });
       const trigger = state.triggerSignal || {
         signal: 'WAIT',
@@ -2746,7 +2719,7 @@ import { momentumSignals } from './momentum.js';
       const consensus = state.allIndicatorsConsensus || null;
       const finalizer = state.tradeFinalizer || null;
       const samplePreview =
-        false /* demo signals disabled */;
+        new URLSearchParams(window.location.search).get('sample') === '1';
 
       // =========================================================
       // FINAL DISPLAY SIGNAL
@@ -4915,18 +4888,6 @@ import { momentumSignals } from './momentum.js';
         });
 
 
-      if (featureLedger.tf !== state.tf) {
-        featureLedger.tf = state.tf; featureLedger.trades = []; featureLedger.active = null;
-        delete featureLedger.time; delete featureMemory.time; delete featureMemory.side;
-      }
-      state.featureAnalysis = analyseFeatures(indicatorData.slice(0,-1), {
-        ema: state.calc?.e21?.[indicatorData.length-2],
-        vwap: state.calc?.vwap?.[indicatorData.length-2] ?? state.futuresVWAP
-      });
-      if (state.rawTradeFinalizer?.side) {
-        state.rawTradeFinalizer = {...state.rawTradeFinalizer,
-          plan: buildFeaturePlan(state.featureAnalysis, state.rawTradeFinalizer.side)};
-      }
       state.tradeFinalizer = state.rawTradeFinalizer;
 
       state.riskEngine = analyseRisk(
@@ -13401,7 +13362,7 @@ import { momentumSignals } from './momentum.js';
     function recomputeAiNifty() {
 
       const samplePreview =
-        false /* demo signals disabled */;
+        new URLSearchParams(window.location.search).get('sample') === '1';
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&
@@ -13981,7 +13942,7 @@ import { momentumSignals } from './momentum.js';
 
     function renderTradeFinalizer() {
       const samplePreview =
-        false /* demo signals disabled */;
+        new URLSearchParams(window.location.search).get('sample') === '1';
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&
@@ -16562,5 +16523,3 @@ import { momentumSignals } from './momentum.js';
 
 
     renderWatch();
-
-mountReplayTools();
