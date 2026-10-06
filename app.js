@@ -1,4 +1,4 @@
-import { renderNewIndicators } from './new-trading-indicators.js';
+import { renderMapIndicators } from './market-map-indicators.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -655,7 +655,6 @@ import { momentumSignals } from './momentum.js';
       technicalIndicators;
 
     renderIndicatorReadout(advancedCandles, technicalIndicators);
-    renderNewIndicators(advancedCandles);
 
     window.SMRTAdvancedIndicatorStatus = {
       sourceCount:
@@ -831,6 +830,10 @@ import { momentumSignals } from './momentum.js';
       renderPrimeMarket();
       renderAiIndicator();
       renderSmartMoneyTools();
+      const mapNow = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now()/1000;
+      const mapClosed = primeClosed(state.data,Number(intervals[state.tf]),mapNow);
+      renderMapIndicators(mapClosed.error ? [] : mapClosed.candles,state,{seconds:Number(intervals[state.tf]),now:mapNow});
+
     }
 
     function renderSmartMoneyTools() {

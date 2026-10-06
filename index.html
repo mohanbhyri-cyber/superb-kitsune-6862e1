@@ -1391,12 +1391,6 @@
   </script>
 
 
-  <section class="panel" id="new-trading-indicators-panel" style="margin:16px 0">
-    <div class="panel-heading"><h2>New Trading Indicators</h2><span class="muted">Real closed-candle values</span></div>
-    <p class="muted">Missing volume or insufficient history shows WAIT. These indicators provide analysis; existing trade confirmation rules remain active.</p>
-    <div id="new-trading-indicators" style="overflow-x:auto">Waiting for closed market candles.</div>
-  </section>
-
   <div class="analysis-layout-grid">
 
   <section
@@ -1598,6 +1592,8 @@
       </div>
 
     </div>
+
+    <details open style="margin-top:16px"><summary style="cursor:pointer;font-weight:bold">All Trading Indicators · values and readiness</summary><p class="muted">Existing and new indicators in one place. WAIT means missing real data or insufficient closed candles.</p><div id="market-map-all-indicators" style="overflow-x:auto">Waiting for closed market candles.</div></details>
 
     <p class="disclaimer">
       Closed-candle technical analysis only. Support, resistance,
