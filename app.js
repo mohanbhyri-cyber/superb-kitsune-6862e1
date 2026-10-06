@@ -1,3 +1,4 @@
+import { syncNewChartIndicators } from './new-chart-indicators.js';
 import { renderMapIndicators } from './market-map-indicators.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
@@ -3935,6 +3936,10 @@ import { momentumSignals } from './momentum.js';
         1.1
       );
 
+
+      const indicatorNow = state.replay.active ? Number(state.data.at(-1)?.time) : Date.now()/1000;
+      const indicatorClosed = primeClosed(state.data,Number(intervals[state.tf]),indicatorNow);
+      syncNewChartIndicators(tvLiteChart,indicatorClosed.error?[]:indicatorClosed.candles,window.LightweightCharts);
 
       ensureTvLiteVolumeSeries();
 
