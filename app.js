@@ -1,4 +1,4 @@
-import { momentumSignals } from './momentum.js';
+    import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
     import { trendIndicators } from './trend-indicators.js';
@@ -3149,6 +3149,26 @@ import { momentumSignals } from './momentum.js';
     let tvAdvancedReady = false;
 
 
+    function tradingViewFeedLabel() {
+      return state.feedStatus === 'LIVE'
+        ? 'Upstox LIVE'
+        : state.feedStatus === 'CLOSED'
+          ? 'Market closed · Last session data'
+          : state.feedStatus === 'STALE'
+            ? 'Upstox STALE'
+            : state.feedStatus === 'RECONNECTING'
+              ? 'Upstox RECONNECTING'
+              : state.feedStatus === 'DATA UNAVAILABLE'
+                ? 'Data unavailable'
+                : state.feedStatus === 'FALLBACK'
+                  ? 'Upstox fallback data'
+                  : 'Upstox data';
+    }
+
+    function tradingViewFeedClass() {
+      return state.feedStatus === 'LIVE' ? 'up' : 'muted';
+    }
+
     function setTradingViewDatafeedStatus(
       text,
       className = 'muted'
@@ -3289,8 +3309,8 @@ import { momentumSignals } from './momentum.js';
           );
 
           setTradingViewDatafeedStatus(
-            'TradingView Lightweight · Upstox LIVE',
-            'up'
+            'TradingView Lightweight · ' + tradingViewFeedLabel(),
+            tradingViewFeedClass()
           );
 
           return false;
@@ -3361,9 +3381,9 @@ import { momentumSignals } from './momentum.js';
         );
 
         setTradingViewDatafeedStatus(
-          'TradingView Lightweight · Upstox LIVE',
-          'up'
-        );
+            'TradingView Lightweight · ' + tradingViewFeedLabel(),
+            tradingViewFeedClass()
+          );
 
         return false;
       }
@@ -4629,9 +4649,9 @@ import { momentumSignals } from './momentum.js';
                   );
 
                   setTradingViewDatafeedStatus(
-                    'TradingView Lightweight · Upstox LIVE',
-                    'up'
-                  );
+            'TradingView Lightweight · ' + tradingViewFeedLabel(),
+            tradingViewFeedClass()
+          );
                 } else {
                   // CDN/library unavailable: never leave a blank chart.
                   state.tvChartMode =
@@ -4668,7 +4688,9 @@ import { momentumSignals } from './momentum.js';
                     );
 
                   setTradingViewDatafeedStatus(
-                    'Classic chart · Upstox LIVE · TradingView library unavailable',
+                    'Classic chart · ' +
+                      tradingViewFeedLabel() +
+                      ' · TradingView library unavailable',
                     'muted'
                   );
 
