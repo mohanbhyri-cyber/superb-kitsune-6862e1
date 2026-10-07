@@ -245,37 +245,50 @@ export function indicators(candles) {
   // RSI 14
   // ----------------------------------------------------------
 
-  let gain = 0;
-  let loss = 0;
+  const rsiPeriod = 14;
+  const rsi = Array(close.length).fill(null);
 
-  const rsi = close.map((v, i) => {
+  if (close.length > rsiPeriod) {
+    let gainSum = 0;
+    let lossSum = 0;
 
-    if (!i) return null;
-
-    const d = v - close[i - 1];
-
-    if (i <= 14) {
-
-      gain += Math.max(d, 0) / 14;
-      loss += Math.max(-d, 0) / 14;
-
-    } else {
-
-      gain =
-        (gain * 13 + Math.max(d, 0)) / 14;
-
-      loss =
-        (loss * 13 + Math.max(-d, 0)) / 14;
+    // Wilder seed: average the first 14 price changes.
+    for (let i = 1; i <= rsiPeriod; i++) {
+      const change = close[i] - close[i - 1];
+      gainSum += Math.max(change, 0);
+      lossSum += Math.max(-change, 0);
     }
 
-    if (i < 14) return null;
+    let averageGain = gainSum / rsiPeriod;
+    let averageLoss = lossSum / rsiPeriod;
 
-    if (loss === 0) {
-      return gain === 0 ? 50 : 100;
+    const rsiValue = () => {
+      if (averageLoss === 0) {
+        return averageGain === 0 ? 50 : 100;
+      }
+
+      const rs = averageGain / averageLoss;
+      return 100 - 100 / (1 + rs);
+    };
+
+    rsi[rsiPeriod] = rsiValue();
+
+    for (let i = rsiPeriod + 1; i < close.length; i++) {
+      const change = close[i] - close[i - 1];
+      const currentGain = Math.max(change, 0);
+      const currentLoss = Math.max(-change, 0);
+
+      averageGain =
+        (averageGain * (rsiPeriod - 1) + currentGain) /
+        rsiPeriod;
+
+      averageLoss =
+        (averageLoss * (rsiPeriod - 1) + currentLoss) /
+        rsiPeriod;
+
+      rsi[i] = rsiValue();
     }
-
-    return 100 - 100 / (1 + gain / loss);
-  });
+  }
 
 
   // ----------------------------------------------------------
