@@ -873,8 +873,12 @@
             replay:
               state.replay.active,
 
+            // Never inject today's live futures volume into historical replay.
+            // Replay may only use volume carried by its historical candles.
             futuresVolume:
-              state.futuresVolumeConfirmation,
+              state.replay.active
+                ? null
+                : state.futuresVolumeConfirmation,
 
             mtfData:
               state.primeMtfSymbol ===
