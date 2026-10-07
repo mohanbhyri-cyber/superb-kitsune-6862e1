@@ -13063,7 +13063,41 @@
     }
 
 
+    function renderChartGlobalMarkets() {
+      const rows = $('#chart-global-rows');
+      const status = $('#chart-global-state');
+      if (!rows || !status) return;
+      const watch = state.globalWatch;
+      status.textContent = !watch ? 'UNAVAILABLE'
+        : !watch.sourceCount ? 'UNAVAILABLE'
+        : watch.fresh ? watch.bias : 'LAST QUOTES';
+      rows.replaceChildren();
+      if (!watch?.rows?.length) {
+        const message = document.createElement('span');
+        message.textContent = 'Global feed unavailable · retrying automatically';
+        message.className = 'muted';
+        rows.append(message);
+        return;
+      }
+      for (const item of watch.rows) {
+        const row = document.createElement('div');
+        const name = document.createElement('span');
+        name.textContent = item.name;
+        const value = document.createElement('strong');
+        const valid = item.changePercent !== null && item.changePercent !== undefined &&
+          item.changePercent !== '' && Number.isFinite(Number(item.changePercent));
+        const change = Number(item.changePercent);
+        value.textContent = valid ? (change >= 0 ? '+' : '') + change.toFixed(2) + '%' : 'N/A';
+        value.className = !valid ? 'muted' : change > 0 ? 'up' : change < 0 ? 'down' : 'muted';
+        row.title = item.fresh ? 'Recent quote' : 'Last available quote · excluded from current bias';
+        if (!item.fresh) name.textContent += ' · last';
+        row.append(name, value);
+        rows.append(row);
+      }
+    }
+
     function renderGlobalWatch() {
+      renderChartGlobalMarkets();
 
       const watch =
         state.globalWatch;
@@ -13095,9 +13129,12 @@
 
 
       if (!watch) {
+        set('#global-watch-sources', '0 global cues');
+        set('#global-watch-reasons', 'Global market feed unavailable. Retrying automatically.');
+        $('#global-watch-rows')?.replaceChildren();
         set(
           '#global-watch-bias',
-          'LOADING…',
+          'UNAVAILABLE',
           'muted'
         );
 

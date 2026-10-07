@@ -863,3 +863,21 @@ body.light .tv-shell-mode .chart-footer{
 @media (max-width: 600px) {
   #terminal .chart-indicator-status { width: 215px; }
 }
+
+#terminal .chart-global-heading {
+  border-top: 1px solid #34464d;
+  margin-top: 6px;
+  padding-top: 6px;
+  font-weight: 600;
+}
+#terminal .chart-global-heading span { float: right; font-size: 10px; }
+#terminal .chart-global-rows { margin-top: 4px; font-size: 10px; }
+#terminal .chart-global-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+#terminal .chart-global-rows strong { white-space: nowrap; }
+
+#terminal .chart-wrap { --chart-height: max(720px, calc(100dvh - 160px)); }
