@@ -163,7 +163,7 @@ export function analyseAllIndicators({
     technical.qstick,
     technical.elderRay
   ]);
-  pushVote('Pressure / Volume Composite', pressureComposite.side, 2,
+  pushVote('Price Pressure Composite', pressureComposite.side, 2,
     `${pressureComposite.bullish} bullish / ${pressureComposite.bearish} bearish`);
 
   // Volume indicators are one capped group. They vote only when genuine

@@ -137,27 +137,27 @@ export function indicators(candles) {
   const e26 = ema(close, 26);
 
   const macd = close.map((_, i) =>
-    Number.isFinite(Number(e12[i])) &&
-    Number.isFinite(Number(e26[i]))
+    Number.isFinite(e12[i]) &&
+    Number.isFinite(e26[i])
       ? Number(e12[i]) - Number(e26[i])
       : null
   );
 
   // MACD signal EMA starts only after nine valid MACD values exist.
-  const validMacd = macd.filter(value => Number.isFinite(Number(value)));
+  const validMacd = macd.filter(value => Number.isFinite(value));
   const validSignal = ema(validMacd, 9);
   const signal = Array(macd.length).fill(null);
   let signalIndex = 0;
 
   for (let i = 0; i < macd.length; i++) {
-    if (!Number.isFinite(Number(macd[i]))) continue;
+    if (!Number.isFinite(macd[i])) continue;
     signal[i] = validSignal[signalIndex] ?? null;
     signalIndex += 1;
   }
 
   const hist = macd.map((v, i) =>
-    Number.isFinite(Number(v)) &&
-    Number.isFinite(Number(signal[i]))
+    Number.isFinite(v) &&
+    Number.isFinite(signal[i])
       ? Number(v) - Number(signal[i])
       : null
   );

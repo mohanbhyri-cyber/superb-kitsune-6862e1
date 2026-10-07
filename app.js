@@ -1,3 +1,4 @@
+import { candleStatus } from './candle-status.js';
 import { marketRequest } from './request-coordinator.js';
 import { liveScalpCall, LiveCallTracker } from './live-scalp-calls.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
@@ -1564,33 +1565,8 @@ import { momentumSignals } from './momentum.js';
         istMinutes >= 9 * 60 + 15 &&
         istMinutes < 15 * 60 + 30;
 
-      const latestClosedTime =
-        Number(p?.time);
-
-      const closedAgeMinutes =
-        primeFinite(latestClosedTime)
-          ? Math.max(
-              0,
-              Math.round(
-                (
-                  Date.now() / 1000 -
-                  latestClosedTime
-                ) / 60
-              )
-            )
-          : null;
-
-      const staleClosedCandle =
-        Number.isFinite(closedAgeMinutes) &&
-        closedAgeMinutes >
-          Math.max(
-            Math.round(
-              Number(intervals[state.tf] || 60) /
-              60
-            ) * 3,
-            15
-          );
-
+      const freshness = candleStatus(p?.time, Number(intervals[state.tf]));
+      const staleClosedCandle = !freshness.current;
       const status =
         document.createElement('div');
 
@@ -1601,9 +1577,7 @@ import { momentumSignals } from './momentum.js';
         !regularSessionOpen
           ? 'MARKET CLOSED · Historical/closed-candle analysis only · NO LIVE TRADE'
           : staleClosedCandle
-            ? 'STALE DATA · Last closed candle ' +
-              closedAgeMinutes +
-              ' min old · NO LIVE TRADE'
+            ? freshness.reason.toUpperCase() + ' · NO LIVE TRADE'
             : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT';
 
       status.className =
@@ -6491,17 +6465,18 @@ import { momentumSignals } from './momentum.js';
 
 
       const lastRSI =
-        state.calc.rsi.at(-1);
+        state.calc.rsi[closedIndex];
 
 
       const lastMACD =
-        state.calc.macd.at(-1);
+        state.calc.macd[closedIndex];
 
 
       if (
         $('#rsi-value')
       ) {
 
+        $('#rsi-value').title = state.tf + ' · closed candle ' + new Date(Number(closedCandle.time) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         $('#rsi-value').textContent =
           Number.isFinite(
             lastRSI
@@ -6515,6 +6490,7 @@ import { momentumSignals } from './momentum.js';
         $('#macd-value')
       ) {
 
+        $('#macd-value').title = state.tf + ' · closed candle ' + new Date(Number(closedCandle.time) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         $('#macd-value').textContent =
           Number.isFinite(
             lastMACD
@@ -12815,7 +12791,7 @@ import { momentumSignals } from './momentum.js';
             window.SMRTAdvancedIndicators?.ready
               ? 'NO DIRECTIONAL CONSENSUS'
               : 'WAITING'],
-          ['Pressure / Volume Composite',
+          ['Price Pressure Composite',
             window.SMRTAdvancedIndicators?.ready
               ? 'NO DIRECTIONAL CONSENSUS'
               : 'WAITING']
