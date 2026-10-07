@@ -99,9 +99,11 @@ function plan(candles, i, side, atrValue) {
   const risk = Math.abs(entry - stop);
   if (!finite(risk) || risk <= 0) return null;
 
-  const target1 = entry + side * risk;
-  const target2 = entry + side * risk * 1.5;
-  const target3 = entry + side * risk * 2;
+  // Keep Edge plans compatible with Prime's mandatory minimum
+  // T1 reward/risk while retaining the real ATR/swing-derived stop.
+  const target1 = entry + side * risk * 1.5;
+  const target2 = entry + side * risk * 2;
+  const target3 = entry + side * risk * 3;
 
   return {
     entry,
@@ -109,9 +111,9 @@ function plan(candles, i, side, atrValue) {
     target1,
     target2,
     target3,
-    rr1: 1,
-    rr2: 1.5,
-    rr3: 2,
+    rr1: 1.5,
+    rr2: 2,
+    rr3: 3,
     risk
   };
 }
