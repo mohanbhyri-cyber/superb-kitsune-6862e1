@@ -14267,6 +14267,9 @@
 
 
     async function refreshExternalNifty() {
+      const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedReplay = state.replay.active;
 
       try {
         const response =
@@ -14288,6 +14291,15 @@
         const data =
           await response.json();
 
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
+
         state.externalNifty =
           data;
 
@@ -14301,6 +14313,15 @@
           'External NIFTY sources unavailable:',
           error
         );
+
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
 
         state.externalNifty =
           {
