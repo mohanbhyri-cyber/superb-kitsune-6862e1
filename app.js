@@ -742,9 +742,17 @@
         (side === 1
           ? Number(planStop) <= Number(result.invalidation.price) - structuralBuffer
           : Number(planStop) >= Number(result.invalidation.price) + structuralBuffer);
+      const stopDistance = validPlan
+        ? Math.abs(Number(plan.entry) - Number(planStop))
+        : null;
       result.stopStructure = {
+        stop: validPlan ? Number(planStop) : null,
         buffer: structuralBuffer,
         bufferAtr: structuralBuffer > 0 ? 0.10 : null,
+        distance: stopDistance,
+        distanceAtr: primeFinite(stopDistance) && primeFinite(s.atr) && Number(s.atr) > 0
+          ? stopDistance / Number(s.atr)
+          : null,
         valid: !!stopBeyondStructure
       };
       check('Stop beyond structural invalidation + 0.10 ATR buffer', stopBeyondStructure,
@@ -1873,6 +1881,17 @@
       } else if (tech?.error) {
         add('h3', 'Technical confirmation');
         add('p', tech.error, 'muted');
+      }
+
+      const stopStructure = p.stopStructure;
+      if (stopStructure && primeFinite(stopStructure.stop)) {
+        const stopAtr = primeFinite(stopStructure.distanceAtr)
+          ? Number(stopStructure.distanceAtr).toFixed(2) + ' ATR'
+          : 'ATR unavailable';
+        add('h3', 'Stop structure');
+        add('p', 'Stop ' + price(stopStructure.stop) + ' · ' + stopAtr +
+          ' from entry · ' + (stopStructure.valid ? 'STRUCTURE SAFE' : 'STRUCTURE UNSAFE'),
+          stopStructure.valid ? 'up' : 'muted');
       }
 
       const rr = p.riskReward;
