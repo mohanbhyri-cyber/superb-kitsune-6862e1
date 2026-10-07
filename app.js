@@ -5242,12 +5242,17 @@
         );
 
 
+      const analysisFuturesVWAP =
+        state.replay.active
+          ? null
+          : state.futuresVWAP;
+
       state.niftyEdge =
         analyseNiftyEdge(
           indicatorData,
           {
             futuresVWAP:
-              state.futuresVWAP
+              analysisFuturesVWAP
           }
         );
 
@@ -5261,7 +5266,7 @@
           indicatorData,
           {
             futuresVWAP:
-              state.futuresVWAP
+              analysisFuturesVWAP
           }
         );
 
@@ -5272,7 +5277,7 @@
           state.trend,
           state.momentum,
           state.marketMap,
-          state.futuresVWAP
+          analysisFuturesVWAP
         );
 
       renderSmrtTriggerSignal();
@@ -5310,7 +5315,7 @@
           data:
             indicatorData,
           futuresVWAP:
-            state.futuresVWAP,
+            analysisFuturesVWAP,
           efficiency:
             state.efficiencyEngine
         });
