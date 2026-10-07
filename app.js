@@ -8137,7 +8137,8 @@
         );
 
         state.primeMtfData[timeframe] = candles;
-        state.mtf[timeframe] = timeframeTrend(candles, duration);
+        // Replay must evaluate the MTF row at replay time, never wall-clock time.
+        state.mtf[timeframe] = timeframeTrend(candles, duration, Number(replayTime));
       }
 
       const sides = ['5m', '15m', '1h'].map(timeframe =>
@@ -8455,7 +8456,8 @@
 
     function timeframeTrend(
       candles,
-      seconds
+      seconds,
+      analysisNow = Date.now() / 1000
     ) {
 
       if (
@@ -8490,7 +8492,7 @@
       const closed = lastClosedCandleIndex(
         candles,
         seconds,
-        Date.now() / 1000
+        analysisNow
       );
 
       if (closed < 0) {
