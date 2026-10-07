@@ -14309,6 +14309,10 @@
       const requestedTf = state.tf;
       const requestedReplay = state.replay.active;
 
+      // External market context is live-only. Do not spend an API request
+      // while historical Replay is active.
+      if (requestedReplay) return;
+
       try {
         const response =
           await upstoxAwareFetch(
