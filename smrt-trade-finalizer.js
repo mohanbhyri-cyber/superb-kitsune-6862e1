@@ -238,19 +238,11 @@ export function finalizeTrade({
     macdHistogram: Number(hist)
   };
 
-  if (!buyEligible && !sellEligible) {
-    return noTrade({
-      reason: 'Prime mandatory conditions are not aligned',
-      time,
-      mandatory
-    });
-  }
-
-  const primeSide = buyEligible ? 1 : -1;
+  const primeSide = buyEligible ? 1 : sellEligible ? -1 : 0;
 
   // Efficiency is context-only and never creates direction.
   if (
-    efficiency?.ready === true &&
+    primeSide !== 0 && efficiency?.ready === true &&
     (
       Number(efficiency.score) < 35 ||
       String(efficiency.noise || '').toUpperCase() === 'HIGH' ||
@@ -424,6 +416,18 @@ export function finalizeTrade({
 
   bull = Math.max(0, bull - bullPenalty);
   bear = Math.max(0, bear - bearPenalty);
+
+  // Evidence remains visible even when the mandatory gate blocks a setup.
+  // These scores never grant a direction or generate a trade plan.
+  if (primeSide === 0) {
+    return noTrade({
+      reason: 'Prime mandatory conditions are not aligned',
+      time,
+      bullScore: bull,
+      bearScore: bear,
+      mandatory
+    });
+  }
 
   const winning = primeSide === 1 ? bull : bear;
   const losing = primeSide === 1 ? bear : bull;
