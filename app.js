@@ -576,6 +576,8 @@
           fresh: !!fresh,
           time: m.candles.at(-1)?.time ?? null,
           candleCount: m.candles.length,
+          requiredCandles: 220,
+          ready: m.candles.length >= 220 && !t.error,
           alignmentMinutes: primeFinite(mtfAlignment)
             ? Math.round(mtfAlignment / 60)
             : null,
@@ -1615,9 +1617,16 @@
       add('h3', 'MTF confirmation');
       for (const tf of ['5m', '15m', '1h']) {
         const row = p.mtf?.[tf];
-        add('p', tf + ': ' + sideText(row?.side) +
-          ' · Structure ' + sideText(row?.structure) +
-          (row?.fresh ? ' · ALIGNED' : ' · ' + (row?.error || 'WAIT')), sideClass(row?.side));
+        const warmup = row && row.ready === false &&
+          Number.isFinite(Number(row.candleCount)) &&
+          Number(row.candleCount) < Number(row.requiredCandles || 220);
+        add('p',
+          warmup
+            ? tf + ': PRIME WARM-UP ' + Number(row.candleCount) + '/' + Number(row.requiredCandles || 220)
+            : tf + ': ' + sideText(row?.side) +
+              ' · Structure ' + sideText(row?.structure) +
+              (row?.fresh ? ' · ALIGNED' : ' · ' + (row?.error || 'WAIT')),
+          warmup ? 'muted' : sideClass(row?.side));
       }
 
       add('h3', 'Confirmation checks');
