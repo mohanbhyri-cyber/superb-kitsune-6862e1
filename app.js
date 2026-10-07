@@ -515,12 +515,20 @@
       const zoneInvalidation = bestAlignedZone
         ? (side === 1 ? bestAlignedZone.low : bestAlignedZone.high)
         : null;
+      const invalidationPrice = primeFinite(zoneInvalidation) ? Number(zoneInvalidation)
+        : primeFinite(swingInvalidation) ? Number(swingInvalidation) : null;
+      const invalidationDistance = primeFinite(invalidationPrice)
+        ? Math.abs(Number(last.close) - invalidationPrice)
+        : null;
       result.invalidation = {
-        price: primeFinite(zoneInvalidation) ? Number(zoneInvalidation)
-          : primeFinite(swingInvalidation) ? Number(swingInvalidation) : null,
+        price: invalidationPrice,
         source: primeFinite(zoneInvalidation)
           ? (bestAlignedZone.kind + ' Grade ' + bestAlignedZone.quality.grade + ' boundary')
-          : primeFinite(swingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable'
+          : primeFinite(swingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable',
+        distance: invalidationDistance,
+        atrMultiple: primeFinite(invalidationDistance) && primeFinite(s.atr) && Number(s.atr) > 0
+          ? invalidationDistance / Number(s.atr)
+          : null
       };
       const touches = qualified.filter(z => z.quality?.recentTouch);
       const recentSweeps = s.sweeps.filter(e => index - e.index <= 3);
@@ -1814,8 +1822,11 @@
           best.quality.score >= 5 ? 'up' : 'muted');
       }
       if (primeFinite(p.invalidation?.price)) {
+        const invAtr = primeFinite(p.invalidation.atrMultiple)
+          ? ' · ' + Number(p.invalidation.atrMultiple).toFixed(2) + ' ATR away'
+          : '';
         add('p', 'Structural invalidation: ' + price(p.invalidation.price) +
-          ' · ' + p.invalidation.source, 'muted');
+          ' · ' + p.invalidation.source + invAtr, 'muted');
       }
 
       const volume = p.volume;
