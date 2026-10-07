@@ -3230,14 +3230,14 @@ import { momentumSignals } from './momentum.js';
     let smrtSmoothingPeriod = 8;
 
     function setupSmoothCandles() {
-      const host = $('#chart-view-tv')?.parentElement;
+      const host = $('#chart-view-tv')?.closest('.chart-wrap');
       if (!host || $('#smrt-candle-style')) return;
       const controls = document.createElement('div');
       controls.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;font-size:12px';
       controls.innerHTML = `<label>Candles <select id="smrt-candle-style" aria-label="Candle style"><option value="market">Market candles</option><option value="smooth">SMRT Smooth Candles</option></select></label>
         <label>Smoothing <select id="smrt-candle-period" aria-label="Candle smoothing"><option value="4">Fast · 4</option><option value="8" selected>Balanced · 8</option><option value="16">Smooth · 16</option></select></label>
         <span id="smrt-candle-status" role="status">Actual market prices</span>`;
-      host.insertAdjacentElement('afterend', controls);
+      host.insertAdjacentElement('beforebegin', controls);
       const change = () => {
         smrtCandleStyle = $('#smrt-candle-style').value;
         smrtSmoothingPeriod = Number($('#smrt-candle-period').value);
