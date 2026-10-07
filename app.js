@@ -735,13 +735,21 @@
 
       // A valid stop must sit beyond the selected structural invalidation
       // boundary, not inside the OB/FVG/swing that defines the setup.
+      const structuralBuffer = primeFinite(s.atr) && Number(s.atr) > 0
+        ? Number(s.atr) * 0.10
+        : 0;
       const stopBeyondStructure = validPlan && primeFinite(result.invalidation?.price) &&
         (side === 1
-          ? Number(planStop) <= Number(result.invalidation.price)
-          : Number(planStop) >= Number(result.invalidation.price));
-      check('Stop beyond structural invalidation', stopBeyondStructure,
+          ? Number(planStop) <= Number(result.invalidation.price) - structuralBuffer
+          : Number(planStop) >= Number(result.invalidation.price) + structuralBuffer);
+      result.stopStructure = {
+        buffer: structuralBuffer,
+        bufferAtr: structuralBuffer > 0 ? 0.10 : null,
+        valid: !!stopBeyondStructure
+      };
+      check('Stop beyond structural invalidation + 0.10 ATR buffer', stopBeyondStructure,
         primeFinite(result.invalidation?.price)
-          ? 'Stop sits inside the confirmed structural invalidation boundary'
+          ? 'Stop lacks the required 0.10 ATR buffer beyond structural invalidation'
           : 'Structural invalidation is unavailable');
 
       const risk = validPlan ? Math.abs(Number(plan.entry) - Number(planStop)) : null;
