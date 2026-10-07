@@ -663,6 +663,16 @@
       check('Risk / reward ≥ 1:1.5 at Target 1',
         validPlan && primeFinite(result.riskReward.target1) && result.riskReward.target1 >= 1.5,
         validPlan ? 'Target 1 reward is below 1.5x stop risk' : 'Risk/reward unavailable until trade plan is valid');
+      const riskEngine = legacy.riskEngine;
+      check('Risk engine veto',
+        riskEngine?.ready === true && riskEngine.quality !== 'BLOCK',
+        riskEngine?.ready === true
+          ? (riskEngine.reasons?.join(' · ') || 'Risk engine blocked the trade plan')
+          : 'Risk engine is unavailable');
+      check('Risk quality',
+        riskEngine?.ready === true && riskEngine.quality === 'GOOD',
+        riskEngine?.state || 'Risk quality unavailable', false);
+
       check('All Indicators Consensus', side !== 0 && primeSide(legacy.consensus?.signal) === side &&
         legacy.consensus?.opposingCount === 0 && legacy.consensus?.votes?.length > 0 &&
         legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting', false);
@@ -836,6 +846,9 @@
 
               sessionQuality:
                 state.sessionQuality,
+
+              riskEngine:
+                state.riskEngine,
 
               consensus
             }
