@@ -616,6 +616,27 @@
           }`
         );
       }
+      const efficiency = legacy.efficiency;
+      check('Market efficiency',
+        efficiency?.ready === true && efficiency.quality !== 'LOW' && efficiency.regime !== 'CHOPPY',
+        efficiency?.ready === true
+          ? 'Low-efficiency or choppy market regime'
+          : 'Market efficiency engine unavailable');
+      check('Clean trend regime',
+        efficiency?.ready === true && ['HIGH', 'GOOD'].includes(efficiency.quality) &&
+          efficiency.regime === 'CLEAN TREND',
+        efficiency?.ready === true ? efficiency.regime + ' · score ' + efficiency.score : 'Efficiency unavailable',
+        false);
+
+      const trap = legacy.liquidityTrap;
+      const trapConflict = trap?.ready === true && Number(trap.side || 0) !== 0 &&
+        Number(trap.side) === -side && Number(trap.score || 0) >= 55;
+      check('Liquidity-trap veto', !trapConflict,
+        trapConflict ? trap.state + ' · score ' + trap.score : null);
+      check('Liquidity-trap alignment',
+        trap?.ready === true && side !== 0 && Number(trap.side || 0) === side && Number(trap.score || 0) >= 55,
+        trap?.state || 'Liquidity trap unavailable', false);
+
       const session = legacy.sessionQuality;
       const sessionClosed = session?.ready === true &&
         (session.quality === 'CLOSED' || session.state === 'MARKET CLOSED');
@@ -843,6 +864,12 @@
 
               globalWatch:
                 state.globalWatch,
+
+              efficiency:
+                state.efficiencyEngine,
+
+              liquidityTrap:
+                state.liquidityTrap,
 
               sessionQuality:
                 state.sessionQuality,
