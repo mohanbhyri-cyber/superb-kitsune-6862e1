@@ -774,6 +774,30 @@
       check('Risk / reward ≥ 1:1.5 at Target 1',
         validPlan && primeFinite(result.riskReward.target1) && result.riskReward.target1 >= 1.5,
         validPlan ? 'Target 1 reward is below 1.5x stop risk' : 'Risk/reward unavailable until trade plan is valid');
+
+      const opposingZones = qualified
+        .filter(z => side !== 0 && z.side === -side)
+        .sort((a, b) => side === 1 ? Number(a.low) - Number(b.low) : Number(b.high) - Number(a.high));
+      const nearestOpposing = opposingZones.find(z =>
+        side === 1 ? Number(z.low) > Number(plan?.entry) : Number(z.high) < Number(plan?.entry)
+      ) || null;
+      const target1Clear = validPlan && (!nearestOpposing ||
+        (side === 1
+          ? Number(plan.target1) <= Number(nearestOpposing.low)
+          : Number(plan.target1) >= Number(nearestOpposing.high)));
+      result.targetStructure = {
+        clear: !!target1Clear,
+        opposingPrice: nearestOpposing
+          ? Number(side === 1 ? nearestOpposing.low : nearestOpposing.high)
+          : null,
+        opposingKind: nearestOpposing?.kind || null,
+        opposingGrade: nearestOpposing?.quality?.grade || null
+      };
+      check('Target 1 clear of opposing structure', target1Clear,
+        nearestOpposing
+          ? 'Target 1 crosses a Grade ' + nearestOpposing.quality.grade + ' opposing ' + nearestOpposing.kind
+          : 'Target structure cannot be validated');
+
       const riskEngine = legacy.riskEngine;
       check('Risk engine veto',
         riskEngine?.ready === true && riskEngine.quality !== 'BLOCK',
