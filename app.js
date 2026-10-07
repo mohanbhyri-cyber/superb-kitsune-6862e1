@@ -12787,7 +12787,48 @@
       renderProSuiteSummary();
     }
 
+    function renderChartIndicatorStatus(result) {
+      const panel = $('#chart-status-rows');
+      if (!panel) return;
+      const finalizer = state.liveTradeFinalizer ?? state.tradeFinalizer;
+      const overall = $('#chart-status-overall');
+      const finalState = String(finalizer?.state || 'WAIT');
+      overall.textContent = finalState;
+      overall.className = /BUY/.test(finalState) ? 'up' : /SELL/.test(finalState) ? 'down' : 'muted';
+      $('#chart-status-context').textContent = state.replay.active
+        ? 'Replay · completed candle'
+        : isNseCashMarketOpen()
+          ? 'Completed candle · ' + state.tf
+          : 'Market closed · last session · ' + state.tf;
+      const names = [
+        'Trade Finalizer', 'NIFTY EDGE', 'Market Map', 'MTF 5m/15m/1h',
+        'SSL + QQE', 'AI NIFTY', 'Global Watch', 'Trend Composite',
+        'Momentum Composite', 'Reversal Composite', 'Pressure / Volume Composite'
+      ];
+      const votes = Array.isArray(result?.votes) ? result.votes : [];
+      const allNames = [...new Set([...names, ...votes.map(vote => vote.name)])];
+      const fragment = document.createDocumentFragment();
+      for (const name of allNames) {
+        const vote = votes.find(item => item.name === name);
+        const side = name === 'Trade Finalizer'
+          ? (/BUY/.test(finalState) ? 1 : /SELL/.test(finalState) ? -1 : 0)
+          : Number(vote?.side || 0);
+        const row = document.createElement('div');
+        row.className = 'chart-status-row';
+        const label = document.createElement('span');
+        label.textContent = name;
+        const badge = document.createElement('strong');
+        badge.textContent = side === 1 ? 'BUY' : side === -1 ? 'SELL' : 'WAIT';
+        badge.className = side === 1 ? 'up' : side === -1 ? 'down' : 'muted';
+        row.append(label, badge);
+        fragment.append(row);
+      }
+      panel.replaceChildren(fragment);
+    }
+
     function renderAllIndicatorsConsensus() {
+      renderChartIndicatorStatus(state.allIndicatorsConsensus);
+
 
       const result =
         state.allIndicatorsConsensus;
