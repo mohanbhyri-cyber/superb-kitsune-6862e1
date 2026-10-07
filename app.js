@@ -12850,7 +12850,14 @@
       triggerRow.title = trigger?.reason || 'Waiting for confirmation';
       triggerRow.append(triggerLabel, triggerStatus);
       fragment.append(triggerRow);
+      const riskPlan = state.tradeFinalizer?.plan;
+      const riskEntry = riskPlan?.entry;
+      const riskStop = riskPlan?.stopLoss ?? riskPlan?.stop;
+      const chartRiskPoints = primeFinite(riskEntry) && primeFinite(riskStop)
+        ? Math.abs(Number(riskEntry) - Number(riskStop))
+        : state.marketMap?.atr;
       const contextRows = [
+        ['ATR Risk', primeFinite(chartRiskPoints) ? fmt(chartRiskPoints) + ' pts' : 'WAIT'],
         ['Premium / Discount', structure?.zone || 'WAIT'],
         ['Smart Money', structure
           ? (structure.blocks || []).filter(item => item.active).length + ' OB · ' +
