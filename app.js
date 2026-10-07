@@ -717,13 +717,21 @@
         const vote = primeSide(value);
         const sourceTime = Number(source?.time ?? source?.updated ?? source?.updatedAt);
         const timed = primeFinite(sourceTime);
-        const fresh = timed && sourceTime <= last.time && last.time - sourceTime <= Math.max(seconds * 3, 900);
+        const closedAt = Number(last.time) + Number(seconds);
+        // Candle timestamps represent candle OPEN. Auxiliary outputs may be
+        // produced at/after that bar closes, so compare them with closedAt.
+        // Replay never permits live/current auxiliary sources to veto history.
+        const fresh = !replay && timed &&
+          sourceTime <= Number(now) &&
+          sourceTime >= closedAt - Math.max(seconds * 3, 900);
         // Untimestamped/stale auxiliary outputs are never allowed to veto a fresh closed-candle setup.
         const conflict = fresh && vote !== 0 && vote === -side;
         check(name + ' conflict veto', !conflict,
           conflict ? name + ' conflicts with closed-candle evidence' : null);
         check(name + ' freshness', fresh,
-          timed ? name + ' is stale or ahead of the closed candle' : name + ' timestamp unavailable', false);
+          replay
+            ? name + ' live auxiliary veto disabled during replay'
+            : timed ? name + ' is stale or ahead of analysis time' : name + ' timestamp unavailable', false);
       }
       if (side && result.checks.filter(x => x.required !== false).every(x => x.ok)) {
         result.side = side;
