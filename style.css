@@ -816,7 +816,7 @@ body.light .tv-shell-mode .chart-footer{
   position: absolute;
   z-index: 12;
   top: 54px;
-  right: 76px;
+  left: 12px;
   width: min(285px, calc(100% - 94px));
   max-height: calc(var(--chart-height) - 260px);
   overflow: auto;
