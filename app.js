@@ -2769,6 +2769,10 @@
           state.futuresVWAP === null
             ? 0
             : Date.now();
+        state.futuresVWAPCandleTime =
+          state.futuresVWAP === null
+            ? null
+            : primeEpochSeconds(data?.lastCandleTime);
 
         state.futuresVWAPReason =
           state.futuresVWAP === null
@@ -2784,6 +2788,7 @@
 
         state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
+        state.futuresVWAPCandleTime = null;
         state.futuresVolumeConfirmation = null;
         state.futuresVWAPReason = isUpstoxRateLimit(error)
           ? 'Upstox rate limited futures VWAP. Waiting before retry.'
@@ -5449,10 +5454,20 @@
         );
 
 
+      const latestAnalysisCandle = indicatorData.at(-1);
+      const latestAnalysisClose = primeFinite(latestAnalysisCandle?.time)
+        ? Number(latestAnalysisCandle.time) + Number(intervals[state.tf] || 0)
+        : null;
+      const futuresVWAPFresh = primeFinite(state.futuresVWAPCandleTime) &&
+        primeFinite(latestAnalysisClose) &&
+        Math.abs(
+          (Number(state.futuresVWAPCandleTime) + Number(intervals[state.tf] || 0)) -
+          Number(latestAnalysisClose)
+        ) <= Math.max(Number(intervals[state.tf] || 0) * 2, 300);
       const analysisFuturesVWAP =
-        state.replay.active
-          ? null
-          : state.futuresVWAP;
+        !state.replay.active && futuresVWAPFresh
+          ? state.futuresVWAP
+          : null;
 
       state.niftyEdge =
         analyseNiftyEdge(
