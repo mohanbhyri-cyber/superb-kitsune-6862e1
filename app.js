@@ -1662,10 +1662,25 @@
           warmup ? 'muted' : sideClass(row?.side));
       }
 
-      add('h3', 'Confirmation checks');
       const checks = Array.isArray(p.checks) ? p.checks : [];
-      if (!checks.length) add('p', 'WAIT · Confirmation checks unavailable', 'muted');
-      for (const item of checks) add('p', (item.ok ? '✓ ' : '✕ ') + item.name, item.ok ? 'up' : 'muted');
+      const requiredChecks = checks.filter(item => item.required !== false);
+      const supportingChecks = checks.filter(item => item.required === false);
+
+      add('h3', 'Mandatory gates · ' +
+        requiredChecks.filter(item => item.ok).length + '/' + requiredChecks.length + ' passed');
+      if (!requiredChecks.length) add('p', 'WAIT · Mandatory checks unavailable', 'muted');
+      for (const item of requiredChecks) {
+        add('p', (item.ok ? '✓ ' : '✕ ') + item.name, item.ok ? 'up' : 'muted');
+      }
+
+      add('h3', 'Supporting confirmations · ' +
+        supportingChecks.filter(item => item.ok).length + '/' + supportingChecks.length + ' aligned');
+      if (!supportingChecks.length) add('p', 'No supporting modules reported yet', 'muted');
+      for (const item of supportingChecks) {
+        add('p', (item.ok ? '✓ ' : '○ ') + item.name +
+          (item.ok ? ' · ALIGNED' : ' · NOT ALIGNED / UNAVAILABLE'),
+          item.ok ? 'up' : 'muted');
+      }
 
       if (Array.isArray(p.reasons) && p.reasons.length) {
         add('h3', 'Blocking reasons');
