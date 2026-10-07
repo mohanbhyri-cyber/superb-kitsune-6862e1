@@ -747,7 +747,7 @@
 
     function refreshPrimeConfirmation() {
       const now = state.replay.active
-        ? Number(state.data.at(-1)?.time)
+        ? Number(state.data.at(-1)?.time) + Number(intervals[state.tf] || 0)
         : Date.now() / 1000;
 
       try {
@@ -5094,7 +5094,9 @@
 
 
       const analysisNow = state.replay.active
-        ? Number(state.data.at(-1)?.time)
+        // Replay frames store candle OPEN timestamps. Advance analysis time to
+        // that candle's close so the replayed bar is eligible as completed.
+        ? Number(state.data.at(-1)?.time) + Number(intervals[state.tf] || 0)
         : Date.now() / 1000;
       const closedIndex = lastClosedCandleIndex(
         state.data,
@@ -7360,7 +7362,9 @@
       // Mixing the live candle with closed-candle trend filters caused
       // Neutral / directional counts to disagree.
       const analysisNow = state.replay.active
-        ? Number(state.data.at(-1)?.time)
+        // Replay frames store candle OPEN timestamps. Advance analysis time to
+        // that candle's close so the replayed bar is eligible as completed.
+        ? Number(state.data.at(-1)?.time) + Number(intervals[state.tf] || 0)
         : Date.now() / 1000;
       const closed = lastClosedCandleIndex(
         state.data,
