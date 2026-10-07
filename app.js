@@ -452,19 +452,34 @@
     const freshnessLimit =
       Math.max(Number(seconds) * 3, 900);
 
+    const sessionMinutes = nseSessionMinutesFromEpoch(
+      Number(last.time) + Number(seconds)
+    );
+    const finalSessionCandle =
+      sessionMinutes !== null &&
+      sessionMinutes >= (15 * 60 + 30) - (9 * 60 + 15);
+    // Do not let the final regular-session candle remain actionable for the
+    // generic 15-minute freshness grace after the market has closed.
+    const postClose =
+      finalSessionCandle &&
+      Number(now) > Number(last.time) + Number(seconds);
+
     const candleFresh =
       candleAge >= 0 &&
-      candleAge <= freshnessLimit;
+      candleAge <= freshnessLimit &&
+      !postClose;
 
     check(
       'Closed-candle freshness',
       candleFresh,
       candleFresh
         ? null
-        : `Closed candle is stale · age ${Math.max(
-            0,
-            Math.round(candleAge / 60)
-          )} min`
+        : postClose
+          ? 'NSE regular session has ended; final candle is no longer actionable'
+          : `Closed candle is stale · age ${Math.max(
+              0,
+              Math.round(candleAge / 60)
+            )} min`
     );
       check('EMA 9/21/50/200 + Supertrend + RSI + MACD + ADX/DMI', side !== 0, technical.error);
       check('Structure', side !== 0 && s.direction === side && s.events.some(e => e.side === side && index - e.index <= 8),
