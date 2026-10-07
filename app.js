@@ -732,6 +732,18 @@
         finalizerCurrent
           ? 'Closed-candle trade plan is invalid or incomplete'
           : 'Trade plan does not belong to the latest closed candle');
+
+      // A valid stop must sit beyond the selected structural invalidation
+      // boundary, not inside the OB/FVG/swing that defines the setup.
+      const stopBeyondStructure = validPlan && primeFinite(result.invalidation?.price) &&
+        (side === 1
+          ? Number(planStop) <= Number(result.invalidation.price)
+          : Number(planStop) >= Number(result.invalidation.price));
+      check('Stop beyond structural invalidation', stopBeyondStructure,
+        primeFinite(result.invalidation?.price)
+          ? 'Stop sits inside the confirmed structural invalidation boundary'
+          : 'Structural invalidation is unavailable');
+
       const risk = validPlan ? Math.abs(Number(plan.entry) - Number(planStop)) : null;
       const reward = target => validPlan && risk > 0
         ? Math.abs(Number(plan[target]) - Number(plan.entry)) / risk
