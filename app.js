@@ -10205,9 +10205,15 @@
     let optionsBusy = false;
     let optionsRequestedAt = 0;
     async function refreshOptionsContext() {
-      if (state.symbol !== 'NIFTY' || !regularNseHours()) {
-        state.niftyOptions = null;
-        updateMarketMapPanel();
+      const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedReplay = state.replay.active;
+
+      if (requestedReplay || requestedSymbol !== 'NIFTY' || !regularNseHours()) {
+        if (!requestedReplay) {
+          state.niftyOptions = null;
+          updateMarketMapPanel();
+        }
         return;
       }
       if (optionsBusy || Date.now() - optionsRequestedAt < 180000) return;
@@ -10217,22 +10223,46 @@
         const response = await upstoxAwareFetch(API_BASE + '/api/nifty-options', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
         if (!response.ok) throw new Error('Options feed unavailable');
         const payload = await response.json();
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) return;
         const age = Date.now() - Number(payload.fetchedAt);
         state.niftyOptions = payload.available === true && age >= 0 && age < 120000 ? payload : null;
       } catch {
-        state.niftyOptions = null;
+        if (
+          state.symbol === requestedSymbol &&
+          state.tf === requestedTf &&
+          state.replay.active === requestedReplay &&
+          !state.replay.active
+        ) {
+          state.niftyOptions = null;
+        }
       } finally {
         optionsBusy = false;
-        updateMarketMapPanel();
+        if (
+          state.symbol === requestedSymbol &&
+          state.tf === requestedTf &&
+          state.replay.active === requestedReplay &&
+          !state.replay.active
+        ) updateMarketMapPanel();
       }
     }
     refreshOptionsContext();
     let breadthBusy = false;
     let breadthRequestedAt = 0;
     async function refreshBreadthContext() {
-      if (state.symbol !== 'NIFTY' || !regularNseHours()) {
-        state.niftyBreadth = null;
-        updateMarketMapPanel();
+      const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedReplay = state.replay.active;
+
+      if (requestedReplay || requestedSymbol !== 'NIFTY' || !regularNseHours()) {
+        if (!requestedReplay) {
+          state.niftyBreadth = null;
+          updateMarketMapPanel();
+        }
         return;
       }
       if (breadthBusy || Date.now() - breadthRequestedAt < 180000) return;
@@ -10242,12 +10272,30 @@
         const response = await upstoxAwareFetch(API_BASE + '/api/nifty-breadth', { cache: 'no-store', signal: AbortSignal.timeout(20000) });
         if (!response.ok) throw new Error('Breadth unavailable');
         const payload = await response.json();
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) return;
         state.niftyBreadth = payload.live === true ? payload : null;
       } catch {
-        state.niftyBreadth = null;
+        if (
+          state.symbol === requestedSymbol &&
+          state.tf === requestedTf &&
+          state.replay.active === requestedReplay &&
+          !state.replay.active
+        ) {
+          state.niftyBreadth = null;
+        }
       } finally {
         breadthBusy = false;
-        updateMarketMapPanel();
+        if (
+          state.symbol === requestedSymbol &&
+          state.tf === requestedTf &&
+          state.replay.active === requestedReplay &&
+          !state.replay.active
+        ) updateMarketMapPanel();
       }
     }
     refreshBreadthContext();
