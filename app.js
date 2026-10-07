@@ -738,8 +738,26 @@
       const conflict = field === 'signal' && side !== 0 && (candidate?.opposingCount > 0 ||
         candidate?.votes?.some(v => v.side && v.side !== side));
       if (side && prime?.side === side && !conflict) return { ...candidate, primeConfirmed: true };
-      const reasons = conflict ? ['All Indicators Consensus contains opposing evidence']
-        : prime?.reasons?.length ? prime.reasons : ['Required confirmation is incomplete'];
+
+      let reasons;
+      if (conflict) {
+        reasons = ['All Indicators Consensus contains opposing evidence'];
+      } else if (!prime || !prime.side) {
+        reasons = prime?.reasons?.filter(reason =>
+          reason !== 'All required closed-candle confirmation layers agree'
+        );
+        if (!reasons?.length) reasons = ['Required Prime confirmation is incomplete'];
+      } else if (!side) {
+        reasons = ['Candidate direction is neutral or unavailable'];
+      } else if (side !== prime.side) {
+        reasons = [
+          'Candidate direction conflicts with Prime ' +
+          (prime.side === 1 ? 'BUY' : 'SELL') + ' direction'
+        ];
+      } else {
+        reasons = ['Candidate confirmation is incomplete'];
+      }
+
       return { ...(candidate || {}), [field]: 'NO TRADE', side: 0, plan: null, score: 0,
         bullScore: candidate?.bullScore ?? 0, bearScore: candidate?.bearScore ?? 0,
         confidence: 0, primeConfirmed: false, reasons, reason: reasons.join(' · '), invalidation: reasons[0] };
