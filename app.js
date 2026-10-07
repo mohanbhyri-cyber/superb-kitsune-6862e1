@@ -645,6 +645,15 @@
       check('Session quality', session?.ready === true && session.quality !== 'CAUTION' && !sessionClosed,
         session?.state ? 'Session caution: ' + session.state : 'Session quality is unavailable', false);
 
+      const trigger = legacy.triggerSignal;
+      const triggerSide = primeSide(trigger?.signal) || Number(trigger?.side || trigger?.direction || 0);
+      const triggerConflict = side !== 0 && triggerSide !== 0 && triggerSide === -side;
+      check('SMRT Trigger conflict veto', !triggerConflict,
+        triggerConflict ? 'SMRT Trigger conflicts with Prime direction' : null);
+      check('SMRT Trigger alignment',
+        side !== 0 && triggerSide === side,
+        trigger?.reason || 'SMRT Trigger is neutral or unavailable', false);
+
       const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
       check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0,
         'Nifty Edge is unavailable or not aligned', false);
@@ -843,6 +852,9 @@
             legacy: {
               edge:
                 state.niftyEdge,
+
+              triggerSignal:
+                state.triggerSignal,
 
               marketMap:
                 state.marketMap,
