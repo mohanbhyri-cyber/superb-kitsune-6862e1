@@ -94,14 +94,40 @@ function trendLabel(score, adx) {
 export function analyseMarketMap(candles, options = {}) {
   if (!Array.isArray(candles) || candles.length < 40) return null;
 
-  const closedIndex = Math.max(0, candles.length - 2);
-  const calc = indicators(candles);
-  const trend = trendIndicators(candles);
-  const atr14 = atrSeries(candles, 14);
+  // Accept an explicit completed-candle boundary from the caller. This keeps
+  // Market Map isolated from any forming/synthetic tail and prevents a future
+  // placeholder from influencing pivots, ATR, indicators or Donchian levels.
+  const requestedClosedIndex = Number(options.closedIndex);
+  const closedIndex = Number.isInteger(requestedClosedIndex)
+    ? Math.min(Math.max(0, requestedClosedIndex), candles.length - 1)
+    : Math.max(0, candles.length - 2);
+  const analysisCandles = candles.slice(0, closedIndex + 1);
+  if (analysisCandles.length < 40) return null;
+  // Indicator helpers historically expect the final slot to be forming.
+  // Add a local neutral placeholder so every helper still evaluates exactly
+  // the explicit closed candle above, without reading caller tail data.
+  const lastClosed = analysisCandles.at(-1);
+  const helperCandles = [
+    ...analysisCandles,
+    {
+      ...lastClosed,
+      time: Number(lastClosed.time) + Number(options.seconds || 0),
+      open: Number(lastClosed.close),
+      high: Number(lastClosed.close),
+      low: Number(lastClosed.close),
+      close: Number(lastClosed.close),
+      volume: 0,
+      syntheticForming: true
+    }
+  ];
+  const helperClosedIndex = helperCandles.length - 2;
+  const calc = indicators(helperCandles);
+  const trend = trendIndicators(helperCandles);
+  const atr14 = atrSeries(analysisCandles, 14);
   const atr = Number(atr14[closedIndex]);
   if (!finite(atr) || atr <= 0) return null;
 
-  const { highs, lows } = pivots(candles, 3, 3, closedIndex);
+  const { highs, lows } = pivots(analysisCandles, 3, 3, analysisCandles.length - 1);
   const tolerance = atr * 0.45;
   const resistanceZones = clusterLevels(highs.slice(-18), tolerance);
   const supportZones = clusterLevels(lows.slice(-18), tolerance);
@@ -121,18 +147,18 @@ export function analyseMarketMap(candles, options = {}) {
     time: candles[closedIndex].time
   } : null;
 
-  const e9 = Number(calc.e9?.[closedIndex]);
-  const e21 = Number(calc.e21?.[closedIndex]);
-  const e50 = Number(calc.e50?.[closedIndex]);
-  const rsi = Number(calc.rsi?.[closedIndex]);
-  const hist = Number(calc.hist?.[closedIndex]);
-  const prevHist = Number(calc.hist?.[closedIndex - 1]);
-  const stDir = Number(trend.direction?.[closedIndex] || 0);
-  const adx = Number(trend.adx?.[closedIndex]);
-  const plusDI = Number(trend.plusDI?.[closedIndex]);
-  const minusDI = Number(trend.minusDI?.[closedIndex]);
+  const e9 = Number(calc.e9?.[helperClosedIndex]);
+  const e21 = Number(calc.e21?.[helperClosedIndex]);
+  const e50 = Number(calc.e50?.[helperClosedIndex]);
+  const rsi = Number(calc.rsi?.[helperClosedIndex]);
+  const hist = Number(calc.hist?.[helperClosedIndex]);
+  const prevHist = Number(calc.hist?.[helperClosedIndex - 1]);
+  const stDir = Number(trend.direction?.[helperClosedIndex] || 0);
+  const adx = Number(trend.adx?.[helperClosedIndex]);
+  const plusDI = Number(trend.plusDI?.[helperClosedIndex]);
+  const minusDI = Number(trend.minusDI?.[helperClosedIndex]);
 
-  const indexVWAP = Number(calc.vwap?.[closedIndex]);
+  const indexVWAP = Number(calc.vwap?.[helperClosedIndex]);
   const futuresVWAP = finite(options.futuresVWAP) ? Number(options.futuresVWAP) : null;
   const vwap = finite(indexVWAP) && indexVWAP > 0 ? indexVWAP
     : finite(futuresVWAP) && futuresVWAP > 0 ? futuresVWAP
@@ -208,7 +234,7 @@ export function analyseMarketMap(candles, options = {}) {
     close,
     atr,
     atrVolatility,
-    donchian: closedDonchian(candles),
+    donchian: closedDonchian(helperCandles),
     nearestSupport,
     nearestResistance,
     supports: supportZones.filter(z => z.price < close).sort((a, b) => b.price - a.price).slice(0, 3),
