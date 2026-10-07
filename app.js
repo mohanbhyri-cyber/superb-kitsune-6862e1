@@ -1,4 +1,3 @@
-import { smoothCandles } from './smrt-smooth-candles.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -3226,31 +3225,6 @@ import { momentumSignals } from './momentum.js';
     }
 
 
-    let smrtCandleStyle = 'market';
-    let smrtSmoothingPeriod = 8;
-
-    function setupSmoothCandles() {
-      const host = $('#chart-view-tv')?.closest('.chart-wrap');
-      if (!host || $('#smrt-candle-style')) return;
-      const controls = document.createElement('div');
-      controls.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;font-size:12px';
-      controls.innerHTML = `<label>Candles <select id="smrt-candle-style" aria-label="Candle style"><option value="market">Market candles</option><option value="smooth">SMRT Smooth Candles</option></select></label>
-        <label>Smoothing <select id="smrt-candle-period" aria-label="Candle smoothing"><option value="4">Fast · 4</option><option value="8" selected>Balanced · 8</option><option value="16">Smooth · 16</option></select></label>
-        <span id="smrt-candle-status" role="status">Actual market prices</span>`;
-      host.insertAdjacentElement('beforebegin', controls);
-      const change = () => {
-        smrtCandleStyle = $('#smrt-candle-style').value;
-        smrtSmoothingPeriod = Number($('#smrt-candle-period').value);
-        $('#smrt-candle-period').disabled = smrtCandleStyle !== 'smooth';
-        if (smrtCandleStyle === 'smooth') setChartView('tradingview');
-        syncTradingViewLiteChart(true);
-        draw();
-      };
-      $('#smrt-candle-period').disabled = true;
-      $('#smrt-candle-style').onchange = change;
-      $('#smrt-candle-period').onchange = change;
-    }
-
     let tvLiteChart = null;
     let tvLiteSeries = null;
     let tvLiteVolumeSeries = null;
@@ -4221,7 +4195,7 @@ import { momentumSignals } from './momentum.js';
       }
 
 
-      let data =
+      const data =
         state.data
           .map(
             candle => {
@@ -4285,8 +4259,6 @@ import { momentumSignals } from './momentum.js';
           )
           .filter(Boolean);
 
-
-      if (smrtCandleStyle === 'smooth') data = smoothCandles(data, smrtSmoothingPeriod);
 
       const volumeData =
         state.data.map(
@@ -4736,17 +4708,6 @@ import { momentumSignals } from './momentum.js';
         analysisNow
       );
 
-      const smoothStatus = $('#smrt-candle-status');
-      if (smoothStatus) {
-        if (smrtCandleStyle !== 'smooth') smoothStatus.textContent = 'Actual market prices';
-        else if (state.tvChartMode !== 'tradingview') smoothStatus.textContent = 'SMRT Smooth Candles · select TradingView chart';
-        else {
-          const bars = smoothCandles(state.data.slice(0, closedIndex + 1), smrtSmoothingPeriod);
-          const last = bars.at(-1), previous = bars.at(-2);
-          const trend = last && previous ? last.close > previous.close ? 'RISING' : last.close < previous.close ? 'FALLING' : 'FLAT' : 'WAIT';
-          smoothStatus.textContent = `SMRT Smooth Candles · ${trend} · Smoothed prices · Display only · Closed candle`;
-        }
-      }
       if (closedIndex < 0) return;
 
       const closedCandle =
@@ -9412,8 +9373,6 @@ import { momentumSignals } from './momentum.js';
 
     setupAllIndicatorsChat();
 
-
-    setupSmoothCandles();
 
     // TradingView-style chart controls.
     if (
