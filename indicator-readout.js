@@ -2,10 +2,18 @@ import { indicators } from './market.js';
 
 export function indicatorReadout(candles, technical) {
   const waiting = { bands: 'WAIT', stochastic: 'WAIT', cloud: 'WAIT' };
-  if (!Array.isArray(candles) || candles.length < 220) return waiting;
-  if (candles.some(c => ['time', 'high', 'low', 'close'].some(k => c?.[k] == null || !Number.isFinite(Number(c[k]))))) return waiting;
+  if (!Array.isArray(candles) || !candles.length) return waiting;
+  if (candles.some(c => ['time', 'open', 'high', 'low', 'close'].some(k => c?.[k] == null || c[k] === '' || !Number.isFinite(Number(c[k]))) || Number(c.high) < Math.max(Number(c.open),Number(c.close)) || Number(c.low) > Math.min(Number(c.open),Number(c.close)))) return waiting;
   const number = value => Number.isFinite(value) ? value.toFixed(2) : 'Unavailable';
-  const bands = indicators(candles).bb.at(-1);
+  const bands = candles.length >= 20 ? indicators(candles).bb.at(-1) : null;
+  const stochastic = technical?.stochasticRsi;
+  const result = {
+    bands: bands ? `Upper ${number(bands.upper)} | Middle ${number(bands.mid)} | Lower ${number(bands.lower)}` : 'WAIT',
+    stochastic: stochastic?.value != null && Number.isFinite(stochastic.value)
+      ? `${number(stochastic.value * 100)} / 100 | ${stochastic.signal}` : 'WAIT',
+    cloud: 'WAIT'
+  };
+  if (candles.length < 78) return result;
   const midpoint = (end, period) => {
     const window = candles.slice(end - period + 1, end + 1);
     return (Math.max(...window.map(c => Number(c.high))) + Math.min(...window.map(c => Number(c.low)))) / 2;
@@ -18,13 +26,7 @@ export function indicatorReadout(candles, technical) {
   const close = Number(candles[end].close);
   const bias = close > Math.max(spanA, spanB) && tenkan > kijun ? 'BULLISH'
     : close < Math.min(spanA, spanB) && tenkan < kijun ? 'BEARISH' : 'WAIT';
-  const stochastic = technical?.stochasticRsi;
-  return {
-    bands: bands ? `Upper ${number(bands.upper)} | Middle ${number(bands.mid)} | Lower ${number(bands.lower)}` : 'WAIT',
-    stochastic: stochastic?.value != null && Number.isFinite(stochastic.value)
-      ? `${number(stochastic.value * 100)} / 100 | ${stochastic.signal}` : 'WAIT',
-    cloud: `${bias} | Tenkan ${number(tenkan)} | Kijun ${number(kijun)} | Span A ${number(spanA)} | Span B ${number(spanB)}`
-  };
+  return {...result,cloud: `${bias} | Tenkan ${number(tenkan)} | Kijun ${number(kijun)} | Span A ${number(spanA)} | Span B ${number(spanB)}`};
 }
 
 export function renderIndicatorReadout(candles, technical) {
@@ -34,3 +36,5 @@ export function renderIndicatorReadout(candles, technical) {
     if (element) element.textContent = value;
   }
 }
+
+
