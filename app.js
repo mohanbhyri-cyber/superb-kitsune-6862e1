@@ -9268,7 +9268,6 @@ import { momentumSignals } from './momentum.js';
         'market-map-panel',
         'candle-scanner-panel',
         'all-indicators-panel',
-        'all-indicators-chat-panel',
         'global-watch-panel',
         'ai-indicator-panel',
         'ai-nifty-panel',
@@ -15116,7 +15115,9 @@ import { momentumSignals } from './momentum.js';
     );
 
     const futuresVwap =
-      Number(state.futuresVWAP);
+      state.futuresVWAP !== null && state.futuresVWAP !== undefined && state.futuresVWAP !== '' && Number(state.futuresVWAP) > 0
+        ? Number(state.futuresVWAP)
+        : NaN;
 
     const currentPrice =
       Number(
