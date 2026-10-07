@@ -12830,7 +12830,13 @@
       const triggerLabel = document.createElement('span');
       triggerLabel.textContent = 'SMRT Trigger';
       const triggerStatus = document.createElement('strong');
-      triggerStatus.textContent = trigger?.signal || 'WAIT';
+      const triggerSignal = String(trigger?.signal || 'WAIT');
+      const triggerScore = Number(trigger?.score);
+      triggerStatus.textContent = triggerSignal +
+        (trigger && Number.isFinite(triggerScore)
+          ? ' · ' + Math.round(Math.max(0, Math.min(100, triggerScore))) + '%'
+          : '');
+
       triggerStatus.className = trigger?.side === 1 ? 'up' : trigger?.side === -1 ? 'down' : 'muted';
       triggerRow.title = trigger?.reason || 'Waiting for confirmation';
       triggerRow.append(triggerLabel, triggerStatus);
