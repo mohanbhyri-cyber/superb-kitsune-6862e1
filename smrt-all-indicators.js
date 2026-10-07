@@ -40,7 +40,7 @@ export function analyseAllIndicators({
   // Count only groups that are permitted to vote independently. AI NIFTY is
   // currently a derived Finalizer/MTF view, and Global Watch has no verified
   // live feed in this app, so neither is allowed to inflate participation.
-  const TOTAL_GROUPS = 9;
+  const TOTAL_GROUPS = 10;
   const MIN_ACTIVE_GROUPS = 6;
 
   const pushVote = (name, side, weight, detail) => {
@@ -129,7 +129,8 @@ export function analyseAllIndicators({
   const trendComposite = compositeSide([
     technical.ichimoku,
     technical.specialK,
-    technical.coppock
+    technical.coppock,
+    technical.aroon
   ]);
   pushVote('Trend Composite', trendComposite.side, 2,
     `${trendComposite.bullish} bullish / ${trendComposite.bearish} bearish`);
@@ -142,7 +143,8 @@ export function analyseAllIndicators({
     technical.ultimateOscillator,
     technical.stochastic,
     technical.stochasticRsi,
-    technical.connorsRsi
+    technical.connorsRsi,
+    technical.cci
   ]);
   pushVote('Momentum Composite', momentumComposite.side, 2,
     `${momentumComposite.bullish} bullish / ${momentumComposite.bearish} bearish`);
@@ -159,12 +161,25 @@ export function analyseAllIndicators({
   const pressureComposite = compositeSide([
     technical.ibs,
     technical.qstick,
-    technical.elderRay,
-    technical.pvo,
-    technical.chaikin
+    technical.elderRay
   ]);
   pushVote('Pressure / Volume Composite', pressureComposite.side, 2,
     `${pressureComposite.bullish} bullish / ${pressureComposite.bearish} bearish`);
+
+  // Volume indicators are one capped group. They vote only when genuine
+  // positive volume exists; the advanced engine otherwise returns WAIT.
+  const volumeComposite = compositeSide([
+    technical.mfi,
+    technical.cmf,
+    technical.obv
+  ]);
+  pushVote('Volume Flow Composite', volumeComposite.side, 2,
+    `${volumeComposite.bullish} bullish / ${volumeComposite.bearish} bearish`);
+
+  // Choppiness is regime context only: it never creates BUY/SELL direction.
+  // In a clearly choppy regime it raises the bar for an actionable consensus.
+  const chopValue = Number(technical.choppiness?.value);
+  const choppyRegime = Number.isFinite(chopValue) && chopValue >= 61.8;
 
   const bullWeight = votes.filter(v => v.side === 1).reduce((s, v) => s + v.weight, 0);
   const bearWeight = votes.filter(v => v.side === -1).reduce((s, v) => s + v.weight, 0);
@@ -218,6 +233,13 @@ export function analyseAllIndicators({
     gateReason = 'SSL + QQE conflicts with the proposed trade direction.';
   }
 
+  if (side !== 0 && choppyRegime) {
+    signal = 'NO TRADE';
+    side = 0;
+    gatePassed = false;
+    gateReason = 'Choppiness Index indicates a choppy market regime.';
+  }
+
   if (signal === 'NO TRADE') confidence = Math.min(confidence, 64);
 
   let reason;
@@ -251,6 +273,8 @@ export function analyseAllIndicators({
     aiSide,
     globalSide,
     globalFresh,
+    choppiness: Number.isFinite(chopValue) ? chopValue : null,
+    choppyRegime,
     reason
   };
 }
