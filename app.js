@@ -2739,6 +2739,8 @@
       ) {
         state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
+        state.futuresVWAPCandleTime = null;
+        state.futuresVolumeConfirmation = null;
         state.futuresVWAPReason = 'VWAP is only available for NIFTY futures.';
         return;
       }
