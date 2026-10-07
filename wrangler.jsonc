@@ -3,6 +3,7 @@
   "name": "smrt-algo-pro-live",
   "main": "worker.js",
   "compatibility_date": "2026-09-16",
+  "previews": {},
   "keep_vars": true,
   "assets": {
     "directory": ".",
