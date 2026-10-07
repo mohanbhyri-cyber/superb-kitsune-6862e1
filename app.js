@@ -8220,8 +8220,15 @@
           ?.close ??
         null;
 
+      // Replay analysis is evaluated at the close of the visible
+      // main-chart candle. Include only MTF candles that have also closed by
+      // that same instant; this avoids both one-bar lag and future lookahead.
+      const replayAnalysisTime =
+        Number(state.data.at(-1)?.time) +
+        Number(intervals[state.tf] || 0);
+
       updateReplayMTF(
-        Number(state.data.at(-1)?.time)
+        replayAnalysisTime
       );
 
 
