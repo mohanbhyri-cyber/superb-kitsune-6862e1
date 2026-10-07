@@ -185,13 +185,6 @@ export function finalizeTrade({
   ).toUpperCase();
   const mtfSide = sideFromText(mtfOverall);
 
-  if (mtfSide !== 1 && mtfSide !== -1) {
-    return noTrade({
-      reason: '5m / 15m / 1h confirmation is not ready',
-      time
-    });
-  }
-
   const emaBull = Number(e9) > Number(e21) && Number(e21) > Number(e50);
   const emaBear = Number(e9) < Number(e21) && Number(e21) < Number(e50);
   const supertrendBull = Number(st) === 1;
@@ -421,7 +414,9 @@ export function finalizeTrade({
   // These scores never grant a direction or generate a trade plan.
   if (primeSide === 0) {
     return noTrade({
-      reason: 'Prime mandatory conditions are not aligned',
+      reason: mtfSide === 0
+        ? '5m / 15m / 1h confirmation is not ready or mixed'
+        : 'Prime mandatory conditions are not aligned',
       time,
       bullScore: bull,
       bearScore: bear,
