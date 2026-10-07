@@ -672,14 +672,18 @@
       check('Trade Finalizer', legacy.finalizer?.time === last.time && side !== 0 && primeSide(legacy.finalizer?.state) === side,
         'Trade Finalizer is unavailable or not aligned', false);
       const plan = legacy.finalizer?.plan;
-      const validPlan = plan && ['entry', 'stop', 'target1', 'target2', 'target3']
-        .every(k => primeFinite(plan[k]) && Number(plan[k]) > 0) &&
-        side !== 0 && (Number(plan.entry) - Number(plan.stop)) * side > 0 &&
+      const planStop = plan?.stopLoss ?? plan?.stop;
+      const validPlan = plan &&
+        ['entry', 'target1', 'target2', 'target3'].every(k =>
+          primeFinite(plan[k]) && Number(plan[k]) > 0
+        ) &&
+        primeFinite(planStop) && Number(planStop) > 0 &&
+        side !== 0 && (Number(plan.entry) - Number(planStop)) * side > 0 &&
         (Number(plan.target1) - Number(plan.entry)) * side > 0 &&
         (Number(plan.target2) - Number(plan.target1)) * side > 0 &&
         (Number(plan.target3) - Number(plan.target2)) * side > 0;
       check('Closed-candle trade plan', validPlan);
-      const risk = validPlan ? Math.abs(Number(plan.entry) - Number(plan.stop)) : null;
+      const risk = validPlan ? Math.abs(Number(plan.entry) - Number(planStop)) : null;
       const reward = target => validPlan && risk > 0
         ? Math.abs(Number(plan[target]) - Number(plan.entry)) / risk
         : null;
