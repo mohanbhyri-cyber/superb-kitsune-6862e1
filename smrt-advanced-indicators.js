@@ -2581,6 +2581,14 @@ function specialKSignal(values) {
 // - No automatic order placement.
 // ============================================================
 
+function advancedUsableVolume(c){const v=volumes(c);return v.length>0&&v.every(x=>finite(x)&&Number(x)>=0)&&v.some(x=>Number(x)>0);}
+function cciSignal(c,p=20){if(c.length<p)return wait();const a=c.slice(-p).map(x=>(num(x.high)+num(x.low)+num(x.close))/3),m=a.reduce((x,y)=>x+y,0)/p,d=a.reduce((x,y)=>x+Math.abs(y-m),0)/p;if(!(d>0))return neutral(0,'CCI flat');const v=(last(a)-m)/(0.015*d);return v>50&&v<200?bullish(v,'CCI bullish momentum'):v<-50&&v>-200?bearish(v,'CCI bearish momentum'):neutral(v,'CCI neutral/extreme');}
+function mfiSignal(c,p=14){if(c.length<p+1||!advancedUsableVolume(c))return wait(null,'Volume unavailable');let a=0,b=0;for(let i=c.length-p;i<c.length;i++){const t=(num(c[i].high)+num(c[i].low)+num(c[i].close))/3,q=(num(c[i-1].high)+num(c[i-1].low)+num(c[i-1].close))/3,f=t*num(c[i].volume);if(t>q)a+=f;else if(t<q)b+=f;}const v=b===0?(a>0?100:50):100-100/(1+a/b);return v>55&&v<80?bullish(v,'MFI bullish money flow'):v<45&&v>20?bearish(v,'MFI bearish money flow'):neutral(v,'MFI neutral/extreme');}
+function cmfSignal(c,p=20){if(c.length<p||!advancedUsableVolume(c))return wait(null,'Volume unavailable');let f=0,v=0;for(const x of c.slice(-p)){const h=num(x.high),l=num(x.low),cl=num(x.close),z=num(x.volume);f+=(h===l?0:((cl-l)-(h-cl))/(h-l))*z;v+=z;}if(!(v>0))return wait(null,'Volume unavailable');const q=f/v;return q>.05?bullish(q,'CMF accumulation'):q<-.05?bearish(q,'CMF distribution'):neutral(q,'CMF neutral');}
+function obvSignal(c){if(c.length<21||!advancedUsableVolume(c))return wait(null,'Volume unavailable');const a=[0];for(let i=1;i<c.length;i++){const p=a[i-1],v=num(c[i].volume);a[i]=num(c[i].close)>num(c[i-1].close)?p+v:num(c[i].close)<num(c[i-1].close)?p-v:p;}const b=sma(a,20),v=last(a);return !finite(b)||!finite(v)?wait():v>b?bullish(v,'OBV above baseline'):v<b?bearish(v,'OBV below baseline'):neutral(v,'OBV neutral');}
+function aroonSignal(c,p=25){if(c.length<p)return wait();const w=c.slice(-p);let h=0,l=0;for(let i=1;i<w.length;i++){if(num(w[i].high)>=num(w[h].high))h=i;if(num(w[i].low)<=num(w[l].low))l=i;}const up=100*h/(p-1),down=100*l/(p-1),v={up,down};return up>=70&&down<=30?bullish(v,'Aroon bullish trend'):down>=70&&up<=30?bearish(v,'Aroon bearish trend'):neutral(v,'Aroon mixed');}
+function choppinessSignal(c,p=14){if(c.length<p+1)return wait();const w=c.slice(-(p+1));let t=0;for(let i=1;i<w.length;i++){const h=num(w[i].high),l=num(w[i].low),pc=num(w[i-1].close);t+=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));}const z=w.slice(1),r=Math.max(...z.map(x=>num(x.high)))-Math.min(...z.map(x=>num(x.low)));if(!(t>0)||!(r>0))return neutral(null,'Choppiness flat');const v=100*Math.log10(t/r)/Math.log10(p);return neutral(v,v>=61.8?'Choppy regime':v<=38.2?'Trending regime':'Mixed regime');}
+
 export function analyseAdvancedIndicators(
   inputCandles = []
 ) {
@@ -2611,7 +2619,13 @@ export function analyseAdvancedIndicators(
       coppock: wait(),
       ehlersFisher: wait(),
       elderRay: wait(),
-      fisher: wait()
+      fisher: wait(),
+      cci: wait(),
+      mfi: wait(),
+      cmf: wait(),
+      obv: wait(),
+      aroon: wait(),
+      choppiness: wait()
     };
   }
 
@@ -2703,7 +2717,13 @@ export function analyseAdvancedIndicators(
     fisher:
       fisherSignal(
         candles
-      )
+      ),
+    cci: cciSignal(candles),
+    mfi: mfiSignal(candles),
+    cmf: cmfSignal(candles),
+    obv: obvSignal(candles),
+    aroon: aroonSignal(candles),
+    choppiness: choppinessSignal(candles)
   };
 
 
