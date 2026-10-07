@@ -2832,12 +2832,7 @@
           error
         );
 
-        // A failed older request must not clear valid futures state belonging
-        // to a newer symbol/timeframe or a Replay session.
-        // A failed older request must not clear a newer chart's futures state.
-        
 
-        state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
         state.futuresVWAPCandleTime = null;
         state.futuresVolumeConfirmation = null;
