@@ -12823,6 +12823,25 @@
         row.append(label, badge);
         fragment.append(row);
       }
+      const structure = state.primeMarket?.structure;
+      const contextRows = [
+        ['Premium / Discount', structure?.zone || 'WAIT'],
+        ['Smart Money', structure
+          ? (structure.blocks || []).filter(item => item.active).length + ' OB · ' +
+            (structure.gaps || []).filter(item => item.active).length + ' FVG'
+          : 'WAIT']
+      ];
+      for (const [name, value] of contextRows) {
+        const row = document.createElement('div');
+        row.className = 'chart-status-row';
+        const label = document.createElement('span');
+        label.textContent = name;
+        const status = document.createElement('strong');
+        status.textContent = value;
+        status.className = 'muted';
+        row.append(label, status);
+        fragment.append(row);
+      }
       panel.replaceChildren(fragment);
     }
 
@@ -14645,6 +14664,45 @@
       ctx.rect(0, top, plot, bottom - top);
       ctx.clip();
 
+      const structure = state.primeMarket?.structure;
+      const rangeHigh = structure?.high?.price;
+      const rangeLow = structure?.low?.price;
+      const equilibrium = structure?.equilibrium;
+      if (primeFinite(rangeHigh) && primeFinite(rangeLow) && primeFinite(equilibrium) &&
+          Number(rangeHigh) > Number(rangeLow)) {
+        const paintZone = (low, high, label, color) => {
+          const yTop = Math.max(top, y(high));
+          const yBottom = Math.min(bottom, y(low));
+          if (yBottom <= yTop) return;
+          ctx.globalAlpha = 0.07;
+          ctx.fillStyle = color;
+          ctx.fillRect(0, yTop, plot, yBottom - yTop);
+          ctx.globalAlpha = 0.85;
+          ctx.font = 'bold 10px system-ui';
+          ctx.textAlign = 'right';
+          ctx.fillText(label, plot - 8, Math.min(yBottom - 3, yTop + 13));
+          ctx.textAlign = 'left';
+          ctx.globalAlpha = 1;
+        };
+        paintZone(equilibrium, rangeHigh, 'PREMIUM', down);
+        paintZone(rangeLow, equilibrium, 'DISCOUNT', up);
+        const eqY = y(equilibrium);
+        if (eqY >= top && eqY <= bottom) {
+          ctx.strokeStyle = '#c5a0ed';
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, eqY);
+          ctx.lineTo(plot, eqY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#c5a0ed';
+          ctx.font = 'bold 10px system-ui';
+          ctx.textAlign = 'right';
+          ctx.fillText('EQ ' + fmt(equilibrium), plot - 8, eqY - 4);
+          ctx.textAlign = 'left';
+        }
+      }
+
       const drawLevel = (
         value,
         label,
@@ -14756,6 +14814,18 @@
           }
         };
 
+
+      const structure = state.primeMarket?.structure;
+      const zone = structure?.zone || 'UNAVAILABLE';
+      set('#market-map-pd-zone', zone, zone === 'DISCOUNT' ? 'up' : zone === 'PREMIUM' ? 'down' : 'muted');
+      set('#market-map-pd-range', primeFinite(structure?.high?.price) && primeFinite(structure?.low?.price)
+        ? fmt(structure.low.price) + ' – ' + fmt(structure.high.price) : 'WAITING FOR CONFIRMED SWINGS');
+      set('#market-map-pd-eq', primeFinite(structure?.equilibrium) ? fmt(structure.equilibrium) : '—');
+      const blocks = (structure?.blocks || []).filter(item => item.active);
+      const gaps = (structure?.gaps || []).filter(item => item.active);
+      set('#market-map-smart-money', structure
+        ? blocks.length + ' active OB · ' + gaps.length + ' active FVG'
+        : 'WAITING FOR STRUCTURE', 'muted');
 
       const volatility = map?.atrVolatility;
       const channel = map?.donchian;
