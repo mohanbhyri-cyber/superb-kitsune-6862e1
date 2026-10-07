@@ -9741,6 +9741,17 @@
                 lastAnalysisKey = null;
                 scheduleLiveRender(true);
 
+                // Futures VWAP/volume are candle-based confirmations. Refresh
+                // them only after a new chart candle closes so the next Prime
+                // calculation can use a matching futures candle. This is one
+                // existing endpoint call per candle, not per tick.
+                if (state.symbol === 'NIFTY') {
+                  refreshFuturesVWAP().then(() => {
+                    lastAnalysisKey = null;
+                    scheduleLiveRender(true);
+                  }).catch(() => {});
+                }
+
                 const closedTime =
                   Number(last?.time);
 
