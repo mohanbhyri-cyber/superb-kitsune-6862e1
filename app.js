@@ -9017,12 +9017,17 @@
 
       } finally {
 
-        state.mtf.loading =
-          false;
+        // An older request may finish after the symbol changes or Replay
+        // starts. Do not let that stale request clear/loading-render the
+        // current MTF state or trigger a consensus recomputation.
+        if (state.symbol === requestedSymbol && !state.replay.active) {
+          state.mtf.loading =
+            false;
 
-        renderMTF();
+          renderMTF();
 
-        recomputeAllIndicatorsConsensus?.();
+          recomputeAllIndicatorsConsensus?.();
+        }
       }
     }
 
