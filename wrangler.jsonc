@@ -1,8 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "superb-kitsune-6862e1",
+  "name": "smrt-algo-pro-live",
   "main": "worker.js",
   "compatibility_date": "2026-09-16",
+  "keep_vars": true,
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
