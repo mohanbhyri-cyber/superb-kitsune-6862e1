@@ -2832,19 +2832,7 @@
           error
         );
 
-        // A failed request can also finish after the chart context changes.
-        // Do not let an old failure clear valid futures state for the new
-        // symbol/timeframe or mutate state while Replay is active.
-        if (
-          state.symbol !== requestedSymbol ||
-          state.tf !== requestedTf ||
-          state.replay.active !== requestedReplay ||
-          state.replay.active
-        ) {
-          return;
-        }
 
-        state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
         state.futuresVWAPCandleTime = null;
         state.futuresVolumeConfirmation = null;
