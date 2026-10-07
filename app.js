@@ -1,3 +1,4 @@
+import { marketRequest } from './request-coordinator.js';
 import { liveScalpCall, LiveCallTracker } from './live-scalp-calls.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
@@ -837,7 +838,7 @@ import { momentumSignals } from './momentum.js';
 
     function renderSmartMoneyTools() {
       const samplePreview =
-        new URLSearchParams(window.location.search).get('sample') === '1';
+        false;
 
       const sampleEdge = state.niftyEdge?.latest;
       let structure = state.primeMarket?.structure;
@@ -1991,7 +1992,7 @@ import { momentumSignals } from './momentum.js';
         risk: analyseRisk(finalizer?.plan, {side: finalizer?.side, atr: state.trend?.atr?.[index]}),
         feedStatus: state.feedStatus, quoteTime: state.lastQuoteTime,
         seconds, timeframe: state.tf, symbol: state.symbol,
-        replay: state.replay.active, sample: new URLSearchParams(location.search).get('sample') === '1',
+        replay: state.replay.active, sample: false,
         atr: state.trend?.atr?.[index], ema: state.calc?.e21?.[index], closedTime: state.data[index]?.time
       });
       element.textContent = call.signal === 'WAIT' ? 'WAIT' : `${call.signal} · ${call.score}/100`;
@@ -2067,43 +2068,7 @@ import { momentumSignals } from './momentum.js';
     }
 
 
-    async function upstoxAwareFetch(
-      url,
-      options = {}
-    ) {
-      const response =
-        await fetch(
-          url,
-          options
-        );
-
-      if (response.status !== 429) {
-        return response;
-      }
-
-      const payload =
-        await response.clone()
-          .json()
-          .catch(() => ({}));
-
-      const delay =
-        noteUpstoxRateLimit(
-          payload?.retryAfterMs
-        );
-
-      const error =
-        new Error(
-          payload?.reason ||
-          'Upstox rate limit reached. Waiting before retry.'
-        );
-
-      error.status = 429;
-      error.retryAfterMs = delay;
-      error.rateLimited = true;
-
-      throw error;
-    }
-
+    const upstoxAwareFetch = marketRequest;
 
     function isUpstoxRateLimit(
       error
@@ -2765,7 +2730,7 @@ import { momentumSignals } from './momentum.js';
       state.triggerSignal = confirmedTrigger({
         finalizer: state.tradeFinalizer, consensus: state.allIndicatorsConsensus,
         seconds: Number(intervals[state.tf]), replay: state.replay.active,
-        sample: new URLSearchParams(window.location.search).get('sample') === '1'
+        sample: false
       });
       const trigger = state.triggerSignal || {
         signal: 'WAIT',
@@ -2801,7 +2766,7 @@ import { momentumSignals } from './momentum.js';
       const consensus = state.allIndicatorsConsensus || null;
       const finalizer = state.tradeFinalizer || null;
       const samplePreview =
-        new URLSearchParams(window.location.search).get('sample') === '1';
+        false;
 
       // =========================================================
       // FINAL DISPLAY SIGNAL
@@ -13453,7 +13418,7 @@ import { momentumSignals } from './momentum.js';
     function recomputeAiNifty() {
 
       const samplePreview =
-        new URLSearchParams(window.location.search).get('sample') === '1';
+        false;
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&
@@ -14033,7 +13998,7 @@ import { momentumSignals } from './momentum.js';
 
     function renderTradeFinalizer() {
       const samplePreview =
-        new URLSearchParams(window.location.search).get('sample') === '1';
+        false;
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&

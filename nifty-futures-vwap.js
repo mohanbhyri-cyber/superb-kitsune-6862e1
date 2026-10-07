@@ -1,3 +1,4 @@
+import { serverUpstoxRequest } from './request-coordinator.js';
 // netlify/functions/nifty-futures-vwap.js
 // PRO SCALPER - NIFTY FUTURES SESSION VWAP
 //
@@ -344,7 +345,7 @@ async function loadFuturesCandles(
     interval;
 
   const response =
-    await fetch(endpoint, {
+    await serverUpstoxRequest(endpoint, {
       method: 'GET',
 
       headers: {
@@ -589,6 +590,11 @@ export default async (request) => {
     });
 
   } catch (error) {
+    if (error?.status === 429) return new Response(JSON.stringify({ live: false, source: 'UPSTOX', candles: [],
+      rateLimited: true, retryAfterMs: error.retryAfterMs, reason: error.message }), {
+      status: 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store',
+        'retry-after': String(Math.ceil(error.retryAfterMs / 1000)) }
+    });
 
     console.error(
       'nifty-futures-vwap error:',

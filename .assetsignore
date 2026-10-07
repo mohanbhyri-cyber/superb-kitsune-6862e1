@@ -9,3 +9,10 @@ android
 android/**
 .github
 .github/**
+
+*.test.js
+package*.json
+worker.js
+wrangler.jsonc
+netlify
+netlify/**

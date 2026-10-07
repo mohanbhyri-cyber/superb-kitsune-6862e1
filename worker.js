@@ -1,3 +1,4 @@
+import { serverUpstoxRequest } from './request-coordinator.js';
 // worker.js
 // PRO SCALPER - CLOUDFLARE WORKER
 // Real Upstox data only. No demo/random fallback.
@@ -36,9 +37,12 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
+      ...(status === 429 ? { "retry-after": String(Math.ceil((data.retryAfterMs || 60000) / 1000)) } : {}),
     },
   });
 }
+
+const apiPending = new Map();
 
 async function cachedApiResponse(request, ttlSeconds, loader, context) {
   let cache = null;
@@ -49,11 +53,16 @@ async function cachedApiResponse(request, ttlSeconds, loader, context) {
       const cached = await cache.match(request);
       if (cached) return cached;
     } catch (error) {
+    if (error?.status === 429) throw error;
       console.warn("Edge cache read unavailable", error?.message || error);
     }
   }
 
-  const response = await loader();
+  const key = request.url;
+  if (!apiPending.has(key)) apiPending.set(key, Promise.resolve().then(loader).finally(() => apiPending.delete(key)));
+  const response = (await apiPending.get(key)).clone();
+  const payload = await response.clone().json().catch(() => null);
+  if (payload?.live !== true && payload?.available !== true) return response;
   if (!cache || !response.ok) return response;
 
   const headers = new Headers(response.headers);
@@ -72,6 +81,7 @@ async function cachedApiResponse(request, ttlSeconds, loader, context) {
     if (context?.waitUntil) context.waitUntil(write);
     else await write;
   } catch (error) {
+    if (error?.status === 429) throw error;
     console.warn("Edge cache write unavailable", error?.message || error);
   }
 
@@ -321,98 +331,12 @@ function istDateMinusDays(days) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-// Cooldowns are shared by credential within this Worker instance.
-const upstoxCooldowns = new Map();
-const upstoxResponseCache = new Map();
-const upstoxInFlight = new Map();
-
-function cloneJson(value) {
-  return value == null
-    ? value
-    : JSON.parse(JSON.stringify(value));
-}
-
-function upstoxCacheTtl(endpoint) {
-  if (endpoint.includes('/market-quote/quotes')) return 15000;
-  if (endpoint.includes('/option/chain')) return 60000;
-  if (endpoint.includes('/option/contract')) return 6 * 60 * 60 * 1000;
-  if (endpoint.includes('/historical-candle/')) return 30000;
-  if (endpoint.includes('/instruments/search')) return 6 * 60 * 60 * 1000;
-  return 10000;
-}
-
-function upstoxCooldownError(until) {
-  const error = new Error('Upstox rate limit reached. Waiting before retry.');
-  error.status = 429;
-  error.rateLimited = true;
-  error.retryAfterMs = Math.max(1000, until - Date.now());
-  return error;
-}
 async function upstoxFetch(endpoint, token) {
-  const cacheKey = token + '|' + endpoint;
-  const cached = upstoxResponseCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cloneJson(cached.body);
-  upstoxResponseCache.delete(cacheKey);
-
-  const pending = upstoxInFlight.get(cacheKey);
-  if (pending) return cloneJson(await pending);
-
-  const until = upstoxCooldowns.get(token) || 0;
-  if (until > Date.now()) throw upstoxCooldownError(until);
-  upstoxCooldowns.delete(token);
-  const request = (async () => {
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const details = await response.text().catch(() => "");
-
-      console.error(
-        "Upstox error",
-        response.status,
-        details
-      );
-
-      const error = new Error(
-        `Upstox returned HTTP ${response.status}.`
-      );
-
-      // Preserve HTTP status for all callers
-      error.status = response.status;
-
-      // Special handling for Upstox rate limit
-      error.rateLimited = response.status === 429;
-
-      // Respect Retry-After when Upstox provides it.
-      const retryHeader = response.headers.get('retry-after');
-      const seconds = retryHeader && Number.isFinite(Number(retryHeader))
-        ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
-      error.retryAfterMs = response.status === 429
-        ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
-      if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
-
-      error.details = details;
-
-      throw error;
-    }
-
-    const body = await response.json();
-    upstoxResponseCache.set(cacheKey, {
-      body,
-      expiresAt: Date.now() + upstoxCacheTtl(endpoint)
-    });
-    return body;
-  })().finally(() => {
-    upstoxInFlight.delete(cacheKey);
+  const response = await serverUpstoxRequest(endpoint, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   });
-
-  upstoxInFlight.set(cacheKey, request);
-  return cloneJson(await request);
+  if (!response.ok) throw Object.assign(new Error(`Upstox returned HTTP ${response.status}.`), { status: response.status });
+  return response.json();
 }
 // ----------------------------------------------------
 // LIVE QUOTE
@@ -523,6 +447,7 @@ async function liveQuote(url, token) {
         Date.now(),
     });
   } catch (error) {
+    if (error?.status === 429) throw error;
   if (
     error?.rateLimited === true ||
     error?.status === 429
@@ -540,82 +465,6 @@ async function liveQuote(url, token) {
       reason: "Upstox rate limit reached. Waiting before retry.",
     }, 429);
   }
-
-  console.warn(
-    "Primary live quote failed, using intraday fallback",
-    error?.message || error
-  );
-
-    try {
-      const fallbackEndpoint =
-        "https://api.upstox.com/v3/historical-candle/intraday/" +
-        encodeURIComponent(instrumentKey) +
-        "/minutes/1";
-
-      const fallbackBody =
-        await upstoxFetch(
-          fallbackEndpoint,
-          token
-        );
-
-      const rows =
-        Array.isArray(
-          fallbackBody?.data?.candles
-        )
-          ? fallbackBody.data.candles
-          : [];
-
-      const candles =
-        rows
-          .map(normalizeCandle)
-          .filter(Boolean)
-          .sort(
-            (x, y) =>
-              x.time - y.time
-          );
-
-      const latest =
-        candles.at(-1);
-
-      if (latest) {
-        return json({
-          live: true,
-          source:
-            "UPSTOX_INTRADAY_FALLBACK",
-          symbol,
-          instrumentKey,
-          price:
-            latest.close,
-          netChange:
-            null,
-          previousClose:
-            null,
-          changePercent:
-            null,
-          sessionOpen:
-            candles[0]?.open ?? null,
-          volume:
-            latest.volume || 0,
-          time:
-            latest.time,
-          timestamp:
-            latest.time * 1000,
-          fallback:
-            true,
-          primaryError:
-            error?.message ||
-            "Primary quote unavailable.",
-        });
-      }
-    } catch (
-      fallbackError
-    ) {
-      console.warn(
-        "Intraday live quote fallback failed",
-        fallbackError?.message ||
-        fallbackError
-      );
-    }
 
     return json({
       live: false,
@@ -688,6 +537,7 @@ async function previousTradingSession(
         };
       }
     } catch (error) {
+    if (error?.status === 429) throw error;
   // IMPORTANT: stop immediately when Upstox rate-limits us.
   // Do not continue requesting additional previous dates.
   if (
@@ -791,6 +641,7 @@ async function intradayHistory(url, token) {
           intradayBody.data.candles;
       }
    } catch (error) {
+    if (error?.status === 429) throw error;
   if (
     error?.rateLimited === true ||
     error?.status === 429
@@ -823,6 +674,7 @@ async function intradayHistory(url, token) {
             historicalTodayBody.data.candles;
         }
        } catch (error) {
+    if (error?.status === 429) throw error;
   if (
     error?.rateLimited === true ||
     error?.status === 429
@@ -921,6 +773,7 @@ if (todayCandles.length < 260) {
         previousSession.candles;
     }
   } catch (error) {
+    if (error?.status === 429) throw error;
     if (
       error?.rateLimited === true ||
       error?.status === 429
@@ -997,6 +850,7 @@ let candles = [
       candles,
     });
   } catch (error) {
+    if (error?.status === 429) throw error;
   if (
     error?.rateLimited === true ||
     error?.status === 429
@@ -1165,6 +1019,7 @@ try {
     value: intradayBody
   });
 } catch (error) {
+    if (error?.status === 429) throw error;
   // Never make another Upstox request after HTTP 429.
   if (
     error?.rateLimited === true ||
@@ -1280,6 +1135,7 @@ const trimmed =
         trimmed,
     });
   } catch (error) {
+    if (error?.status === 429) throw error;
   if (
     error?.rateLimited === true ||
     error?.status === 429
@@ -1688,6 +1544,7 @@ async function futuresVWAP(url, token) {
         latest.time,
     });
   } catch (error) {
+    if (error?.status === 429) throw error;
     console.error(
       "Futures VWAP error",
       error
@@ -2513,6 +2370,7 @@ async function niftyDailyHistory(url, token) {
     });
 
   } catch (error) {
+    if (error?.status === 429) throw error;
     return json({
       live: false,
       source:
@@ -2564,6 +2422,7 @@ async function niftyBreadth(token) {
           encodeURIComponent(constituentKeys.join(',')), token);
         return summarizeBreadth(quotes.data, constituentKeys);
       } catch (error) {
+    if (error?.status === 429) throw error;
         return { live: false, reason: error.message };
       }
     })().then(result => {
@@ -2599,6 +2458,7 @@ async function niftyOptions(token) {
           encodeURIComponent(SYMBOLS.NIFTY) + '&expiry_date=' + optionsExpiry, token);
         return summarizeOptions(chain.data, optionsExpiry);
       } catch (error) {
+    if (error?.status === 429) throw error;
         return { available: false, live: false, reason: error.message };
       }
     })().then(result => {
@@ -2612,6 +2472,15 @@ async function niftyOptions(token) {
 
 export default {
   async fetch(request, env, context) {
+    try { return await routeRequest(request, env, context); }
+    catch (error) {
+      return json({ live: false, available: false, source: 'UPSTOX', candles: [],
+        rateLimited: error?.status === 429, retryAfterMs: error?.retryAfterMs || 0,
+        reason: error?.message || 'Live market data unavailable' }, error?.status === 429 ? 429 : 503);
+    }
+  }
+};
+async function routeRequest(request, env, context) {
     const url =
       new URL(request.url);
 
@@ -2707,6 +2576,7 @@ export default {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
+    if (error?.status === 429) throw error;
         return json({
           live: false,
           source: "UPSTOX",
@@ -2858,5 +2728,4 @@ export default {
         },
       }
     );
-  },
-};
+}

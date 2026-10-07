@@ -1,3 +1,4 @@
+import { serverUpstoxRequest } from './request-coordinator.js';
 // netlify/functions/live-quote.js
 // PRO SCALPER - REAL UPSTOX LIVE QUOTE
 // No demo/random fallback.
@@ -52,7 +53,7 @@ export default async (request) => {
       '?instrument_key=' +
       encodeURIComponent(instrumentKey);
 
-    const response = await fetch(endpoint, {
+    const response = await serverUpstoxRequest(endpoint, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -108,6 +109,11 @@ export default async (request) => {
     });
 
   } catch (error) {
+    if (error?.status === 429) return new Response(JSON.stringify({ live: false, source: 'UPSTOX', candles: [],
+      rateLimited: true, retryAfterMs: error.retryAfterMs, reason: error.message }), {
+      status: 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store',
+        'retry-after': String(Math.ceil(error.retryAfterMs / 1000)) }
+    });
     console.error(
       'live-quote error:',
       error
