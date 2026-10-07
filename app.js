@@ -13878,6 +13878,11 @@
 
 
     async function refreshGlobalWatch() {
+      const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedReplay = state.replay.active;
+
+      if (requestedReplay) return;
 
       try {
         const response =
@@ -13899,6 +13904,15 @@
         const payload =
           await response.json();
 
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
+
         state.globalWatch =
           analyseGlobalWatch(
             payload
@@ -13916,6 +13930,15 @@
           '24/7 Global Watch unavailable:',
           error
         );
+
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
 
         state.globalWatch =
           null;
