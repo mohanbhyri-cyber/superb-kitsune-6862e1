@@ -778,13 +778,15 @@
       const opposingZones = qualified
         .filter(z => side !== 0 && z.side === -side)
         .sort((a, b) => side === 1 ? Number(a.low) - Number(b.low) : Number(b.high) - Number(a.high));
-      const nearestOpposing = opposingZones.find(z =>
-        side === 1 ? Number(z.low) > Number(plan?.entry) : Number(z.high) < Number(plan?.entry)
-      ) || null;
-      const target1Clear = validPlan && (!nearestOpposing ||
-        (side === 1
-          ? Number(plan.target1) <= Number(nearestOpposing.low)
-          : Number(plan.target1) >= Number(nearestOpposing.high)));
+      // Only treat an opposing zone as a T1 obstacle when its near edge
+      // actually lies between entry and Target 1. Zones beyond T1 are not blockers.
+      const nearestOpposing = validPlan ? opposingZones.find(z => {
+        const edge = Number(side === 1 ? z.low : z.high);
+        return side === 1
+          ? edge > Number(plan.entry) && edge < Number(plan.target1)
+          : edge < Number(plan.entry) && edge > Number(plan.target1);
+      }) || null : null;
+      const target1Clear = validPlan && !nearestOpposing;
       result.targetStructure = {
         clear: !!target1Clear,
         opposingPrice: nearestOpposing
