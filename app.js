@@ -1527,85 +1527,86 @@
         panel.style.cssText = 'padding:16px;margin:12px 0;border:1px solid var(--line,#445);border-radius:10px';
         anchor.before(panel);
       }
+
       const p = state.primeMarket;
       panel.replaceChildren();
 
-      // NSE NIFTY 50 regular equity session: 09:15–15:30 IST.
-      // This is a display/status guard only. It never relaxes candle freshness.
-      const nowIstParts =
-        new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Kolkata',
-          weekday: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }).formatToParts(new Date());
+      const add = (tag, text, className = '') => {
+        const el = document.createElement(tag);
+        el.textContent = text;
+        if (className) el.className = className;
+        panel.append(el);
+        return el;
+      };
+      const sideClass = side => side === 1 ? 'up' : side === -1 ? 'down' : 'muted';
+      const sideText = side => side === 1 ? 'BULLISH' : side === -1 ? 'BEARISH' : 'WAIT';
+      const price = value => primeFinite(value)
+        ? Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
 
-      const istPart = type =>
-        nowIstParts.find(part => part.type === type)?.value;
-
+      const nowIstParts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit',
+        minute: '2-digit', hour12: false
+      }).formatToParts(new Date());
+      const istPart = type => nowIstParts.find(part => part.type === type)?.value;
       const istWeekday = istPart('weekday');
-      const istMinutes =
-        Number(istPart('hour')) * 60 +
-        Number(istPart('minute'));
+      const istMinutes = Number(istPart('hour')) * 60 + Number(istPart('minute'));
+      const regularSessionOpen = !['Sat', 'Sun'].includes(istWeekday) &&
+        istMinutes >= 9 * 60 + 15 && istMinutes < 15 * 60 + 30;
+      const latestClosedTime = Number(p?.time);
+      const closedAgeMinutes = primeFinite(latestClosedTime)
+        ? Math.max(0, Math.round((Date.now() / 1000 - latestClosedTime) / 60))
+        : null;
+      const staleClosedCandle = Number.isFinite(closedAgeMinutes) &&
+        closedAgeMinutes > Math.max(Math.round(Number(intervals[state.tf] || 60) / 60) * 3, 15);
 
-      const regularWeekday =
-        !['Sat', 'Sun'].includes(istWeekday);
-
-      const regularSessionOpen =
-        regularWeekday &&
-        istMinutes >= 9 * 60 + 15 &&
-        istMinutes < 15 * 60 + 30;
-
-      const latestClosedTime =
-        Number(p?.time);
-
-      const closedAgeMinutes =
-        primeFinite(latestClosedTime)
-          ? Math.max(
-              0,
-              Math.round(
-                (
-                  Date.now() / 1000 -
-                  latestClosedTime
-                ) / 60
-              )
-            )
-          : null;
-
-      const staleClosedCandle =
-        Number.isFinite(closedAgeMinutes) &&
-        closedAgeMinutes >
-          Math.max(
-            Math.round(
-              Number(intervals[state.tf] || 60) /
-              60
-            ) * 3,
-            15
-          );
-
-      const status =
-        document.createElement('div');
-
-      status.style.cssText =
-        'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
-
-      status.textContent =
+      const status = add('div',
         !regularSessionOpen
           ? 'MARKET CLOSED · Historical/closed-candle analysis only · NO LIVE TRADE'
           : staleClosedCandle
-            ? 'STALE DATA · Last closed candle ' +
-              closedAgeMinutes +
-              ' min old · NO LIVE TRADE'
-            : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT';
+            ? 'STALE DATA · Last closed candle ' + closedAgeMinutes + ' min old · NO LIVE TRADE'
+            : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT',
+        regularSessionOpen && !staleClosedCandle ? 'up' : 'muted');
+      status.style.cssText = 'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
 
-      status.className =
-        regularSessionOpen &&
-        !staleClosedCandle
-          ? 'up'
-          : 'muted';
+      add('h2', 'Prime Market Confirmation');
+      if (!p) {
+        add('p', 'WAIT · Loading confirmed closed-candle data', 'muted');
+        return;
+      }
 
-      panel.append(status);
+      add('h3', p.signal || 'NO TRADE', sideClass(p.side));
+      const structure = p.structure;
+      const lastEvent = structure?.events?.at(-1);
+      add('p', 'Structure: ' + sideText(structure?.direction) +
+        (lastEvent ? ' · ' + lastEvent.type + ' @ ' + price(lastEvent.level) : ' · No recent BOS/CHoCH/MSS'),
+        sideClass(structure?.direction));
+      add('p', 'Range: ' + price(structure?.low?.price) + ' – ' + price(structure?.high?.price) +
+        ' · EQ ' + price(structure?.equilibrium) + ' · ' + (structure?.zone || 'UNAVAILABLE'), 'muted');
+
+      const volume = p.volume;
+      const pressure = primeFinite(volume?.pressure) ? (Number(volume.pressure) * 100).toFixed(0) + '%' : '—';
+      const relative = primeFinite(volume?.relative) ? Number(volume.relative).toFixed(2) + 'x' : '—';
+      add('p', 'Volume: ' + (volume?.available ? 'OHLCV proxy' : 'UNAVAILABLE') +
+        ' · Pressure ' + pressure + ' · Relative ' + relative, 'muted');
+
+      add('h3', 'MTF confirmation');
+      for (const tf of ['5m', '15m', '1h']) {
+        const row = p.mtf?.[tf];
+        add('p', tf + ': ' + sideText(row?.side) +
+          ' · Structure ' + sideText(row?.structure) +
+          (row?.fresh ? ' · ALIGNED' : ' · ' + (row?.error || 'WAIT')), sideClass(row?.side));
+      }
+
+      add('h3', 'Confirmation checks');
+      const checks = Array.isArray(p.checks) ? p.checks : [];
+      if (!checks.length) add('p', 'WAIT · Confirmation checks unavailable', 'muted');
+      for (const item of checks) add('p', (item.ok ? '✓ ' : '✕ ') + item.name, item.ok ? 'up' : 'muted');
+
+      if (Array.isArray(p.reasons) && p.reasons.length) {
+        add('h3', 'Blocking reasons');
+        for (const reason of p.reasons.slice(0, 12)) add('p', '• ' + reason, 'muted');
+      }
     }
 
     function setText(selector, value) {
