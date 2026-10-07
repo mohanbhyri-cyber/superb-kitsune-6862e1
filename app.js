@@ -15962,9 +15962,14 @@
       const ema20=emaLast(closes,20);
       const keltner=finite(ema20)&&finite(atr10)?{mid:ema20,upper:ema20+2*atr10,lower:ema20-2*atr10}:null;
       let cci=null; if(n>=20){const tp=rows.map(x=>(Number(x.high)+Number(x.low)+Number(x.close))/3), m=sma(tp,20); const last20=tp.slice(-20); const md=last20.reduce((s,v)=>s+Math.abs(v-m),0)/20; if(md>0) cci=(tp.at(-1)-m)/(0.015*md);}
-      let mfi=null; if(n>=15){let pos=0,neg=0; for(let i=n-14;i<n;i++){const t=(rows[i].high+rows[i].low+rows[i].close)/3,p=(rows[i-1].high+rows[i-1].low+rows[i-1].close)/3,flow=t*Number(rows[i].volume||0); if(t>p)pos+=flow; else if(t<p)neg+=flow;} if(pos+neg>0)mfi=neg===0?100:100-(100/(1+pos/neg));}
-      let cmf=null; if(n>=20){let mfv=0,vol=0; for(const x of rows.slice(-20)){const v=Number(x.volume||0),range=Number(x.high)-Number(x.low); if(range>0&&v>0){mfv+=(((x.close-x.low)-(x.high-x.close))/range)*v;vol+=v;}} if(vol>0)cmf=mfv/vol;}
-      let obv=null; if(n>=2){let v=0,used=false; for(let i=1;i<n;i++){const q=Number(rows[i].volume||0); if(q>0){used=true;v+=rows[i].close>rows[i-1].close?q:rows[i].close<rows[i-1].close?-q:0;}} if(used)obv=v;}
+      // NIFTY is a cash index, so its candle volume must not be treated as
+      // exchange-traded volume. Volume indicators fail closed unless this
+      // chart is explicitly backed by a trusted traded-volume instrument.
+      const trustedChartVolume = state.symbol !== 'NIFTY' && rows.length > 0 &&
+        rows.slice(-20).every(x => Number.isFinite(Number(x.volume)) && Number(x.volume) > 0);
+      let mfi=null; if(trustedChartVolume&&n>=15){let pos=0,neg=0; for(let i=n-14;i<n;i++){const t=(rows[i].high+rows[i].low+rows[i].close)/3,p=(rows[i-1].high+rows[i-1].low+rows[i-1].close)/3,flow=t*Number(rows[i].volume); if(t>p)pos+=flow; else if(t<p)neg+=flow;} if(pos+neg>0)mfi=neg===0?100:100-(100/(1+pos/neg));}
+      let cmf=null; if(trustedChartVolume&&n>=20){let mfv=0,vol=0; for(const x of rows.slice(-20)){const v=Number(x.volume),range=Number(x.high)-Number(x.low); if(range>0&&v>0){mfv+=(((x.close-x.low)-(x.high-x.close))/range)*v;vol+=v;}} if(vol>0)cmf=mfv/vol;}
+      let obv=null; if(trustedChartVolume&&n>=2){let v=0; for(let i=1;i<n;i++){const q=Number(rows[i].volume);v+=rows[i].close>rows[i-1].close?q:rows[i].close<rows[i-1].close?-q:0;} obv=v;}
       let aroonUp=null,aroonDown=null; if(n>=25){const w=rows.slice(-25); let hi=0,lo=0; for(let i=1;i<w.length;i++){if(w[i].high>=w[hi].high)hi=i;if(w[i].low<=w[lo].low)lo=i;} aroonUp=100*(24-(24-hi))/24; aroonDown=100*(24-(24-lo))/24;}
       let chop=null; if(n>=14&&finite(atr14)){const w=rows.slice(-14),hh=Math.max(...w.map(x=>x.high)),ll=Math.min(...w.map(x=>x.low)),sumtr=tr.slice(-14).reduce((a,b)=>a+b,0); if(hh>ll&&sumtr>0)chop=100*Math.log10(sumtr/(hh-ll))/Math.log10(14);}
       let cpr=null; if(previousRows.length){const ph=Math.max(...previousRows.map(r=>Number(r.candle.high))),pl=Math.min(...previousRows.map(r=>Number(r.candle.low))),pc=Number(previousRows.at(-1).candle.close); const pivot=(ph+pl+pc)/3,bc=(ph+pl)/2,tc=2*pivot-bc;cpr={pivot,bc:Math.min(bc,tc),tc:Math.max(bc,tc)};}
