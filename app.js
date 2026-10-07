@@ -2832,6 +2832,17 @@
           error
         );
 
+        // A failed older request must not clear valid futures state belonging
+        // to a newer symbol/timeframe or a Replay session.
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
+
         state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
         state.futuresVWAPCandleTime = null;
