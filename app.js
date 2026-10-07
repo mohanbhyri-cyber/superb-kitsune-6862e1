@@ -472,12 +472,25 @@
       check('Premium / discount', side === 1 ? s.zone === 'DISCOUNT' : side === -1 && s.zone === 'PREMIUM',
         'Long requires discount; short requires premium in confirmed swing range');
       const active = [...s.blocks, ...s.gaps].filter(z => z.active);
-      const touches = active.filter(z => z.touched !== null && index - z.touched <= 3);
+      const zoneQuality = z => {
+        const width = Number(z.high) - Number(z.low);
+        const age = index - Number(z.created);
+        const aligned = z.side === s.direction;
+        const fresh = z.status === 'FRESH' && z.touched === null;
+        const recentTouch = z.touched !== null && index - Number(z.touched) <= 3;
+        const atrFit = primeFinite(s.atr) && s.atr > 0 && width > 0 && width <= s.atr * 1.5;
+        const score = (aligned ? 2 : 0) + (fresh ? 2 : recentTouch ? 1 : 0) +
+          (atrFit ? 2 : 0) + (age >= 0 && age <= 40 ? 2 : age <= 80 ? 1 : 0);
+        return { score, grade: score >= 7 ? 'A' : score >= 5 ? 'B' : 'C', recentTouch };
+      };
+      for (const z of active) Object.assign(z, { quality: zoneQuality(z) });
+      const qualified = active.filter(z => z.quality?.score >= 5);
+      const touches = qualified.filter(z => z.quality?.recentTouch);
       const recentSweeps = s.sweeps.filter(e => index - e.index <= 3);
-      check('Order block / FVG / liquidity', side !== 0 &&
+      check('Quality OB / FVG / liquidity', side !== 0 &&
         (touches.some(z => z.side === side) || recentSweeps.some(e => e.side === side)) &&
         !touches.some(z => z.side === -side) && !recentSweeps.some(e => e.side === -side),
-        'Smart-money context absent or conflicting');
+        'No Grade A/B Order Block or FVG retest with aligned liquidity context');
       const sample = c.slice(-21), volumesValid = sample.every(b => primeFinite(b.volume) && Number(b.volume) > 0);
       let pressure = null, relative = null;
       if (volumesValid) {
@@ -1620,6 +1633,15 @@
         sideClass(structure?.direction));
       add('p', 'Range: ' + price(structure?.low?.price) + ' – ' + price(structure?.high?.price) +
         ' · EQ ' + price(structure?.equilibrium) + ' · ' + (structure?.zone || 'UNAVAILABLE'), 'muted');
+      const qualityZones = [...(structure?.blocks || []), ...(structure?.gaps || [])]
+        .filter(z => z.active && z.quality)
+        .sort((a, b) => (b.quality?.score || 0) - (a.quality?.score || 0));
+      if (qualityZones.length) {
+        const best = qualityZones[0];
+        add('p', 'Best zone: ' + best.kind + ' · Grade ' + best.quality.grade +
+          ' (' + best.quality.score + '/8) · ' + price(best.low) + ' – ' + price(best.high),
+          best.quality.score >= 5 ? 'up' : 'muted');
+      }
 
       const volume = p.volume;
       const pressure = primeFinite(volume?.pressure) ? (Number(volume.pressure) * 100).toFixed(0) + '%' : '—';
