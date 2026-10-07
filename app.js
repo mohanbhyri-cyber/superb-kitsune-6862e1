@@ -634,11 +634,27 @@
       check('Trade Finalizer', legacy.finalizer?.time === last.time && side !== 0 && primeSide(legacy.finalizer?.state) === side,
         'Trade Finalizer is unavailable or not aligned', false);
       const plan = legacy.finalizer?.plan;
-      check('Closed-candle trade plan', plan && ['entry', 'stop', 'target1', 'target2', 'target3'].every(k => primeFinite(plan[k]) && Number(plan[k]) > 0) &&
+      const validPlan = plan && ['entry', 'stop', 'target1', 'target2', 'target3']
+        .every(k => primeFinite(plan[k]) && Number(plan[k]) > 0) &&
         side !== 0 && (Number(plan.entry) - Number(plan.stop)) * side > 0 &&
         (Number(plan.target1) - Number(plan.entry)) * side > 0 &&
         (Number(plan.target2) - Number(plan.target1)) * side > 0 &&
-        (Number(plan.target3) - Number(plan.target2)) * side > 0);
+        (Number(plan.target3) - Number(plan.target2)) * side > 0;
+      check('Closed-candle trade plan', validPlan);
+      const risk = validPlan ? Math.abs(Number(plan.entry) - Number(plan.stop)) : null;
+      const reward = target => validPlan && risk > 0
+        ? Math.abs(Number(plan[target]) - Number(plan.entry)) / risk
+        : null;
+      result.riskReward = {
+        risk,
+        target1: reward('target1'),
+        target2: reward('target2'),
+        target3: reward('target3'),
+        minimumTarget1: 1.5
+      };
+      check('Risk / reward ≥ 1:1.5 at Target 1',
+        validPlan && primeFinite(result.riskReward.target1) && result.riskReward.target1 >= 1.5,
+        validPlan ? 'Target 1 reward is below 1.5x stop risk' : 'Risk/reward unavailable until trade plan is valid');
       check('All Indicators Consensus', side !== 0 && primeSide(legacy.consensus?.signal) === side &&
         legacy.consensus?.opposingCount === 0 && legacy.consensus?.votes?.length > 0 &&
         legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting', false);
@@ -1667,6 +1683,16 @@
       } else if (tech?.error) {
         add('h3', 'Technical confirmation');
         add('p', tech.error, 'muted');
+      }
+
+      const rr = p.riskReward;
+      if (rr) {
+        const rrText = value => primeFinite(value) ? '1:' + Number(value).toFixed(2) : '—';
+        add('h3', 'Risk / reward');
+        add('p', 'T1 ' + rrText(rr.target1) + ' · T2 ' + rrText(rr.target2) +
+          ' · T3 ' + rrText(rr.target3) + ' · Minimum T1 1:' +
+          Number(rr.minimumTarget1 || 1.5).toFixed(2),
+          primeFinite(rr.target1) && rr.target1 >= Number(rr.minimumTarget1 || 1.5) ? 'up' : 'muted');
       }
 
       add('h3', 'MTF confirmation');
