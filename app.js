@@ -1,3 +1,4 @@
+import { liveScalpCall, LiveCallTracker } from './live-scalp-calls.js';
 import { confirmedTrigger } from './confirmed-trigger.js';
 import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
@@ -820,6 +821,8 @@ import { momentumSignals } from './momentum.js';
 
       state.liveTradeFinalizer =
         state.tradeFinalizer;
+
+      renderLiveCalls();
 
       // ==========================================================
       // DISPLAY
@@ -1653,6 +1656,18 @@ import { momentumSignals } from './momentum.js';
     };
 
 
+    // Apply the requested fast scalping profile once; later user changes persist.
+    if (read('smrt-scalping-profile-v1', false) !== true) {
+      save('stride-sensitivity', 'fast');
+      save('stride-scalper', true);
+      save('stride-scalper-alerts', false);
+      save('stride-momentum-alerts', false);
+      save('stride-signal-alerts-enabled', false);
+      save('smrt-live-calls-enabled', true);
+      save('smrt-entry-timeframe', '3m');
+      save('smrt-scalping-profile-v1', true);
+    }
+
     const paNames = [
       'Structure',
       'Swings',
@@ -1707,7 +1722,7 @@ import { momentumSignals } from './momentum.js';
 
       symbol: 'NIFTY',
 
-      tf: '5m',
+      tf: ['1m','3m','5m','15m'].includes(read('smrt-entry-timeframe', '3m')) ? read('smrt-entry-timeframe', '3m') : '3m',
 
       tvChartMode: 'tradingview',
 
@@ -1927,6 +1942,72 @@ import { momentumSignals } from './momentum.js';
         []
       );
 
+
+    let liveCallsEnabled = read('smrt-live-calls-enabled', true) === true;
+    const liveCallTracker = new LiveCallTracker(read('smrt-live-calls-sent', []));
+
+    function setupLiveCalls() {
+      const host = $('#scalp-enable')?.closest('.scalp-panel');
+      if (!host || $('#live-call-state')) return;
+      const section = document.createElement('section');
+      section.className = 'scalp-panel';
+      section.innerHTML = `<div class="panel-heading"><h2>Confirmed live calls <span class="tag">UPSTOX</span></h2><label class="signal-switch"><input type="checkbox" id="live-call-enable">Alerts</label></div>
+        <p>Fast scalping · 1m/3m entries · 5m/15m/1h confirmation</p>
+        <strong id="live-call-state" class="muted">WAIT</strong>
+        <p id="live-call-reason">Waiting for real closed-candle confirmation</p>
+        <p id="live-call-plan">Entry — · Stop — · T1 — · T2 — · T3 —</p>
+        <small>Levels are NIFTY index points. Confidence is confluence, not win probability. Calls appear only with fresh data; alerts require an open app.</small>
+        <details><summary>Scalping settings</summary><p>Fast Stride sensitivity (1.5× ATR), EMA 9/21/50/200, RSI 14, MACD 12/26/9, Supertrend 10/3, ADX/DMI 14 and ATR 14. Existing indicator calculations and confirmation thresholds stay active. Calls additionally require confidence ≥80, Risk Engine GOOD, T3 ≥2R and EMA 21 distance ≤1.5 ATR. Missing volume stays unavailable. Alerts have a 3-minute cooldown.</p><button type="button" id="apply-scalping-profile">Apply fast scalping settings</button></details>`;
+      host.insertAdjacentElement('afterend', section);
+      $('#live-call-enable').checked = liveCallsEnabled;
+      $('#live-call-enable').onchange = () => {
+        liveCallsEnabled = $('#live-call-enable').checked;
+        save('smrt-live-calls-enabled', liveCallsEnabled);
+        liveCallTracker.baselines.clear();
+        renderLiveCalls();
+      };
+      $('#apply-scalping-profile').onclick = () => {
+        state.signalSensitivity = 'fast'; scalpEnabled = true;
+        scalpAlerts = false; momentumAlerts = false; signalAlertsEnabled = false;
+        save('stride-sensitivity', 'fast'); save('stride-scalper', true);
+        save('stride-scalper-alerts', false); save('stride-momentum-alerts', false); save('stride-signal-alerts-enabled', false);
+        if ($('#signal-sensitivity')) $('#signal-sensitivity').value = 'fast';
+        if ($('#scalp-enable')) $('#scalp-enable').checked = true;
+        if ($('#scalp-alerts')) $('#scalp-alerts').checked = false;
+        if ($('#momentum-alerts')) $('#momentum-alerts').checked = false;
+        state.tf = '3m'; save('smrt-entry-timeframe', state.tf);
+        liveCallTracker.baselines.clear(); loadData();
+      };
+    }
+
+    function renderLiveCalls() {
+      const element = $('#live-call-state');
+      if (!element) return;
+      const seconds = Number(intervals[state.tf]);
+      const index = lastClosedCandleIndex(state.data, seconds, Date.now()/1000);
+      const finalizer = state.tradeFinalizer;
+      const call = liveScalpCall({
+        finalizer, consensus: state.allIndicatorsConsensus,
+        risk: analyseRisk(finalizer?.plan, {side: finalizer?.side, atr: state.trend?.atr?.[index]}),
+        feedStatus: state.feedStatus, quoteTime: state.lastQuoteTime,
+        seconds, timeframe: state.tf, symbol: state.symbol,
+        replay: state.replay.active, sample: new URLSearchParams(location.search).get('sample') === '1',
+        atr: state.trend?.atr?.[index], ema: state.calc?.e21?.[index], closedTime: state.data[index]?.time
+      });
+      element.textContent = call.signal === 'WAIT' ? 'WAIT' : `${call.signal} · ${call.score}/100`;
+      element.className = call.side === 1 ? 'up' : call.side === -1 ? 'down' : 'muted';
+      $('#live-call-reason').textContent = call.reason;
+      const plan = call.plan;
+      $('#live-call-plan').textContent = plan ? `Entry ${fmt(plan.entry)} · Stop ${fmt(plan.stop)} · T1 ${fmt(plan.target1)} · T2 ${fmt(plan.target2)} · T3 ${fmt(plan.target3)} · T3 ${call.rr.toFixed(2)}R` : 'Entry — · Stop — · T1 — · T2 — · T3 —';
+      const event = liveCallTracker.collect(call, {context: `${state.symbol}:${state.tf}`,closedTime: state.data[index]?.time,enabled:liveCallsEnabled});
+      if (!event) return;
+      save('smrt-live-calls-sent', liveCallTracker.sent);
+      const text = `${event.signal} · ${current().name} ${state.tf} · Entry ${fmt(plan.entry)} · SL ${fmt(plan.stop)} · T1 ${fmt(plan.target1)} · T2 ${fmt(plan.target2)} · T3 ${fmt(plan.target3)}`;
+      signalHistory.unshift({source:'Confirmed live call',side:event.side===1?'Buy':'Sell',name:current().name,tf:state.tf,time:event.time,price:plan.entry,stop:plan.stop,target1:plan.target1,target2:plan.target2,target3:plan.target3});
+      signalHistory.splice(20); save('stride-signal-history',signalHistory);
+      toast(text); renderSignalAlerts();
+      if ('Notification' in window && Notification.permission === 'granted') showSignalNotification('Confirmed live Upstox call',text);
+    }
 
     let unsubscribe;
 
@@ -8386,6 +8467,8 @@ import { momentumSignals } from './momentum.js';
 
 
     async function loadData() {
+      save('smrt-entry-timeframe', state.tf);
+      state.lastQuoteTime = null;
       state.rawTradeFinalizer = null;
       state.tradeFinalizer = null;
       state.liveTradeFinalizer = null;
@@ -8872,6 +8955,8 @@ import { momentumSignals } from './momentum.js';
                       1000
                     );
 
+
+              state.lastQuoteTime = tick.time != null && tick.time !== '' && Number.isFinite(Number(tick.time)) ? Number(tick.time) : null;
 
               const seconds =
                 intervals[
@@ -9369,6 +9454,8 @@ import { momentumSignals } from './momentum.js';
       () => {};
 
 
+    setupLiveCalls();
+    setInterval(renderLiveCalls, 5000);
     loadData();
 
     setupAllIndicatorsChat();
@@ -11840,6 +11927,9 @@ import { momentumSignals } from './momentum.js';
             alert.price
           );
 
+
+        if (alert.source === 'Confirmed live call') text.textContent +=
+          ` · SL ${fmt(alert.stop)} · T1 ${fmt(alert.target1)} · T2 ${fmt(alert.target2)} · T3 ${fmt(alert.target3)}`;
 
         text.className =
           alert.side === 'Buy'
