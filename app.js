@@ -706,9 +706,20 @@
       check('All Indicators Consensus', side !== 0 && primeSide(legacy.consensus?.signal) === side &&
         legacy.consensus?.opposingCount === 0 && legacy.consensus?.votes?.length > 0 &&
         legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting', false);
-      for (const [name, value] of [['AI Nifty', legacy.aiNifty?.signal], ['Global Watch', legacy.globalWatch?.bias]]) {
+      for (const [name, source, value] of [
+        ['AI Nifty', legacy.aiNifty, legacy.aiNifty?.signal],
+        ['Global Watch', legacy.globalWatch, legacy.globalWatch?.bias]
+      ]) {
         const vote = primeSide(value);
-        check(name + ' conflict veto', !vote || vote === side, name + ' conflicts with closed-candle evidence');
+        const sourceTime = Number(source?.time ?? source?.updated ?? source?.updatedAt);
+        const timed = primeFinite(sourceTime);
+        const fresh = timed && sourceTime <= last.time && last.time - sourceTime <= Math.max(seconds * 3, 900);
+        // Untimestamped/stale auxiliary outputs are never allowed to veto a fresh closed-candle setup.
+        const conflict = fresh && vote !== 0 && vote === -side;
+        check(name + ' conflict veto', !conflict,
+          conflict ? name + ' conflicts with closed-candle evidence' : null);
+        check(name + ' freshness', fresh,
+          timed ? name + ' is stale or ahead of the closed candle' : name + ' timestamp unavailable', false);
       }
       if (side && result.checks.filter(x => x.required !== false).every(x => x.ok)) {
         result.side = side;
