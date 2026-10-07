@@ -6778,7 +6778,7 @@
 
 
       const plot =
-        w - 62;
+        w - 68;
 
 
       const n =
@@ -9643,7 +9643,7 @@
       );
 
     setChartView(
-      'tradingview'
+      'classic'
     );
 
     runSmrtDiagnostics();
