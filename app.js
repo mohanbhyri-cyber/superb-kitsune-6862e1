@@ -381,7 +381,7 @@
       };
     }
 
-    function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, replay = false }) {
+    function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, futuresVolume = null, replay = false }) {
       const result = { signal: 'NO TRADE', side: 0, reasons: [], checks: [], structure: null,
         volume: null, mtf: {}, time: null };
       const check = (name, ok, reason) => {
@@ -478,9 +478,28 @@
           (b.high > b.low ? (2 * b.close - b.high - b.low) / (b.high - b.low) : 0), 0) / total;
         relative = Number(last.volume) / (sample.slice(0, -1).reduce((a, b) => a + Number(b.volume), 0) / 20);
       }
-      result.volume = { available: volumesValid, pressure, relative, source: 'Candle OHLCV proxy; not bid/ask delta' };
-      check('Volume pressure', volumesValid && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
-        volumesValid ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
+      const genuineFuturesVolume =
+        !volumesValid &&
+        futuresVolume?.available === true &&
+        primeFinite(futuresVolume.pressure) &&
+        primeFinite(futuresVolume.relative)
+          ? futuresVolume
+          : null;
+      if (genuineFuturesVolume) {
+        pressure = Number(genuineFuturesVolume.pressure);
+        relative = Number(genuineFuturesVolume.relative);
+      }
+      const volumeAvailable = volumesValid || !!genuineFuturesVolume;
+      result.volume = {
+        available: volumeAvailable,
+        pressure,
+        relative,
+        source: volumesValid
+          ? 'Candle OHLCV proxy; not bid/ask delta'
+          : genuineFuturesVolume?.source || 'Volume unavailable'
+      };
+      check('Volume pressure', volumeAvailable && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
+        volumeAvailable ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
       const vwap = technical.values?.vwap;
       check('Closed-candle VWAP', primeFinite(vwap) && side !== 0 && (last.close - Number(vwap)) * side > 0,
         'Closed-candle VWAP unavailable or conflicting; live futures VWAP is not substituted');
@@ -728,6 +747,9 @@
 
             replay:
               state.replay.active,
+
+            futuresVolume:
+              state.futuresVolumeConfirmation,
 
             mtfData:
               state.primeMtfSymbol ===
@@ -1786,6 +1808,8 @@
 
       futuresVWAPUpdated: 0,
 
+      futuresVolumeConfirmation: null,
+
       feedStatus: 'LOADING',
 
       lastUpdate: null,
@@ -2318,6 +2342,12 @@
             ? value
             : null;
 
+        state.futuresVolumeConfirmation =
+          data?.live === true &&
+          data?.volumeConfirmation?.available === true
+            ? data.volumeConfirmation
+            : null;
+
         state.futuresVWAPUpdated =
           state.futuresVWAP === null
             ? 0
@@ -2337,6 +2367,7 @@
 
         state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
+        state.futuresVolumeConfirmation = null;
         state.futuresVWAPReason = isUpstoxRateLimit(error)
           ? 'Upstox rate limited futures VWAP. Waiting before retry.'
           : error?.message || 'Unable to load genuine NIFTY futures VWAP.';
