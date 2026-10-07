@@ -2730,9 +2730,11 @@
 
 
     async function refreshFuturesVWAP() {
+      const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
 
       if (
-        state.symbol !== 'NIFTY'
+        requestedSymbol !== 'NIFTY'
       ) {
         state.futuresVWAP = null;
         state.futuresVWAPUpdated = 0;
@@ -2766,6 +2768,12 @@
 
         const data =
           await response.json();
+
+        // Ignore an in-flight response after the user changes symbol/timeframe.
+        // Otherwise an older NIFTY request can overwrite the new chart state.
+        if (state.symbol !== requestedSymbol || state.tf !== requestedTf) {
+          return;
+        }
 
         const value =
           Number(data?.vwap);
