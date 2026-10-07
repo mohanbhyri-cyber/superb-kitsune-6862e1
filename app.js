@@ -365,8 +365,15 @@
 
       const bull = bullChecks.every(([, ok]) => ok);
       const bear = bearChecks.every(([, ok]) => ok);
+      const detail = {
+        bullish: bullChecks.map(([name, ok]) => ({ name, ok: !!ok })),
+        bearish: bearChecks.map(([name, ok]) => ({ name, ok: !!ok })),
+        bullishPassed: bullChecks.filter(([, ok]) => ok).length,
+        bearishPassed: bearChecks.filter(([, ok]) => ok).length,
+        total: bullChecks.length
+      };
       if (bull || bear) {
-        return { side: bull ? 1 : -1, values, error: null };
+        return { side: bull ? 1 : -1, values, detail, error: null };
       }
 
       const bullMissing = bullChecks.filter(([, ok]) => !ok).map(([name]) => name);
@@ -377,6 +384,7 @@
       return {
         side: 0,
         values,
+        detail,
         error: `Mixed technical conditions; closest ${betterSide} setup blocked by ${blockers.join(', ')}`
       };
     }
@@ -1613,6 +1621,26 @@
       const relative = primeFinite(volume?.relative) ? Number(volume.relative).toFixed(2) + 'x' : '—';
       add('p', 'Volume: ' + (volume?.available ? 'OHLCV proxy' : 'UNAVAILABLE') +
         ' · Pressure ' + pressure + ' · Relative ' + relative, 'muted');
+
+      const tech = p.technical;
+      const techDetail = tech?.detail;
+      if (techDetail) {
+        const chosen = tech?.side === -1
+          ? techDetail.bearish
+          : tech?.side === 1
+            ? techDetail.bullish
+            : techDetail.bullishPassed >= techDetail.bearishPassed
+              ? techDetail.bullish
+              : techDetail.bearish;
+        const passed = chosen.filter(item => item.ok).length;
+        add('h3', 'Technical confirmation · ' + passed + '/' + techDetail.total + ' passed');
+        for (const item of chosen) {
+          add('p', (item.ok ? '✓ ' : '✕ ') + item.name, item.ok ? 'up' : 'muted');
+        }
+      } else if (tech?.error) {
+        add('h3', 'Technical confirmation');
+        add('p', tech.error, 'muted');
+      }
 
       add('h3', 'MTF confirmation');
       for (const tf of ['5m', '15m', '1h']) {
