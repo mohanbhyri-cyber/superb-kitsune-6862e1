@@ -5256,7 +5256,8 @@
       );
 
       state.sessionQuality = analyseSessionQuality(
-        indicatorData
+        indicatorData,
+        Number(intervals[state.tf])
       );
 
 
