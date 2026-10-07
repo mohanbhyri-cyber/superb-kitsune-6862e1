@@ -1849,8 +1849,11 @@
       }
 
       if (Array.isArray(p.reasons) && p.reasons.length) {
-        add('h3', 'Blocking reasons');
-        for (const reason of p.reasons.slice(0, 12)) add('p', '• ' + reason, 'muted');
+        const confirmed = Number(p.side) !== 0 && /^(BUY|SELL)$/.test(String(p.signal || ''));
+        add('h3', confirmed ? 'Confirmation' : 'Blocking reasons');
+        for (const reason of p.reasons.slice(0, 12)) {
+          add('p', '• ' + reason, confirmed ? 'up' : 'muted');
+        }
       }
     }
 
