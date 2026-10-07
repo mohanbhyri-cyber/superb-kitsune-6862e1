@@ -455,9 +455,11 @@
     const sessionMinutes = nseSessionMinutesFromEpoch(
       Number(last.time) + Number(seconds)
     );
+    // nseSessionMinutesFromEpoch() returns minutes since the 09:15 IST
+    // session open, so the 15:30 close is 375 session minutes.
     const finalSessionCandle =
       sessionMinutes !== null &&
-      sessionMinutes >= (15 * 60 + 30) - (9 * 60 + 15);
+      sessionMinutes >= 375;
     // Do not let the final regular-session candle remain actionable for the
     // generic 15-minute freshness grace after the market has closed.
     const postClose =
