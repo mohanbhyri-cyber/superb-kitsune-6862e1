@@ -119,6 +119,23 @@ export function finalizeTrade({
 
   const time = candle.time ?? null;
   const close = Number(candle.close);
+
+  // Fail closed if the latest completed candle or its predecessor is malformed.
+  const previous = data[closed - 1];
+  const validOhlc = row => row &&
+    ['time','open','high','low','close'].every(key => finite(row[key])) &&
+    Number(row.time) > 0 &&
+    Number(row.open) > 0 && Number(row.high) > 0 &&
+    Number(row.low) > 0 && Number(row.close) > 0 &&
+    Number(row.high) >= Math.max(Number(row.open), Number(row.close)) &&
+    Number(row.low) <= Math.min(Number(row.open), Number(row.close));
+  if (!validOhlc(previous) || !validOhlc(candle) ||
+      Number(candle.time) <= Number(previous.time)) {
+    return noTrade({
+      reason: 'Closed-candle context is invalid or stale',
+      time
+    });
+  }
   const e9 = calc.e9?.[closed];
   const e21 = calc.e21?.[closed];
   const e50 = calc.e50?.[closed];
