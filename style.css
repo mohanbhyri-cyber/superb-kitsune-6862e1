@@ -848,3 +848,18 @@ body.light .tv-shell-mode .chart-footer{
 @media (max-width: 600px) {
   #terminal .chart-indicator-status { width: 215px; font-size: 11px; }
 }
+
+/* Always show every indicator status without a dropdown or internal scroll. */
+#terminal .chart-indicator-status {
+  max-height: none;
+  overflow: visible;
+  padding: 8px 10px;
+  width: min(285px, calc(100% - 94px));
+}
+#terminal .chart-status-heading { font-weight: 600; }
+#terminal .chart-status-heading strong { float: right; }
+#terminal .chart-status-row { padding: 3px 0; font-size: 11px; }
+#terminal .chart-indicator-status p { margin: 5px 0; font-size: 10px; }
+@media (max-width: 600px) {
+  #terminal .chart-indicator-status { width: 215px; }
+}
