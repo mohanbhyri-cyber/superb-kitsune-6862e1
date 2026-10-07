@@ -92,6 +92,15 @@
       return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
     }
 
+    function primeEpochSeconds(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric >= 1e12 ? numeric / 1000 : numeric;
+      const parsed = Date.parse(String(value));
+      return Number.isFinite(parsed) ? parsed / 1000 : null;
+    }
+
+
     function primeSide(value) {
       const s = String(value || '').toUpperCase().trim();
 
@@ -856,7 +865,9 @@
         ['Global Watch', legacy.globalWatch, legacy.globalWatch?.bias]
       ]) {
         const vote = primeSide(value);
-        const sourceTime = Number(source?.time ?? source?.updated ?? source?.updatedAt);
+        const sourceTime = primeEpochSeconds(
+          source?.timestamp ?? source?.time ?? source?.updated ?? source?.updatedAt
+        );
         const timed = primeFinite(sourceTime);
         const closedAt = Number(last.time) + Number(seconds);
         // Candle timestamps represent candle OPEN. Auxiliary outputs may be
