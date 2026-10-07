@@ -1,3 +1,4 @@
+import { cciSeries } from './cci.js';
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
@@ -6543,6 +6544,22 @@
         ]
       );
 
+
+      // CCI shares the main chart's candle range and updates on every redraw.
+      const cci = cciSeries(state.data, 20);
+      const cciValues = cci.slice(start, end).filter(Number.isFinite);
+      const cciMin = Math.min(-150, ...cciValues);
+      const cciMax = Math.max(150, ...cciValues);
+      if ($('#cci')) {
+        drawPane('#cci', [cci], ['#e6ba6f'], start, end,
+          cciMin - (cciMax - cciMin) * 0.05,
+          cciMax + (cciMax - cciMin) * 0.05, [-100, 0, 100]);
+      }
+      if ($('#cci-value')) {
+        const value = cci[closedIndex];
+        $('#cci-value').textContent = Number.isFinite(value) ? value.toFixed(2) : '—';
+        $('#cci-value').title = state.tf + ' · latest closed candle';
+      }
 
       /*
         MACD

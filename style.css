@@ -766,3 +766,6 @@ body.light .tv-shell-mode .chart-footer{
 @media (max-width:760px) {
   #terminal .workspace > aside { grid-template-columns:minmax(0,1fr); }
 }
+
+/* Keep the requested CCI pane visible in both chart modes. */
+.tv-shell-mode #cci-pane { display:block; }
