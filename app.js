@@ -3003,11 +3003,20 @@
       // =========================================================
       // TOP PANEL
       // =========================================================
-      setText("#smart-signal", displaySignal);
+      const nativeSignal = edgeLatest?.signal || 'WARMING UP';
+      const nativeSide = primeSide(nativeSignal);
+      const nativeScore = primeFinite(edgeLatest?.score)
+        ? Math.max(0, Math.min(100, Number(edgeLatest.score) * 10)) : null;
+      setText("#smart-signal", nativeSignal);
       const smartSignalEl = document.getElementById("smart-signal");
-      if (smartSignalEl) smartSignalEl.dataset.side = finalSide === 1 ? "BUY" : finalSide === -1 ? "SELL" : "WAIT";
-      setText("#smart-strength", strength);
-      setText("#smart-confluence", confidence);
+      if (smartSignalEl) smartSignalEl.dataset.side = nativeSide === 1 ? "BUY" : nativeSide === -1 ? "SELL" : "WAIT";
+      setText("#smart-strength", edgeLatest?.strength || "Waiting for completed indicator values");
+      setText("#smart-confluence", nativeScore === null ? "Score unavailable" : "Edge agreement: " + Math.round(nativeScore) + "%");
+      setText("#smart-edge-reason", edgeLatest
+        ? (edgeLatest.reasons || []).join(" · ") || "Waiting for directional agreement"
+        : "Warming up: EMA, RSI, MACD and trend values must be available on a completed candle.");
+      setText("#smart-final-confirmation", "Final confirmation: " + displaySignal);
+
       setText("#smart-market-state", marketState);
       setText("#smart-structure", structure);
 
