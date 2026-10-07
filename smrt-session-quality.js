@@ -26,8 +26,10 @@ export function analyseSessionQuality(candles, seconds = 60){
   const duration=Number(seconds)>0?Number(seconds):60;
   const sessionTime=Number(c.time)+duration;
   const {minutes,weekday}=ist(sessionTime);
-  if(['Sat','Sun'].includes(weekday)||minutes<SESSION_START||minutes>=SESSION_END)
-    return {ready:true,state:'MARKET CLOSED',quality:'CLOSED',score:0,time:c.time};
+  // A candle that closes exactly at 15:30 is still a valid completed
+  // regular-session candle. Only timestamps after the official close are closed.
+  if(['Sat','Sun'].includes(weekday)||minutes<SESSION_START||minutes>SESSION_END)
+    return {ready:true,state:'MARKET CLOSED',quality:'CLOSED',score:0,time:c.time,closedAt:sessionTime};
 
   const fromOpen=minutes-SESSION_START;
   let state='NORMAL SESSION',quality='GOOD',score=75;
