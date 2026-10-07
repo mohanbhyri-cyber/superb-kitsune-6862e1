@@ -787,13 +787,29 @@
           : edge < Number(plan.entry) && edge > Number(plan.target1);
       }) || null : null;
       const target1Clear = validPlan && !nearestOpposing;
+      const target1 = validPlan ? Number(plan.target1) : null;
+      const nextOpposing = validPlan ? opposingZones.find(z => {
+        const edge = Number(side === 1 ? z.low : z.high);
+        return side === 1 ? edge >= target1 : edge <= target1;
+      }) || null : null;
+      const nextOpposingPrice = nextOpposing
+        ? Number(side === 1 ? nextOpposing.low : nextOpposing.high)
+        : null;
+      const targetClearance = primeFinite(nextOpposingPrice) && primeFinite(target1)
+        ? Math.abs(nextOpposingPrice - target1)
+        : null;
       result.targetStructure = {
         clear: !!target1Clear,
         opposingPrice: nearestOpposing
           ? Number(side === 1 ? nearestOpposing.low : nearestOpposing.high)
           : null,
         opposingKind: nearestOpposing?.kind || null,
-        opposingGrade: nearestOpposing?.quality?.grade || null
+        opposingGrade: nearestOpposing?.quality?.grade || null,
+        nextOpposingPrice,
+        clearance: targetClearance,
+        clearanceAtr: primeFinite(targetClearance) && primeFinite(s.atr) && Number(s.atr) > 0
+          ? targetClearance / Number(s.atr)
+          : null
       };
       check('Target 1 clear of opposing structure', target1Clear,
         nearestOpposing
@@ -1922,11 +1938,14 @@
 
       const targetStructure = p.targetStructure;
       if (targetStructure) {
+        const clearance = primeFinite(targetStructure.clearanceAtr)
+          ? ' · next zone ' + Number(targetStructure.clearanceAtr).toFixed(2) + ' ATR beyond T1'
+          : '';
         const obstacle = primeFinite(targetStructure.opposingPrice)
           ? price(targetStructure.opposingPrice) + ' · Grade ' +
             (targetStructure.opposingGrade || '—') + ' ' +
             (targetStructure.opposingKind || 'zone')
-          : 'No qualified opposing OB/FVG ahead';
+          : 'No qualified opposing OB/FVG in T1 path' + clearance;
         add('h3', 'Target structure');
         add('p', (targetStructure.clear ? 'T1 PATH CLEAR' : 'T1 BLOCKED') +
           ' · ' + obstacle, targetStructure.clear ? 'up' : 'muted');
