@@ -485,6 +485,26 @@
       };
       for (const z of active) Object.assign(z, { quality: zoneQuality(z) });
       const qualified = active.filter(z => z.quality?.score >= 5);
+      const alignedQualified = qualified
+        .filter(z => side !== 0 && z.side === side)
+        .sort((a, b) => (b.quality?.score || 0) - (a.quality?.score || 0) ||
+          Number(b.created) - Number(a.created));
+      const bestAlignedZone = alignedQualified[0] || null;
+      const swingInvalidation = side === 1
+        ? s.low?.price
+        : side === -1
+          ? s.high?.price
+          : null;
+      const zoneInvalidation = bestAlignedZone
+        ? (side === 1 ? bestAlignedZone.low : bestAlignedZone.high)
+        : null;
+      result.invalidation = {
+        price: primeFinite(zoneInvalidation) ? Number(zoneInvalidation)
+          : primeFinite(swingInvalidation) ? Number(swingInvalidation) : null,
+        source: primeFinite(zoneInvalidation)
+          ? (bestAlignedZone.kind + ' Grade ' + bestAlignedZone.quality.grade + ' boundary')
+          : primeFinite(swingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable'
+      };
       const touches = qualified.filter(z => z.quality?.recentTouch);
       const recentSweeps = s.sweeps.filter(e => index - e.index <= 3);
       check('Quality OB / FVG / liquidity', side !== 0 &&
@@ -1775,6 +1795,10 @@
         add('p', 'Best zone: ' + best.kind + ' · Grade ' + best.quality.grade +
           ' (' + best.quality.score + '/8) · ' + price(best.low) + ' – ' + price(best.high),
           best.quality.score >= 5 ? 'up' : 'muted');
+      }
+      if (primeFinite(p.invalidation?.price)) {
+        add('p', 'Structural invalidation: ' + price(p.invalidation.price) +
+          ' · ' + p.invalidation.source, 'muted');
       }
 
       const volume = p.volume;
