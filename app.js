@@ -616,6 +616,14 @@
           }`
         );
       }
+      const session = legacy.sessionQuality;
+      const sessionClosed = session?.ready === true &&
+        (session.quality === 'CLOSED' || session.state === 'MARKET CLOSED');
+      check('NSE session open', session?.ready === true && !sessionClosed,
+        sessionClosed ? 'NSE session is closed' : 'Session quality is unavailable');
+      check('Session quality', session?.ready === true && session.quality !== 'CAUTION' && !sessionClosed,
+        session?.state ? 'Session caution: ' + session.state : 'Session quality is unavailable', false);
+
       const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
       check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0,
         'Nifty Edge is unavailable or not aligned', false);
@@ -825,6 +833,9 @@
 
               globalWatch:
                 state.globalWatch,
+
+              sessionQuality:
+                state.sessionQuality,
 
               consensus
             }
