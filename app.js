@@ -11397,8 +11397,47 @@
       } = g;
 
 
-      const pa =
-        state.pa;
+      // Use the same confirmed structure that Prime used for its decision.
+      // Fall back to the legacy price-action renderer only while Prime is warming up.
+      const ps = state.primeMarket?.structure;
+      const primeReady = ps && Array.isArray(ps.events) && Array.isArray(ps.swings);
+      const pa = primeReady
+        ? {
+            trend: ps.direction || 0,
+            breaks: ps.events
+              .filter(event => event.type === 'BOS' || event.type === 'CHoCH' || event.type === 'MSS')
+              .map(event => ({
+                type: event.type,
+                direction: event.side,
+                index: event.index,
+                from: Math.max(0, event.index - 1),
+                price: event.level
+              })),
+            pivots: ps.swings.map(swing => ({
+              type: swing.label || swing.type,
+              price: swing.price,
+              confirmedAt: state.data.findIndex(c => Number(c.time) === Number(swing.confirmedAt))
+            })).filter(pivot => pivot.confirmedAt >= 0),
+            zones: [
+              ...ps.blocks.map(zone => ({
+                kind: 'OB',
+                direction: zone.side,
+                low: zone.low,
+                high: zone.high,
+                index: Math.max(0, Number(zone.created) || 0),
+                endedAt: zone.active ? null : (zone.touched ?? zone.created)
+              })),
+              ...ps.gaps.map(zone => ({
+                kind: 'FVG',
+                direction: zone.side,
+                low: zone.low,
+                high: zone.high,
+                index: Math.max(0, Number(zone.created) || 0),
+                endedAt: zone.active ? null : (zone.touched ?? zone.created)
+              }))
+            ]
+          }
+        : state.pa;
 
 
       ctx.save();
