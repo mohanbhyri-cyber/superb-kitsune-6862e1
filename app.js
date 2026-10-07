@@ -559,18 +559,13 @@
           : null;
       const invalidationPrice = primeFinite(zoneInvalidation) ? Number(zoneInvalidation)
         : primeFinite(validSwingInvalidation) ? Number(validSwingInvalidation) : null;
-      const invalidationDistance = primeFinite(invalidationPrice)
-        ? Math.abs(Number(last.close) - invalidationPrice)
-        : null;
       result.invalidation = {
         price: invalidationPrice,
         source: primeFinite(zoneInvalidation)
           ? (bestAlignedZone.kind + ' Grade ' + bestAlignedZone.quality.grade + ' boundary')
           : primeFinite(validSwingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable',
-        distance: invalidationDistance,
-        atrMultiple: primeFinite(invalidationDistance) && primeFinite(s.atr) && Number(s.atr) > 0
-          ? invalidationDistance / Number(s.atr)
-          : null
+        distance: null,
+        atrMultiple: null
       };
       const touches = qualified.filter(z => z.quality?.recentTouch);
       const recentSweeps = s.sweeps.filter(e => index - e.index <= 3);
@@ -811,6 +806,17 @@
         primeFinite(result.invalidation?.price)
           ? 'Stop lacks the required 0.10 ATR buffer beyond structural invalidation'
           : 'Structural invalidation is unavailable');
+
+      // Anchor structural invalidation distance to the actual trade-plan
+      // entry so it is directly comparable with stop distance and R:R.
+      const invalidationDistance = validPlan && primeFinite(result.invalidation?.price)
+        ? Math.abs(Number(plan.entry) - Number(result.invalidation.price))
+        : null;
+      result.invalidation.distance = invalidationDistance;
+      result.invalidation.atrMultiple =
+        primeFinite(invalidationDistance) && primeFinite(s.atr) && Number(s.atr) > 0
+          ? invalidationDistance / Number(s.atr)
+          : null;
 
       const risk = validPlan ? Math.abs(Number(plan.entry) - Number(planStop)) : null;
       const reward = target => validPlan && risk > 0
