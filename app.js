@@ -1918,6 +1918,18 @@
           stopStructure.valid ? 'up' : 'muted');
       }
 
+      const targetStructure = p.targetStructure;
+      if (targetStructure) {
+        const obstacle = primeFinite(targetStructure.opposingPrice)
+          ? price(targetStructure.opposingPrice) + ' · Grade ' +
+            (targetStructure.opposingGrade || '—') + ' ' +
+            (targetStructure.opposingKind || 'zone')
+          : 'No qualified opposing OB/FVG ahead';
+        add('h3', 'Target structure');
+        add('p', (targetStructure.clear ? 'T1 PATH CLEAR' : 'T1 BLOCKED') +
+          ' · ' + obstacle, targetStructure.clear ? 'up' : 'muted');
+      }
+
       const rr = p.riskReward;
       if (rr) {
         const rrText = value => primeFinite(value) ? '1:' + Number(value).toFixed(2) : '—';
