@@ -140,23 +140,39 @@ export function sma(values, n) {
 
 
 export function ema(values, n) {
+  const input = Array.isArray(values)
+    ? values.map(Number)
+    : [];
 
-  if (!values.length) return [];
+  const out = Array(input.length).fill(null);
+
+  if (
+    !Number.isInteger(n) ||
+    n < 1 ||
+    input.length < n ||
+    input.some(value => !Number.isFinite(value))
+  ) {
+    return out;
+  }
+
+  // Seed with the first n-period SMA. This prevents partially warmed
+  // EMA/MACD values from being treated as confirmed indicator data.
+  let seed = 0;
+  for (let i = 0; i < n; i++) {
+    seed += input[i];
+  }
+
+  let last = seed / n;
+  out[n - 1] = last;
 
   const k = 2 / (n + 1);
-  let last = values[0];
 
-  return values.map((v, i) => {
+  for (let i = n; i < input.length; i++) {
+    last = input[i] * k + last * (1 - k);
+    out[i] = last;
+  }
 
-    if (i === 0) {
-      last = v;
-      return last;
-    }
-
-    last = v * k + last * (1 - k);
-
-    return last;
-  });
+  return out;
 }
 
 
@@ -198,12 +214,30 @@ export function indicators(candles) {
   const e12 = ema(close, 12);
   const e26 = ema(close, 26);
 
-  const macd = e12.map((v, i) => v - e26[i]);
+  const macd = close.map((_, i) =>
+    Number.isFinite(Number(e12[i])) &&
+    Number.isFinite(Number(e26[i]))
+      ? Number(e12[i]) - Number(e26[i])
+      : null
+  );
 
-  const signal = ema(macd, 9);
+  // MACD signal EMA starts only after nine valid MACD values exist.
+  const validMacd = macd.filter(value => Number.isFinite(Number(value)));
+  const validSignal = ema(validMacd, 9);
+  const signal = Array(macd.length).fill(null);
+  let signalIndex = 0;
 
-  const hist = macd.map(
-    (v, i) => v - signal[i]
+  for (let i = 0; i < macd.length; i++) {
+    if (!Number.isFinite(Number(macd[i]))) continue;
+    signal[i] = validSignal[signalIndex] ?? null;
+    signalIndex += 1;
+  }
+
+  const hist = macd.map((v, i) =>
+    Number.isFinite(Number(v)) &&
+    Number.isFinite(Number(signal[i]))
+      ? Number(v) - Number(signal[i])
+      : null
   );
 
 
