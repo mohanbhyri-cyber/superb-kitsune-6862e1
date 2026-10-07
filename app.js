@@ -512,11 +512,33 @@
         : side === -1
           ? s.high?.price
           : null;
-      const zoneInvalidation = bestAlignedZone
-        ? (side === 1 ? bestAlignedZone.low : bestAlignedZone.high)
+      const rawZoneInvalidation = bestAlignedZone
+        ? Number(side === 1 ? bestAlignedZone.low : bestAlignedZone.high)
         : null;
+      const rawSwingInvalidation = primeFinite(swingInvalidation)
+        ? Number(swingInvalidation)
+        : null;
+      // Invalidation must sit behind the trade, never beyond current price.
+      // An aligned zone ahead of price can be a destination/retest zone but
+      // cannot safely define where the current setup becomes invalid.
+      const zoneInvalidation = primeFinite(rawZoneInvalidation) &&
+        (side === 1
+          ? rawZoneInvalidation < Number(last.close)
+          : side === -1
+            ? rawZoneInvalidation > Number(last.close)
+            : false)
+          ? rawZoneInvalidation
+          : null;
+      const validSwingInvalidation = primeFinite(rawSwingInvalidation) &&
+        (side === 1
+          ? rawSwingInvalidation < Number(last.close)
+          : side === -1
+            ? rawSwingInvalidation > Number(last.close)
+            : false)
+          ? rawSwingInvalidation
+          : null;
       const invalidationPrice = primeFinite(zoneInvalidation) ? Number(zoneInvalidation)
-        : primeFinite(swingInvalidation) ? Number(swingInvalidation) : null;
+        : primeFinite(validSwingInvalidation) ? Number(validSwingInvalidation) : null;
       const invalidationDistance = primeFinite(invalidationPrice)
         ? Math.abs(Number(last.close) - invalidationPrice)
         : null;
@@ -524,7 +546,7 @@
         price: invalidationPrice,
         source: primeFinite(zoneInvalidation)
           ? (bestAlignedZone.kind + ' Grade ' + bestAlignedZone.quality.grade + ' boundary')
-          : primeFinite(swingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable',
+          : primeFinite(validSwingInvalidation) ? 'Confirmed swing boundary' : 'Unavailable',
         distance: invalidationDistance,
         atrMultiple: primeFinite(invalidationDistance) && primeFinite(s.atr) && Number(s.atr) > 0
           ? invalidationDistance / Number(s.atr)
