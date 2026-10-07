@@ -575,9 +575,16 @@
           (b.high > b.low ? (2 * b.close - b.high - b.low) / (b.high - b.low) : 0), 0) / total;
         relative = Number(last.volume) / (sample.slice(0, -1).reduce((a, b) => a + Number(b.volume), 0) / 20);
       }
+      const futuresVolumeTime = primeEpochSeconds(futuresVolume?.lastCandleTime);
+      const futuresVolumeFresh = primeFinite(futuresVolumeTime) &&
+        Math.abs(
+          (Number(last.time) + Number(seconds)) -
+          (Number(futuresVolumeTime) + Number(seconds))
+        ) <= Math.max(Number(seconds) * 2, 300);
       const genuineFuturesVolume =
         !volumesValid &&
         futuresVolume?.available === true &&
+        futuresVolumeFresh &&
         primeFinite(futuresVolume.pressure) &&
         primeFinite(futuresVolume.relative)
           ? futuresVolume
@@ -593,7 +600,10 @@
         relative,
         source: volumesValid
           ? 'Candle OHLCV proxy; not bid/ask delta'
-          : genuineFuturesVolume?.source || 'Volume unavailable'
+          : genuineFuturesVolume?.source ||
+            (futuresVolume?.available === true && !futuresVolumeFresh
+              ? 'NIFTY futures volume stale'
+              : 'Volume unavailable')
       };
       check('Volume pressure', volumeAvailable && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
         volumeAvailable ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
