@@ -515,7 +515,18 @@
         .filter(z => side !== 0 && z.side === side)
         .sort((a, b) => (b.quality?.score || 0) - (a.quality?.score || 0) ||
           Number(b.created) - Number(a.created));
-      const bestAlignedZone = alignedQualified[0] || null;
+      // Choose the best qualified zone that is actually behind price.
+      // Do not let a higher-scoring zone ahead of price hide a valid
+      // lower-ranked structural invalidation zone.
+      const bestAlignedZone = alignedQualified.find(z => {
+        const boundary = Number(side === 1 ? z.low : z.high);
+        return primeFinite(boundary) &&
+          (side === 1
+            ? boundary < Number(last.close)
+            : side === -1
+              ? boundary > Number(last.close)
+              : false);
+      }) || null;
       const swingInvalidation = side === 1
         ? s.low?.price
         : side === -1
