@@ -1694,11 +1694,17 @@
       const regularSessionOpen = !['Sat', 'Sun'].includes(istWeekday) &&
         istMinutes >= 9 * 60 + 15 && istMinutes < 15 * 60 + 30;
       const latestClosedTime = Number(p?.time);
-      const closedAgeMinutes = primeFinite(latestClosedTime)
-        ? Math.max(0, Math.round((Date.now() / 1000 - latestClosedTime) / 60))
+      const chartSeconds = Number(intervals[state.tf] || 60);
+      // p.time is the candle OPEN timestamp. Compare wall clock with the
+      // candle END so the status badge uses the same freshness basis as Prime.
+      const latestClosedEnd = primeFinite(latestClosedTime)
+        ? latestClosedTime + chartSeconds
+        : null;
+      const closedAgeMinutes = primeFinite(latestClosedEnd)
+        ? Math.max(0, Math.round((Date.now() / 1000 - latestClosedEnd) / 60))
         : null;
       const staleClosedCandle = Number.isFinite(closedAgeMinutes) &&
-        closedAgeMinutes > Math.max(Math.round(Number(intervals[state.tf] || 60) / 60) * 3, 15);
+        closedAgeMinutes > Math.max(Math.round(chartSeconds / 60) * 3, 15);
 
       const status = add('div',
         !regularSessionOpen
