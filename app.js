@@ -2831,7 +2831,29 @@
           'NIFTY futures VWAP unavailable:',
           error
         );
+     } catch (error) {
+  console.error(
+    'Futures VWAP refresh failed:',
+    error
+  );
 
+  if (
+    state.symbol !== requestedSymbol ||
+    state.tf !== requestedTf ||
+    state.replay.active !== requestedReplay ||
+    state.replay.active
+  ) {
+    return;
+  }
+
+  state.futuresVWAP = null;
+  state.futuresVWAPUpdated = 0;
+  state.futuresVWAPCandleTime = null;
+  state.futuresVolumeConfirmation = null;
+  state.futuresVWAPReason =
+    error?.message ||
+    'Unable to load Futures VWAP.';
+}
 
         state.futuresVWAPUpdated = 0;
         state.futuresVWAPCandleTime = null;
