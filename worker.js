@@ -1681,6 +1681,44 @@ async function futuresVWAP(url, token) {
       cumulativeVolume:
         result.volume,
 
+      // Reuse the same genuine Upstox futures candles for Prime volume
+      // confirmation. This adds no extra Upstox request and never fabricates
+      // index volume.
+      volumeConfirmation: (() => {
+        const sample = candles.slice(-21);
+        const valid = sample.length >= 21 &&
+          sample.every(c => Number.isFinite(Number(c.volume)) && Number(c.volume) > 0);
+        if (!valid) {
+          return {
+            available: false,
+            source: "NIFTY futures OHLCV",
+            reason: "Need 21 genuine futures candles with positive volume."
+          };
+        }
+        const recent = sample.slice(-5);
+        const recentVolume = recent.reduce((sum, c) => sum + Number(c.volume), 0);
+        const baseline = sample.slice(0, -1)
+          .reduce((sum, c) => sum + Number(c.volume), 0) / 20;
+        const pressure = recentVolume > 0
+          ? recent.reduce((sum, c) => {
+              const range = Number(c.high) - Number(c.low);
+              const proxy = range > 0
+                ? (2 * Number(c.close) - Number(c.high) - Number(c.low)) / range
+                : 0;
+              return sum + Number(c.volume) * proxy;
+            }, 0) / recentVolume
+          : null;
+        const relative = baseline > 0 ? Number(latest.volume) / baseline : null;
+        return {
+          available: Number.isFinite(pressure) && Number.isFinite(relative),
+          pressure,
+          relative,
+          source: "NIFTY futures OHLCV proxy; not bid/ask delta",
+          candleCount: sample.length,
+          lastCandleTime: latest.time
+        };
+      })(),
+
       firstCandleTime:
         candles[0].time,
 
