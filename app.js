@@ -12824,6 +12824,17 @@
         fragment.append(row);
       }
       const structure = state.primeMarket?.structure;
+      const trigger = state.triggerSignal;
+      const triggerRow = document.createElement('div');
+      triggerRow.className = 'chart-status-row';
+      const triggerLabel = document.createElement('span');
+      triggerLabel.textContent = 'SMRT Trigger';
+      const triggerStatus = document.createElement('strong');
+      triggerStatus.textContent = trigger?.signal || 'WAIT';
+      triggerStatus.className = trigger?.side === 1 ? 'up' : trigger?.side === -1 ? 'down' : 'muted';
+      triggerRow.title = trigger?.reason || 'Waiting for confirmation';
+      triggerRow.append(triggerLabel, triggerStatus);
+      fragment.append(triggerRow);
       const contextRows = [
         ['Premium / Discount', structure?.zone || 'WAIT'],
         ['Smart Money', structure
