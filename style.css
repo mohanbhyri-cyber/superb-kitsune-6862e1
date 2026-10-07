@@ -754,3 +754,15 @@ body.light .tv-shell-mode .chart-footer{
   .chart-controls #replay-speed { width:72px; min-width:72px; }
   .chart-controls #replay-status { align-self:center; white-space:nowrap; }
 }
+
+/* Full-width chart workspace; supporting panels follow the chart. */
+#terminal { max-width:none; width:100%; }
+#terminal .workspace { grid-template-columns:minmax(0,1fr); }
+#terminal .workspace > .chart-card { width:100%; min-width:0; }
+#terminal .workspace > aside { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+@media (min-width:761px) {
+  #terminal { padding-inline:16px; }
+}
+@media (max-width:760px) {
+  #terminal .workspace > aside { grid-template-columns:minmax(0,1fr); }
+}
