@@ -2,7 +2,17 @@
 // Detects failed breakouts / liquidity traps from completed candles only.
 // Context detector: never creates an order by itself.
 
-const finite=v=>Number.isFinite(Number(v));
+const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+
+function validCandle(c){
+  if(!c||!['time','open','high','low','close'].every(k=>finite(c[k]))) return false;
+  const o=Number(c.open),h=Number(c.high),l=Number(c.low),cl=Number(c.close);
+  return Number(c.time)>0&&o>0&&h>0&&l>0&&cl>0&&h>=Math.max(o,cl)&&l<=Math.min(o,cl)&&h>=l;
+}
+
+function unavailable(state='NO DATA'){
+  return {ready:false,state,side:0,score:0,reasons:[state]};
+}
 
 export function analyseLiquidityTrap(candles,{lookback=20,atr=null}={}){
   if(!Array.isArray(candles)||candles.length<lookback+4)
@@ -11,14 +21,21 @@ export function analyseLiquidityTrap(candles,{lookback=20,atr=null}={}){
   // app indicatorData keeps the final slot as forming/synthetic.
   const i=candles.length-2;
   const c=candles[i], p=candles[i-1];
-  if(!c||!p) return {ready:false,state:'WARMING UP',side:0,score:0};
+  if(!c||!p) return unavailable('WARMING UP');
 
   const start=Math.max(0,i-lookback);
   const prior=candles.slice(start,i);
+  const validation=[...prior,p,c];
+  if(validation.length<lookback+2||validation.some(x=>!validCandle(x)))
+    return unavailable('NO DATA · INVALID OHLC');
+  for(let n=1;n<validation.length;n++){
+    if(Number(validation[n].time)<=Number(validation[n-1].time))
+      return unavailable('NO DATA · STALE/UNORDERED CANDLES');
+  }
   const priorHigh=Math.max(...prior.map(x=>Number(x.high)).filter(finite));
   const priorLow=Math.min(...prior.map(x=>Number(x.low)).filter(finite));
   if(!finite(priorHigh)||!finite(priorLow))
-    return {ready:false,state:'UNAVAILABLE',side:0,score:0};
+    return unavailable('UNAVAILABLE');
 
   const o=Number(c.open),h=Number(c.high),l=Number(c.low),cl=Number(c.close);
   const range=Math.max(0.000001,h-l);

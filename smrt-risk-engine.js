@@ -1,9 +1,11 @@
 // smrt-risk-engine.js
 // Trade-plan quality control. It does not create BUY/SELL direction.
 
-const finite=v=>Number.isFinite(Number(v));
+const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
 
-export function analyseRisk(plan,{atr=null,side=0}={}){
+export function analyseRisk(plan,{atr=null,side=0,contextFresh=true}={}){
+  if(contextFresh!==true)
+    return {ready:true,state:'STALE / MISMATCHED DATA',quality:'BLOCK',score:0,reasons:['Current candle context is stale or mismatched']};
   if(!plan) return {ready:false,state:'NO ACTIVE PLAN',quality:'WAIT',score:0};
 
   const entry=Number(plan.entry);
@@ -12,8 +14,11 @@ export function analyseRisk(plan,{atr=null,side=0}={}){
   const t2=Number(plan.target2);
   const t3=Number(plan.target3);
 
-  if(![entry,stop,t1].every(finite)||entry===stop)
-    return {ready:false,state:'INVALID PLAN',quality:'BLOCK',score:0};
+  if(![entry,stop,t1].every(finite)||entry<=0||stop<=0||t1<=0||entry===stop)
+    return {ready:true,state:'INVALID PLAN',quality:'BLOCK',score:0,reasons:['Entry, stop or target is invalid']};
+
+  if(side!==1&&side!==-1)
+    return {ready:true,state:'INVALID DIRECTION',quality:'BLOCK',score:0,reasons:['Trade direction is unavailable']};
 
   const risk=Math.abs(entry-stop);
   const rewards=[t1,t2,t3].map(t=>finite(t)?Math.abs(t-entry):null);
