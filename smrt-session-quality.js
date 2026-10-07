@@ -14,14 +14,18 @@ function ist(time){
   return {minutes:Number(get('hour'))*60+Number(get('minute')),weekday:get('weekday')};
 }
 
-export function analyseSessionQuality(candles){
+export function analyseSessionQuality(candles, seconds = 60){
   if(!Array.isArray(candles)||candles.length<3)
     return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
 
   const c=candles[candles.length-2];
   if(!c) return {ready:false,state:'WARMING UP',quality:'WAIT',score:0};
 
-  const {minutes,weekday}=ist(c.time);
+  // Candle timestamps are OPEN times. Session eligibility should use
+  // the completed candle's END time so the 09:15/15:30 boundaries are exact.
+  const duration=Number(seconds)>0?Number(seconds):60;
+  const sessionTime=Number(c.time)+duration;
+  const {minutes,weekday}=ist(sessionTime);
   if(['Sat','Sun'].includes(weekday)||minutes<SESSION_START||minutes>=SESSION_END)
     return {ready:true,state:'MARKET CLOSED',quality:'CLOSED',score:0,time:c.time};
 
@@ -49,5 +53,5 @@ export function analyseSessionQuality(candles){
     score=55;
   }
 
-  return {ready:true,state,quality,score,minutes,time:c.time};
+  return {ready:true,state,quality,score,minutes,time:c.time,closedAt:sessionTime};
 }
