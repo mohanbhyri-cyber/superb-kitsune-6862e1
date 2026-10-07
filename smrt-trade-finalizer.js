@@ -466,12 +466,15 @@ export function finalizeTrade({
 
       const risk = Math.abs(entry - stop);
       if (finite(risk) && risk > 0) {
+        // Keep generated plans compatible with Prime's mandatory
+        // minimum reward/risk rule. Targets remain deterministic multiples
+        // of the real ATR/structure-derived stop distance.
         plan = {
           entry,
           stop,
-          target1: entry + primeSide * risk,
-          target2: entry + primeSide * risk * 1.5,
-          target3: entry + primeSide * risk * 2
+          target1: entry + primeSide * risk * 1.5,
+          target2: entry + primeSide * risk * 2,
+          target3: entry + primeSide * risk * 3
         };
       }
     }
