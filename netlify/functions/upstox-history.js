@@ -1,4 +1,3 @@
-import { serverUpstoxRequest } from '../../request-coordinator.js';
 // netlify/functions/upstox-history.js
 // PRO SCALPER - REAL UPSTOX INTRADAY HISTORY
 // No demo/random candles.
@@ -254,7 +253,7 @@ export default async (request) => {
     // Request REAL candles from Upstox
     // --------------------------------------------------------
 
-    const response = await serverUpstoxRequest(endpoint, {
+    const response = await fetch(endpoint, {
       method: 'GET',
 
       headers: {
@@ -410,11 +409,6 @@ export default async (request) => {
       candles,
     });
   } catch (error) {
-    if (error?.status === 429) return new Response(JSON.stringify({ live: false, source: 'UPSTOX', candles: [],
-      rateLimited: true, retryAfterMs: error.retryAfterMs, reason: error.message }), {
-      status: 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store',
-        'retry-after': String(Math.ceil(error.retryAfterMs / 1000)) }
-    });
     console.error(
       'upstox-history error:',
       error

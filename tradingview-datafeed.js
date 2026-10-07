@@ -1,4 +1,3 @@
-import { marketRequest, browserCooldownRemaining } from './request-coordinator.js';
 // tradingview-datafeed.js
 // ============================================================
 // TradingView Advanced Charts Datafeed API adapter for SMRT Algo Pro.
@@ -80,7 +79,7 @@ function toBars(candles, from, to) {
 
 async function fetchJson(url) {
   const response =
-    await marketRequest(url, {
+    await fetch(url, {
       cache: 'no-store'
     });
 
@@ -262,7 +261,7 @@ export function createTradingViewDatafeed(
           payload =
             await fetchJson(
               base +
-              '/api/upstox-mtf-history?symbol=NIFTY&timeframe=1h&count=260'
+              '/api/upstox-mtf-history?symbol=NIFTY&timeframe=1h'
             );
         } else {
           payload =
@@ -415,7 +414,7 @@ export function createTradingViewDatafeed(
             timer =
               setTimeout(
                 poll,
-                Math.max(15000, browserCooldownRemaining())
+                1500
               );
           }
         };

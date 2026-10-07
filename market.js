@@ -1,7 +1,85 @@
-import { marketRequest, browserCooldownRemaining, browserNoteRateLimit } from './request-coordinator.js';
-export const upstoxCooldownRemaining = browserCooldownRemaining;
-export const noteUpstoxRateLimit = browserNoteRateLimit;
-const upstoxRequest = marketRequest;
+// Upstox endpoints are throttled independently so a quote 429 does not
+// freeze history/profile flows, and a history 429 does not stop live quotes.
+const upstoxRetryAtByScope = new Map();
+const UPSTOX_RETRY_FLOORS = {
+  quote: 15000,
+  history: 30000,
+  mtfHistory: 30000,
+  previousHistory: 30000,
+  auth: 120000,
+  default: 30000
+};
+
+function upstoxScope(scope) {
+  return scope || 'default';
+}
+
+function upstoxRetryFloor(scope) {
+  return UPSTOX_RETRY_FLOORS[upstoxScope(scope)] || UPSTOX_RETRY_FLOORS.default;
+}
+
+export function upstoxCooldownRemaining(scope) {
+  if (scope === undefined) {
+    let remaining = 0;
+    for (const retryAt of upstoxRetryAtByScope.values()) {
+      remaining = Math.max(remaining, retryAt - Date.now());
+    }
+    return Math.max(0, remaining);
+  }
+  const retryAt = upstoxRetryAtByScope.get(upstoxScope(scope)) || 0;
+  return Math.max(0, retryAt - Date.now());
+}
+
+export function noteUpstoxRateLimit(retryAfterMs, scope = 'default') {
+  const key = upstoxScope(scope);
+  const delay = Math.max(
+    upstoxRetryFloor(key),
+    Number.isFinite(Number(retryAfterMs))
+      ? Number(retryAfterMs)
+      : 0
+  );
+  const retryAt = Math.max(
+    upstoxRetryAtByScope.get(key) || 0,
+    Date.now() + delay
+  );
+  upstoxRetryAtByScope.set(key, retryAt);
+  return delay;
+}
+
+function parseRetryAfterMs(response, body = {}) {
+  const header = response.headers.get('retry-after');
+  const headerSeconds = header && Number.isFinite(Number(header))
+    ? Number(header)
+    : header
+      ? (Date.parse(header) - Date.now()) / 1000
+      : 0;
+  const bodyDelay = Number(body.retryAfterMs ?? body.retry_after_ms);
+  const bodySeconds = Number(body.retryAfter ?? body.retry_after);
+  return Math.max(
+    Number.isFinite(bodyDelay) ? bodyDelay : 0,
+    Number.isFinite(bodySeconds) ? bodySeconds * 1000 : 0,
+    Number.isFinite(headerSeconds) ? headerSeconds * 1000 : 0
+  );
+}
+
+function marketRateLimitError(scope = 'default') {
+  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  error.status = 429;
+  error.scope = upstoxScope(scope);
+  error.retryAfterMs = Math.max(1000, upstoxCooldownRemaining(scope));
+  return error;
+}
+async function upstoxRequest(url, options = {}, scope = 'default') {
+  if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
+  const response = await fetch(url, options);
+  if (response.status === 429) {
+    const body = await response.clone().json().catch(() => ({}));
+    const delay = parseRetryAfterMs(response, body);
+    noteUpstoxRateLimit(delay, scope);
+    throw marketRateLimitError(scope);
+  }
+  return response;
+}
 
 // market.js
 // ============================================================
@@ -62,39 +140,23 @@ export function sma(values, n) {
 
 
 export function ema(values, n) {
-  const input = Array.isArray(values)
-    ? values.map(Number)
-    : [];
 
-  const out = Array(input.length).fill(null);
-
-  if (
-    !Number.isInteger(n) ||
-    n < 1 ||
-    input.length < n ||
-    input.some(value => !Number.isFinite(value))
-  ) {
-    return out;
-  }
-
-  // Seed with the first n-period SMA. This prevents partially warmed
-  // EMA/MACD values from being treated as confirmed indicator data.
-  let seed = 0;
-  for (let i = 0; i < n; i++) {
-    seed += input[i];
-  }
-
-  let last = seed / n;
-  out[n - 1] = last;
+  if (!values.length) return [];
 
   const k = 2 / (n + 1);
+  let last = values[0];
 
-  for (let i = n; i < input.length; i++) {
-    last = input[i] * k + last * (1 - k);
-    out[i] = last;
-  }
+  return values.map((v, i) => {
 
-  return out;
+    if (i === 0) {
+      last = v;
+      return last;
+    }
+
+    last = v * k + last * (1 - k);
+
+    return last;
+  });
 }
 
 
@@ -136,30 +198,12 @@ export function indicators(candles) {
   const e12 = ema(close, 12);
   const e26 = ema(close, 26);
 
-  const macd = close.map((_, i) =>
-    Number.isFinite(e12[i]) &&
-    Number.isFinite(e26[i])
-      ? Number(e12[i]) - Number(e26[i])
-      : null
-  );
+  const macd = e12.map((v, i) => v - e26[i]);
 
-  // MACD signal EMA starts only after nine valid MACD values exist.
-  const validMacd = macd.filter(value => Number.isFinite(value));
-  const validSignal = ema(validMacd, 9);
-  const signal = Array(macd.length).fill(null);
-  let signalIndex = 0;
+  const signal = ema(macd, 9);
 
-  for (let i = 0; i < macd.length; i++) {
-    if (!Number.isFinite(macd[i])) continue;
-    signal[i] = validSignal[signalIndex] ?? null;
-    signalIndex += 1;
-  }
-
-  const hist = macd.map((v, i) =>
-    Number.isFinite(v) &&
-    Number.isFinite(signal[i])
-      ? Number(v) - Number(signal[i])
-      : null
+  const hist = macd.map(
+    (v, i) => v - signal[i]
   );
 
 
@@ -167,50 +211,37 @@ export function indicators(candles) {
   // RSI 14
   // ----------------------------------------------------------
 
-  const rsiPeriod = 14;
-  const rsi = Array(close.length).fill(null);
+  let gain = 0;
+  let loss = 0;
 
-  if (close.length > rsiPeriod) {
-    let gainSum = 0;
-    let lossSum = 0;
+  const rsi = close.map((v, i) => {
 
-    // Wilder seed: average the first 14 price changes.
-    for (let i = 1; i <= rsiPeriod; i++) {
-      const change = close[i] - close[i - 1];
-      gainSum += Math.max(change, 0);
-      lossSum += Math.max(-change, 0);
+    if (!i) return null;
+
+    const d = v - close[i - 1];
+
+    if (i <= 14) {
+
+      gain += Math.max(d, 0) / 14;
+      loss += Math.max(-d, 0) / 14;
+
+    } else {
+
+      gain =
+        (gain * 13 + Math.max(d, 0)) / 14;
+
+      loss =
+        (loss * 13 + Math.max(-d, 0)) / 14;
     }
 
-    let averageGain = gainSum / rsiPeriod;
-    let averageLoss = lossSum / rsiPeriod;
+    if (i < 14) return null;
 
-    const rsiValue = () => {
-      if (averageLoss === 0) {
-        return averageGain === 0 ? 50 : 100;
-      }
-
-      const rs = averageGain / averageLoss;
-      return 100 - 100 / (1 + rs);
-    };
-
-    rsi[rsiPeriod] = rsiValue();
-
-    for (let i = rsiPeriod + 1; i < close.length; i++) {
-      const change = close[i] - close[i - 1];
-      const currentGain = Math.max(change, 0);
-      const currentLoss = Math.max(-change, 0);
-
-      averageGain =
-        (averageGain * (rsiPeriod - 1) + currentGain) /
-        rsiPeriod;
-
-      averageLoss =
-        (averageLoss * (rsiPeriod - 1) + currentLoss) /
-        rsiPeriod;
-
-      rsi[i] = rsiValue();
+    if (loss === 0) {
+      return gain === 0 ? 50 : 100;
     }
-  }
+
+    return 100 - 100 / (1 + gain / loss);
+  });
 
 
   // ----------------------------------------------------------
@@ -677,7 +708,7 @@ export class UpstoxMarketAdapter {
       const data =
         await response.json();
 
-      if (data?.live !== true || !Array.isArray(data?.candles)) {
+      if (!Array.isArray(data?.candles)) {
         return [];
       }
 
@@ -703,7 +734,7 @@ export class UpstoxMarketAdapter {
   // ----------------------------------------------------------
   // LIVE QUOTE SUBSCRIPTION
   //
-  // Shared quote requests; adaptive polling starts at 15 seconds.
+  // Polling current Cloudflare route every 3 seconds.
   //
   // IMPORTANT:
   // There is NO Math.random fallback.
@@ -722,7 +753,6 @@ export class UpstoxMarketAdapter {
 
     let last = null;
     let consecutiveFailures = 0;
-    let pollingDelay = 15000;
 
     this.status = 'CONNECTING';
 
@@ -766,7 +796,7 @@ export class UpstoxMarketAdapter {
           q.live !== true ||
           !Number.isFinite(
             Number(q.price)
-          ) || Number(q.price) <= 0
+          )
         ) {
 
           throw new Error(
@@ -797,7 +827,6 @@ export class UpstoxMarketAdapter {
           price;
 
         consecutiveFailures = 0;
-        pollingDelay = Math.max(15000, pollingDelay * 0.9);
 
         this.status = 'LIVE';
 
@@ -855,7 +884,6 @@ export class UpstoxMarketAdapter {
 
         consecutiveFailures +=
           1;
-        pollingDelay = Math.min(120000, pollingDelay * 2);
 
         if (error?.status === 429) {
 
@@ -884,7 +912,11 @@ export class UpstoxMarketAdapter {
           const retryDelay =
             upstoxCooldownRemaining('quote') > 0
               ? upstoxCooldownRemaining('quote')
-              : pollingDelay;
+              : consecutiveFailures >= 3
+                ? 15000
+                : consecutiveFailures > 0
+                  ? 10000
+                  : 3000;
 
           timer = setTimeout(
             tick,
@@ -933,7 +965,123 @@ export class UpstoxMarketAdapter {
 // DemoMarketAdapter is intentionally NOT used.
 // ============================================================
 
-export const market = new UpstoxMarketAdapter();
+const sampleMode =
+  typeof window !== 'undefined' &&
+  false;
+
+function sampleCandles(timeframe, count = 500, endTime = Date.now() / 1000) {
+  const seconds = intervals[timeframe] || 60;
+  const currentOpen = Math.floor(Number(endTime) / seconds) * seconds;
+  const firstTime = currentOpen - (count - 1) * seconds;
+  const candles = Array.from({ length: count }, (_, index) => {
+    const close = 23200 + index * 0.15 + index * index * 0.001;
+    const open = close - 3;
+    return {
+      time: firstTime + index * seconds,
+      open,
+      high: close + 1,
+      low: open - 1,
+      close,
+      volume: 90000 + (index % 37) * 4200,
+      openInterest: 0
+    };
+  });
+
+  // Closed-candle fixtures near the end exercise the same Prime structure,
+  // order-block, FVG, and liquidity-sweep rules used for live data.
+  const fixture = [
+    [23512, 23515, 23517, 23511],
+    [23515, 23514, 23516, 23512],
+    [23514, 23513, 23515, 23511],
+    [23514, 23511, 23515, 23510],
+    [23512, 23510, 23513, 23508],
+    [23510, 23512, 23514, 23510],
+    [23512, 23514, 23516, 23512],
+    [23514, 23515, 23516, 23514],
+    [23514, 23520, 23521, 23507],
+    [23520, 23522, 23523, 23518],
+    [23522, 23524, 23525, 23520],
+    [23524, 23526, 23527, 23522],
+    [23526, 23528, 23529, 23524]
+  ];
+  const start = Math.max(0, count - fixture.length - 1);
+  fixture.forEach(([open, close, high, low], offset) => {
+    const index = start + offset;
+    if (!candles[index]) return;
+    candles[index] = {
+      ...candles[index],
+      open,
+      high,
+      low,
+      close,
+      volume: 165000 + offset * 6000
+    };
+  });
+
+  return candles;
+}
+
+class SampleMarketAdapter {
+  constructor() {
+    this.status = 'SAMPLE';
+    this.lastUpdate = Date.now();
+    this.quotes = {};
+  }
+
+  async history(_symbol, timeframe) {
+    return sampleCandles(timeframe, 500);
+  }
+
+  async mtfHistory(_symbol, timeframe) {
+    return sampleCandles(timeframe, 320);
+  }
+
+  async previousHistory(_symbol, timeframe) {
+    const seconds = intervals[timeframe] || 60;
+    return sampleCandles(timeframe, 320, Date.now() / 1000 - 500 * seconds);
+  }
+
+  subscribe(symbol, timeframe, onTick) {
+    let active = true;
+    const seconds = intervals[timeframe] || 60;
+    const emit = () => {
+      if (!active) return;
+      const now = Date.now() / 1000;
+      const phase = now / 18;
+      // Keep the live sample quote continuous with the final historical
+      // fixture (23,528). A large discontinuity would correctly flip the
+      // short-term indicators while MTF history still described the prior move.
+      const price = 23529 + Math.sin(phase) * 1.2 + Math.sin(phase / 4) * 0.8;
+      this.quotes[symbol] = price;
+      this.lastUpdate = Date.now();
+      onTick?.({
+        time: Math.floor(now),
+        price,
+        delta: Math.cos(phase) * 0.6,
+        volume: 125000,
+        previousClose: 23475,
+        netChange: price - 23475,
+        changePercent: ((price - 23475) / 23475) * 100,
+        live: true,
+        fallback: false,
+        source: 'DETERMINISTIC SAMPLE',
+        candleTime: Math.floor(now / seconds) * seconds
+      });
+    };
+    emit();
+    const timer = setInterval(emit, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      this.status = 'DISCONNECTED';
+    };
+  }
+}
+
+export const market = sampleMode
+  ? new SampleMarketAdapter()
+  : new UpstoxMarketAdapter();
+
 
 // ============================================================
 // STRIDE SIGNALS

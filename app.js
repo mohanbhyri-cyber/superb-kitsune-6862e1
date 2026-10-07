@@ -1,8 +1,4 @@
-import { candleStatus } from './candle-status.js';
-import { marketRequest } from './request-coordinator.js';
-import { liveScalpCall, LiveCallTracker } from './live-scalp-calls.js';
-import { confirmedTrigger } from './confirmed-trigger.js';
-import { momentumSignals } from './momentum.js';
+    import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
     import { trendIndicators } from './trend-indicators.js';
@@ -824,22 +820,18 @@ import { momentumSignals } from './momentum.js';
       state.liveTradeFinalizer =
         state.tradeFinalizer;
 
-      renderLiveCalls();
-
       // ==========================================================
       // DISPLAY
       // ==========================================================
 
-      renderSmrtTriggerSignal();
       renderPrimeMarket();
       renderAiIndicator();
       renderSmartMoneyTools();
-
     }
 
     function renderSmartMoneyTools() {
       const samplePreview =
-        false;
+        new URLSearchParams(window.location.search).get('sample') === '1';
 
       const sampleEdge = state.niftyEdge?.latest;
       let structure = state.primeMarket?.structure;
@@ -1565,8 +1557,33 @@ import { momentumSignals } from './momentum.js';
         istMinutes >= 9 * 60 + 15 &&
         istMinutes < 15 * 60 + 30;
 
-      const freshness = candleStatus(p?.time, Number(intervals[state.tf]));
-      const staleClosedCandle = !freshness.current;
+      const latestClosedTime =
+        Number(p?.time);
+
+      const closedAgeMinutes =
+        primeFinite(latestClosedTime)
+          ? Math.max(
+              0,
+              Math.round(
+                (
+                  Date.now() / 1000 -
+                  latestClosedTime
+                ) / 60
+              )
+            )
+          : null;
+
+      const staleClosedCandle =
+        Number.isFinite(closedAgeMinutes) &&
+        closedAgeMinutes >
+          Math.max(
+            Math.round(
+              Number(intervals[state.tf] || 60) /
+              60
+            ) * 3,
+            15
+          );
+
       const status =
         document.createElement('div');
 
@@ -1577,7 +1594,9 @@ import { momentumSignals } from './momentum.js';
         !regularSessionOpen
           ? 'MARKET CLOSED · Historical/closed-candle analysis only · NO LIVE TRADE'
           : staleClosedCandle
-            ? freshness.reason.toUpperCase() + ' · NO LIVE TRADE'
+            ? 'STALE DATA · Last closed candle ' +
+              closedAgeMinutes +
+              ' min old · NO LIVE TRADE'
             : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT';
 
       status.className =
@@ -1630,18 +1649,6 @@ import { momentumSignals } from './momentum.js';
       } catch {}
     };
 
-
-    // Apply the requested fast scalping profile once; later user changes persist.
-    if (read('smrt-scalping-profile-v1', false) !== true) {
-      save('stride-sensitivity', 'fast');
-      save('stride-scalper', true);
-      save('stride-scalper-alerts', false);
-      save('stride-momentum-alerts', false);
-      save('stride-signal-alerts-enabled', false);
-      save('smrt-live-calls-enabled', true);
-      save('smrt-entry-timeframe', '3m');
-      save('smrt-scalping-profile-v1', true);
-    }
 
     const paNames = [
       'Structure',
@@ -1697,7 +1704,7 @@ import { momentumSignals } from './momentum.js';
 
       symbol: 'NIFTY',
 
-      tf: ['1m','3m','5m','15m'].includes(read('smrt-entry-timeframe', '3m')) ? read('smrt-entry-timeframe', '3m') : '3m',
+      tf: '5m',
 
       tvChartMode: 'tradingview',
 
@@ -1918,72 +1925,6 @@ import { momentumSignals } from './momentum.js';
       );
 
 
-    let liveCallsEnabled = read('smrt-live-calls-enabled', true) === true;
-    const liveCallTracker = new LiveCallTracker(read('smrt-live-calls-sent', []));
-
-    function setupLiveCalls() {
-      const host = $('#scalp-enable')?.closest('.scalp-panel');
-      if (!host || $('#live-call-state')) return;
-      const section = document.createElement('section');
-      section.className = 'scalp-panel';
-      section.innerHTML = `<div class="panel-heading"><h2>Confirmed live calls <span class="tag">UPSTOX</span></h2><label class="signal-switch"><input type="checkbox" id="live-call-enable">Alerts</label></div>
-        <p>Fast scalping · 1m/3m entries · 5m/15m/1h confirmation</p>
-        <strong id="live-call-state" class="muted">WAIT</strong>
-        <p id="live-call-reason">Waiting for real closed-candle confirmation</p>
-        <p id="live-call-plan">Entry — · Stop — · T1 — · T2 — · T3 —</p>
-        <small>Levels are NIFTY index points. Confidence is confluence, not win probability. Calls appear only with fresh data; alerts require an open app.</small>
-        <details><summary>Scalping settings</summary><p>Fast Stride sensitivity (1.5× ATR), EMA 9/21/50/200, RSI 14, MACD 12/26/9, Supertrend 10/3, ADX/DMI 14 and ATR 14. Existing indicator calculations and confirmation thresholds stay active. Calls additionally require confidence ≥80, Risk Engine GOOD, T3 ≥2R and EMA 21 distance ≤1.5 ATR. Missing volume stays unavailable. Alerts have a 3-minute cooldown.</p><button type="button" id="apply-scalping-profile">Apply fast scalping settings</button></details>`;
-      host.insertAdjacentElement('afterend', section);
-      $('#live-call-enable').checked = liveCallsEnabled;
-      $('#live-call-enable').onchange = () => {
-        liveCallsEnabled = $('#live-call-enable').checked;
-        save('smrt-live-calls-enabled', liveCallsEnabled);
-        liveCallTracker.baselines.clear();
-        renderLiveCalls();
-      };
-      $('#apply-scalping-profile').onclick = () => {
-        state.signalSensitivity = 'fast'; scalpEnabled = true;
-        scalpAlerts = false; momentumAlerts = false; signalAlertsEnabled = false;
-        save('stride-sensitivity', 'fast'); save('stride-scalper', true);
-        save('stride-scalper-alerts', false); save('stride-momentum-alerts', false); save('stride-signal-alerts-enabled', false);
-        if ($('#signal-sensitivity')) $('#signal-sensitivity').value = 'fast';
-        if ($('#scalp-enable')) $('#scalp-enable').checked = true;
-        if ($('#scalp-alerts')) $('#scalp-alerts').checked = false;
-        if ($('#momentum-alerts')) $('#momentum-alerts').checked = false;
-        state.tf = '3m'; save('smrt-entry-timeframe', state.tf);
-        liveCallTracker.baselines.clear(); loadData();
-      };
-    }
-
-    function renderLiveCalls() {
-      const element = $('#live-call-state');
-      if (!element) return;
-      const seconds = Number(intervals[state.tf]);
-      const index = lastClosedCandleIndex(state.data, seconds, Date.now()/1000);
-      const finalizer = state.tradeFinalizer;
-      const call = liveScalpCall({
-        finalizer, consensus: state.allIndicatorsConsensus,
-        risk: analyseRisk(finalizer?.plan, {side: finalizer?.side, atr: state.trend?.atr?.[index]}),
-        feedStatus: state.feedStatus, quoteTime: state.lastQuoteTime,
-        seconds, timeframe: state.tf, symbol: state.symbol,
-        replay: state.replay.active, sample: false,
-        atr: state.trend?.atr?.[index], ema: state.calc?.e21?.[index], closedTime: state.data[index]?.time
-      });
-      element.textContent = call.signal === 'WAIT' ? 'WAIT' : `${call.signal} · ${call.score}/100`;
-      element.className = call.side === 1 ? 'up' : call.side === -1 ? 'down' : 'muted';
-      $('#live-call-reason').textContent = call.reason;
-      const plan = call.plan;
-      $('#live-call-plan').textContent = plan ? `Entry ${fmt(plan.entry)} · Stop ${fmt(plan.stop)} · T1 ${fmt(plan.target1)} · T2 ${fmt(plan.target2)} · T3 ${fmt(plan.target3)} · T3 ${call.rr.toFixed(2)}R` : 'Entry — · Stop — · T1 — · T2 — · T3 —';
-      const event = liveCallTracker.collect(call, {context: `${state.symbol}:${state.tf}`,closedTime: state.data[index]?.time,enabled:liveCallsEnabled});
-      if (!event) return;
-      save('smrt-live-calls-sent', liveCallTracker.sent);
-      const text = `${event.signal} · ${current().name} ${state.tf} · Entry ${fmt(plan.entry)} · SL ${fmt(plan.stop)} · T1 ${fmt(plan.target1)} · T2 ${fmt(plan.target2)} · T3 ${fmt(plan.target3)}`;
-      signalHistory.unshift({source:'Confirmed live call',side:event.side===1?'Buy':'Sell',name:current().name,tf:state.tf,time:event.time,price:plan.entry,stop:plan.stop,target1:plan.target1,target2:plan.target2,target3:plan.target3});
-      signalHistory.splice(20); save('stride-signal-history',signalHistory);
-      toast(text); renderSignalAlerts();
-      if ('Notification' in window && Notification.permission === 'granted') showSignalNotification('Confirmed live Upstox call',text);
-    }
-
     let unsubscribe;
 
     let request = 0;
@@ -2042,7 +1983,43 @@ import { momentumSignals } from './momentum.js';
     }
 
 
-    const upstoxAwareFetch = marketRequest;
+    async function upstoxAwareFetch(
+      url,
+      options = {}
+    ) {
+      const response =
+        await fetch(
+          url,
+          options
+        );
+
+      if (response.status !== 429) {
+        return response;
+      }
+
+      const payload =
+        await response.clone()
+          .json()
+          .catch(() => ({}));
+
+      const delay =
+        noteUpstoxRateLimit(
+          payload?.retryAfterMs
+        );
+
+      const error =
+        new Error(
+          payload?.reason ||
+          'Upstox rate limit reached. Waiting before retry.'
+        );
+
+      error.status = 429;
+      error.retryAfterMs = delay;
+      error.rateLimited = true;
+
+      throw error;
+    }
+
 
     function isUpstoxRateLimit(
       error
@@ -2700,12 +2677,180 @@ import { momentumSignals } from './momentum.js';
         null;
     }
 
-    function renderSmrtTriggerSignal() {
-      state.triggerSignal = confirmedTrigger({
-        finalizer: state.tradeFinalizer, consensus: state.allIndicatorsConsensus,
-        seconds: Number(intervals[state.tf]), replay: state.replay.active,
-        sample: false
+    function analyseSmrtTriggerSignal(data, calc, trend, momentum, marketMap, futuresVWAP) {
+      const wait = (reason = 'Waiting for closed-candle confirmation') => ({
+        signal: 'WAIT',
+        side: 0,
+        score: 0,
+        reason
       });
+
+      if (!Array.isArray(data) || data.length < 55) {
+        return wait('Warming up');
+      }
+
+      // The last item is the forming/synthetic candle. Trigger only from
+      // the latest completed candle so this layer never introduces lookahead.
+      const i = data.length - 2;
+      const candle = data[i];
+
+      const values = {
+        close: Number(candle?.close),
+        e9: Number(calc?.e9?.[i]),
+        e21: Number(calc?.e21?.[i]),
+        e50: Number(calc?.e50?.[i]),
+        rsi: Number(calc?.rsi?.[i]),
+        hist: Number(calc?.hist?.[i]),
+        st: Number(trend?.direction?.[i]),
+        adx: Number(trend?.adx?.[i]),
+        plusDI: Number(trend?.plusDI?.[i]),
+        minusDI: Number(trend?.minusDI?.[i])
+      };
+
+      if (!Object.values(values).every(Number.isFinite)) {
+        return wait('Indicators warming up');
+      }
+
+      let bull = 0;
+      let bear = 0;
+      const bullReasons = [];
+      const bearReasons = [];
+
+      if (values.e9 > values.e21 && values.e21 > values.e50) {
+        bull += 2;
+        bullReasons.push('EMA trend');
+      } else if (values.e9 < values.e21 && values.e21 < values.e50) {
+        bear += 2;
+        bearReasons.push('EMA trend');
+      }
+
+      if (values.st === 1) {
+        bull += 2;
+        bullReasons.push('Supertrend');
+      } else if (values.st === -1) {
+        bear += 2;
+        bearReasons.push('Supertrend');
+      }
+
+      if (values.adx >= 20 && values.plusDI > values.minusDI) {
+        bull += 2;
+        bullReasons.push('DMI/ADX');
+      } else if (values.adx >= 20 && values.minusDI > values.plusDI) {
+        bear += 2;
+        bearReasons.push('DMI/ADX');
+      }
+
+      if (values.rsi >= 52 && values.rsi <= 72) {
+        bull += 1;
+        bullReasons.push('RSI');
+      } else if (values.rsi <= 48 && values.rsi >= 28) {
+        bear += 1;
+        bearReasons.push('RSI');
+      }
+
+      if (values.hist > 0) {
+        bull += 1;
+        bullReasons.push('MACD');
+      } else if (values.hist < 0) {
+        bear += 1;
+        bearReasons.push('MACD');
+      }
+
+      if (values.close > values.e9 && values.close > values.e21) {
+        bull += 1;
+        bullReasons.push('Price');
+      } else if (values.close < values.e9 && values.close < values.e21) {
+        bear += 1;
+        bearReasons.push('Price');
+      }
+
+      const vwap = Number(futuresVWAP);
+      if (Number.isFinite(vwap)) {
+        if (values.close > vwap) {
+          bull += 1;
+          bullReasons.push('Futures VWAP');
+        } else if (values.close < vwap) {
+          bear += 1;
+          bearReasons.push('Futures VWAP');
+        }
+      }
+
+      const momentumLatest =
+        Array.isArray(momentum)
+          ? momentum.filter(Boolean).at(-1)
+          : null;
+
+      if (Number(momentumLatest?.side) === 1) {
+        bull += 1;
+        bullReasons.push('Momentum');
+      } else if (Number(momentumLatest?.side) === -1) {
+        bear += 1;
+        bearReasons.push('Momentum');
+      }
+
+      const mapAction = String(
+        marketMap?.action ||
+        marketMap?.signal ||
+        marketMap?.trend ||
+        ''
+      ).toUpperCase();
+
+      if (mapAction.includes('BUY') || mapAction.includes('BULL')) {
+        bull += 1;
+        bullReasons.push('Market Map');
+      } else if (mapAction.includes('SELL') || mapAction.includes('BEAR')) {
+        bear += 1;
+        bearReasons.push('Market Map');
+      }
+
+      const total = 11;
+      const bullPct = Math.round(bull / total * 100);
+      const bearPct = Math.round(bear / total * 100);
+
+      // This trigger is intentionally faster than the strict Finalizer,
+      // but still needs a clear directional majority and core trend alignment.
+      const buy =
+        bull >= 7 &&
+        bull - bear >= 4 &&
+        values.e9 > values.e21 &&
+        values.st === 1 &&
+        values.plusDI > values.minusDI;
+
+      const sell =
+        bear >= 7 &&
+        bear - bull >= 4 &&
+        values.e9 < values.e21 &&
+        values.st === -1 &&
+        values.minusDI > values.plusDI;
+
+      if (buy) {
+        return {
+          signal: 'BUY',
+          side: 1,
+          score: bullPct,
+          reason: bullReasons.join(' · ')
+        };
+      }
+
+      if (sell) {
+        return {
+          signal: 'SELL',
+          side: -1,
+          score: bearPct,
+          reason: bearReasons.join(' · ')
+        };
+      }
+
+      return {
+        signal: 'WAIT',
+        side: 0,
+        score: Math.max(bullPct, bearPct),
+        reason: 'Directional confirmation incomplete'
+      };
+    }
+
+
+    function renderSmrtTriggerSignal() {
       const trigger = state.triggerSignal || {
         signal: 'WAIT',
         score: 0,
@@ -2740,7 +2885,7 @@ import { momentumSignals } from './momentum.js';
       const consensus = state.allIndicatorsConsensus || null;
       const finalizer = state.tradeFinalizer || null;
       const samplePreview =
-        false;
+        new URLSearchParams(window.location.search).get('sample') === '1';
 
       // =========================================================
       // FINAL DISPLAY SIGNAL
@@ -3952,7 +4097,6 @@ import { momentumSignals } from './momentum.js';
       );
 
 
-
       ensureTvLiteVolumeSeries();
 
       if (
@@ -4867,7 +5011,15 @@ import { momentumSignals } from './momentum.js';
           }
         );
 
-      // Trigger is recomputed after the final PRIME gate.
+      state.triggerSignal =
+        analyseSmrtTriggerSignal(
+          indicatorData,
+          state.calc,
+          state.trend,
+          state.momentum,
+          state.marketMap,
+          state.futuresVWAP
+        );
 
       renderSmrtTriggerSignal();
 
@@ -6465,18 +6617,17 @@ import { momentumSignals } from './momentum.js';
 
 
       const lastRSI =
-        state.calc.rsi[closedIndex];
+        state.calc.rsi.at(-1);
 
 
       const lastMACD =
-        state.calc.macd[closedIndex];
+        state.calc.macd.at(-1);
 
 
       if (
         $('#rsi-value')
       ) {
 
-        $('#rsi-value').title = state.tf + ' · closed candle ' + new Date(Number(closedCandle.time) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         $('#rsi-value').textContent =
           Number.isFinite(
             lastRSI
@@ -6490,7 +6641,6 @@ import { momentumSignals } from './momentum.js';
         $('#macd-value')
       ) {
 
-        $('#macd-value').title = state.tf + ' · closed candle ' + new Date(Number(closedCandle.time) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         $('#macd-value').textContent =
           Number.isFinite(
             lastMACD
@@ -8408,8 +8558,6 @@ import { momentumSignals } from './momentum.js';
 
 
     async function loadData() {
-      save('smrt-entry-timeframe', state.tf);
-      state.lastQuoteTime = null;
       state.rawTradeFinalizer = null;
       state.tradeFinalizer = null;
       state.liveTradeFinalizer = null;
@@ -8431,7 +8579,6 @@ import { momentumSignals } from './momentum.js';
 
       // Render WAIT state only.
       // Do NOT calculate Prime before history is loaded.
-      renderSmrtTriggerSignal();
       renderPrimeMarket();
       renderSmartMoneyTools();
       renderTradeFinalizer();
@@ -8897,8 +9044,6 @@ import { momentumSignals } from './momentum.js';
                     );
 
 
-              state.lastQuoteTime = tick.time != null && tick.time !== '' && Number.isFinite(Number(tick.time)) ? Number(tick.time) : null;
-
               const seconds =
                 intervals[
                   state.tf
@@ -9286,6 +9431,7 @@ import { momentumSignals } from './momentum.js';
         'market-map-panel',
         'candle-scanner-panel',
         'all-indicators-panel',
+        'all-indicators-chat-panel',
         'global-watch-panel',
         'ai-indicator-panel',
         'ai-nifty-panel',
@@ -9395,8 +9541,6 @@ import { momentumSignals } from './momentum.js';
       () => {};
 
 
-    setupLiveCalls();
-    setInterval(renderLiveCalls, 5000);
     loadData();
 
     setupAllIndicatorsChat();
@@ -11869,9 +12013,6 @@ import { momentumSignals } from './momentum.js';
           );
 
 
-        if (alert.source === 'Confirmed live call') text.textContent +=
-          ` · SL ${fmt(alert.stop)} · T1 ${fmt(alert.target1)} · T2 ${fmt(alert.target2)} · T3 ${fmt(alert.target3)}`;
-
         text.className =
           alert.side === 'Buy'
             ? 'up'
@@ -12791,7 +12932,7 @@ import { momentumSignals } from './momentum.js';
             window.SMRTAdvancedIndicators?.ready
               ? 'NO DIRECTIONAL CONSENSUS'
               : 'WAITING'],
-          ['Price Pressure Composite',
+          ['Pressure / Volume Composite',
             window.SMRTAdvancedIndicators?.ready
               ? 'NO DIRECTIONAL CONSENSUS'
               : 'WAITING']
@@ -13394,7 +13535,7 @@ import { momentumSignals } from './momentum.js';
     function recomputeAiNifty() {
 
       const samplePreview =
-        false;
+        new URLSearchParams(window.location.search).get('sample') === '1';
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&
@@ -13974,7 +14115,7 @@ import { momentumSignals } from './momentum.js';
 
     function renderTradeFinalizer() {
       const samplePreview =
-        false;
+        new URLSearchParams(window.location.search).get('sample') === '1';
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&
@@ -15083,26 +15224,11 @@ import { momentumSignals } from './momentum.js';
           : 'muted'
     );
 
-    const structureValue =
-      state.primeMarket?.structure ??
-      map?.structure ??
-      'WAITING';
-
     const structureText =
-      (
-        typeof structureValue === 'object' && structureValue !== null
-          ? (
-              typeof structureValue.label === 'string'
-                ? structureValue.label
-                : typeof structureValue.state === 'string'
-                  ? structureValue.state
-                  : structureValue.direction === 1
-                    ? 'BULLISH'
-                    : structureValue.direction === -1
-                      ? 'BEARISH'
-                      : 'RANGE / MIXED'
-            )
-          : String(structureValue)
+      String(
+        state.primeMarket?.structure ||
+        map.structure ||
+        'WAITING'
       ).toUpperCase();
 
     set(
@@ -15138,9 +15264,7 @@ import { momentumSignals } from './momentum.js';
     );
 
     const futuresVwap =
-      state.futuresVWAP !== null && state.futuresVWAP !== undefined && state.futuresVWAP !== '' && Number(state.futuresVWAP) > 0
-        ? Number(state.futuresVWAP)
-        : NaN;
+      Number(state.futuresVWAP);
 
     const currentPrice =
       Number(
@@ -16557,4 +16681,3 @@ import { momentumSignals } from './momentum.js';
 
 
     renderWatch();
-
