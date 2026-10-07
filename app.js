@@ -392,9 +392,9 @@
     function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, futuresVolume = null, replay = false }) {
       const result = { signal: 'NO TRADE', side: 0, reasons: [], checks: [], structure: null,
         volume: null, mtf: {}, time: null };
-      const check = (name, ok, reason) => {
-        result.checks.push({ name, ok: !!ok });
-        if (!ok) result.reasons.push(reason || name + ' incomplete or conflicting');
+      const check = (name, ok, reason, required = true) => {
+        result.checks.push({ name, ok: !!ok, required: !!required });
+        if (!ok && required) result.reasons.push(reason || name + ' incomplete or conflicting');
       };
       const closed = primeClosed(data, seconds, now);
 
@@ -604,17 +604,22 @@
         );
       }
       const edge = legacy.edge?.latest, gainz = legacy.gainz?.latest;
-      check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0);
+      check('Nifty Edge', edge?.time === last.time && primeSide(edge?.signal) === side && side !== 0,
+        'Nifty Edge is unavailable or not aligned', false);
       check('Market Map', primeSide(legacy.marketMap?.trend) === side && side !== 0 &&
         !(side === 1 && legacy.marketMap?.breakout === 'BREAKDOWN') &&
         !(side === -1 && legacy.marketMap?.breakout === 'BREAKOUT UP') &&
         (!primeSide(legacy.marketMap?.action) || primeSide(legacy.marketMap?.action) === side) &&
-        (!primeSide(legacy.marketMap?.reversal) || primeSide(legacy.marketMap?.reversal) === side));
+        (!primeSide(legacy.marketMap?.reversal) || primeSide(legacy.marketMap?.reversal) === side),
+        'Market Map is unavailable or not aligned', false);
       const pattern = legacy.scanner?.latest;
       check('Candle Scanner', primeSide(legacy.candleSetup?.action) === side && side !== 0 &&
-        primeFinite(pattern?.time) && pattern.time <= last.time && last.time - pattern.time <= seconds * 3);
-      check('SSL / QQE', gainz?.time === last.time && side !== 0 && gainz.sslSide === side && gainz.qqeSide === side);
-      check('Trade Finalizer', legacy.finalizer?.time === last.time && side !== 0 && primeSide(legacy.finalizer?.state) === side);
+        primeFinite(pattern?.time) && pattern.time <= last.time && last.time - pattern.time <= seconds * 3,
+        'Candle Scanner is unavailable or not aligned', false);
+      check('SSL / QQE', gainz?.time === last.time && side !== 0 && gainz.sslSide === side && gainz.qqeSide === side,
+        'SSL / QQE is unavailable or not aligned', false);
+      check('Trade Finalizer', legacy.finalizer?.time === last.time && side !== 0 && primeSide(legacy.finalizer?.state) === side,
+        'Trade Finalizer is unavailable or not aligned', false);
       const plan = legacy.finalizer?.plan;
       check('Closed-candle trade plan', plan && ['entry', 'stop', 'target1', 'target2', 'target3'].every(k => primeFinite(plan[k]) && Number(plan[k]) > 0) &&
         side !== 0 && (Number(plan.entry) - Number(plan.stop)) * side > 0 &&
@@ -623,12 +628,12 @@
         (Number(plan.target3) - Number(plan.target2)) * side > 0);
       check('All Indicators Consensus', side !== 0 && primeSide(legacy.consensus?.signal) === side &&
         legacy.consensus?.opposingCount === 0 && legacy.consensus?.votes?.length > 0 &&
-        legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting');
+        legacy.consensus.votes.every(v => v.side === side), 'All Indicators Consensus incomplete or conflicting', false);
       for (const [name, value] of [['AI Nifty', legacy.aiNifty?.signal], ['Global Watch', legacy.globalWatch?.bias]]) {
         const vote = primeSide(value);
         check(name + ' conflict veto', !vote || vote === side, name + ' conflicts with closed-candle evidence');
       }
-      if (side && result.checks.every(x => x.ok)) {
+      if (side && result.checks.filter(x => x.required !== false).every(x => x.ok)) {
         result.side = side;
         result.signal = side === 1 ? 'BUY' : 'SELL';
         result.reasons.push('All required closed-candle confirmation layers agree');
