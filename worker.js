@@ -571,6 +571,25 @@ async function previousTradingSession(
 // INTRADAY HISTORY
 // ----------------------------------------------------
 
+// A single cached date-range request supplies all timeframes with genuine
+// prior-session candles, including 3m, which needs more than one session.
+async function warmupTradingHistory(instrumentKey, interval, token) {
+  const toDate = istDateMinusDays(1);
+  const fromDate = istDateMinusDays(30);
+  const endpoint = 'https://api.upstox.com/v3/historical-candle/' +
+    encodeURIComponent(instrumentKey) + '/minutes/' + interval + '/' + toDate + '/' + fromDate;
+  const body = await upstoxFetch(endpoint, token);
+  const byTime = new Map();
+  for (const row of body?.data?.candles || []) {
+    const candle = normalizeRegularSessionCandle(row);
+    if (candle) byTime.set(candle.time, candle);
+  }
+  const candles = [...byTime.values()].sort((a, b) => a.time - b.time).slice(-260);
+  const last = candles.at(-1);
+  const parts = last ? getISTParts(last.time * 1000) : null;
+  return { date: parts ? parts.year + '-' + parts.month + '-' + parts.day : null, candles };
+}
+
 async function intradayHistory(url, token) {
   const symbol =
     (url.searchParams.get("symbol") || "NIFTY")
@@ -694,7 +713,7 @@ async function intradayHistory(url, token) {
 
     if (!rows.length) {
       const previous =
-        await previousTradingSession(
+        await warmupTradingHistory(
           instrumentKey,
           interval,
           token
@@ -722,7 +741,7 @@ async function intradayHistory(url, token) {
           marketOpen:
             false,
           historyMode:
-            "previous-session-preopen-fallback",
+            "multi-session-preopen-history",
           firstCandleTime:
             previous.candles[0].time,
           lastCandleTime:
@@ -753,13 +772,13 @@ async function intradayHistory(url, token) {
 
 // Prime / Advanced Engine requires 220 closed candles.
 // If today's session has fewer than 260 candles,
-// add the most recent previous trading session.
+// add enough prior sessions to warm every supported minute timeframe.
 let previousCandles = [];
 
 if (todayCandles.length < 260) {
   try {
     const previousSession =
-      await previousTradingSession(
+      await warmupTradingHistory(
         instrumentKey,
         interval,
         token
