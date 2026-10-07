@@ -5519,7 +5519,11 @@
           indicatorData,
           {
             futuresVWAP:
-              analysisFuturesVWAP
+              analysisFuturesVWAP,
+            closedIndex:
+              Math.max(0, indicatorData.length - 2),
+            seconds:
+              Number(intervals[state.tf] || 0)
           }
         );
 
