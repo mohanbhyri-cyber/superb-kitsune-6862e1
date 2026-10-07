@@ -2748,7 +2748,20 @@
         '3m': 3,
         '5m': 5,
         '15m': 15
-      }[state.tf] || 1;
+      }[requestedTf];
+
+      // The futures endpoint currently serves only 1/3/5/15-minute candles.
+      // Never silently substitute 1-minute futures data for 1h/1D charts:
+      // the timestamp/freshness math would otherwise compare unlike bars.
+      if (!minutes) {
+        state.futuresVWAP = null;
+        state.futuresVWAPUpdated = 0;
+        state.futuresVWAPCandleTime = null;
+        state.futuresVolumeConfirmation = null;
+        state.futuresVWAPReason =
+          'Futures VWAP is unavailable for the selected timeframe.';
+        return;
+      }
 
       try {
 
