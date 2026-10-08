@@ -15706,6 +15706,10 @@
 
       if (!map) {
 
+        set('#market-map-signal', 'WAIT', 'muted');
+        set('#market-map-signal-context', 'Waiting for closed-candle data');
+        set('#market-map-signal-reason', 'Market Map data is unavailable or warming up.');
+
         set('#market-map-breadth', 'UNAVAILABLE', 'muted');
         set('#market-map-options', 'UNAVAILABLE', 'muted');
         set('#market-map-pcr', '—');
@@ -15880,6 +15884,24 @@
           ? 'down'
           : 'muted'
     );
+
+    // Display the existing confirmed direction; never infer a trade from trend.
+    const mapSignalSessionEligible = state.replay.active || isNseCashMarketOpen();
+    const mapSignal = finalTradeConfirmed && mapSignalSessionEligible
+      ? finalTradeSide === 1 ? 'BUY' : 'SELL'
+      : 'WAIT';
+    set('#market-map-signal', mapSignal,
+      mapSignal === 'BUY' ? 'up' : mapSignal === 'SELL' ? 'down' : 'muted');
+    set('#market-map-signal-context', state.replay.active
+      ? 'Replay · completed candles · not a live signal'
+      : mapSignalSessionEligible
+        ? 'Live · closed-candle confirmation'
+        : 'Market closed · no live signal');
+    set('#market-map-signal-reason', !mapSignalSessionEligible
+      ? 'NSE regular session is closed; waiting for the next session.'
+      : finalTradeConfirmed
+        ? 'Finalizer, Prime and Consensus agree on the confirmed direction.'
+        : finalizer?.reasons?.[0] || 'Waiting for Finalizer, Prime and Consensus confirmation.');
 
 
     // =========================================================
@@ -17760,3 +17782,4 @@
 
 
     renderWatch();
+
