@@ -772,6 +772,19 @@ async function intradayHistory(url, token) {
     "/" +
     today;
 
+  // A single previous session is not enough when the provider returns a
+  // shortened intraday payload. Request a genuine multi-day range so the
+  // closed-candle indicators can warm up without synthetic candles.
+  const historicalWarmupEndpoint =
+    "https://api.upstox.com/v3/historical-candle/" +
+    encodeURIComponent(instrumentKey) +
+    "/minutes/" +
+    interval +
+    "/" +
+    today +
+    "/" +
+    istDateMinusDays(7);
+
   try {
     let rows = [];
 
@@ -893,9 +906,9 @@ async function intradayHistory(url, token) {
       });
     }
 
-    const todayCandles =
+    let todayCandles =
   rows
-    .map(normalizeCandle)
+    .map(normalizeRegularSessionCandle)
     .filter(Boolean)
     .sort((a, b) => a.time - b.time);
 
@@ -906,19 +919,16 @@ let previousCandles = [];
 
 if (todayCandles.length < 260) {
   try {
-    const previousSession =
-      await previousTradingSession(
-        instrumentKey,
-        interval,
-        token
-      );
+    const warmupBody = await upstoxFetch(
+      historicalWarmupEndpoint,
+      token
+    );
 
-    if (
-      previousSession &&
-      Array.isArray(previousSession.candles)
-    ) {
-      previousCandles =
-        previousSession.candles;
+    if (Array.isArray(warmupBody?.data?.candles)) {
+      previousCandles = warmupBody.data.candles
+        .map(normalizeRegularSessionCandle)
+        .filter(Boolean)
+        .sort((a, b) => a.time - b.time);
     }
   } catch (error) {
     if (
