@@ -16170,17 +16170,33 @@
       state.primeMarket?.structure ||
       map.structure ||
       null;
-    const structureSide =
+    const structureDirection =
       structureValue && typeof structureValue === 'object'
-        ? Number(structureValue.direction ?? structureValue.side)
-        : Number(structureValue);
+        ? structureValue.direction ??
+          structureValue.side ??
+          structureValue.structure?.direction ??
+          structureValue.structure?.side
+        : structureValue;
+    const structureSide =
+      Number.isFinite(Number(structureDirection))
+        ? Number(structureDirection)
+        : null;
+    const structureLabel =
+      structureValue && typeof structureValue === 'object'
+        ? structureValue.label ??
+          structureValue.state ??
+          structureValue.bias ??
+          structureValue.structure?.label ??
+          structureValue.structure?.state ??
+          structureValue.structure?.bias
+        : structureValue;
     const structureText =
       structureSide === 1
         ? 'BULLISH'
         : structureSide === -1
           ? 'BEARISH'
-          : typeof structureValue === 'string' && structureValue.trim()
-            ? structureValue.toUpperCase()
+          : typeof structureLabel === 'string' && structureLabel.trim()
+            ? structureLabel.toUpperCase()
             : 'WAITING';
 
     set(
