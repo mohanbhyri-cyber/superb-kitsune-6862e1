@@ -5308,7 +5308,7 @@
           ? 0
           : Math.max(
               0,
-              120 - elapsed
+              250 - elapsed
             );
 
 
