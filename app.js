@@ -16166,12 +16166,22 @@
           : 'muted'
     );
 
+    const structureValue =
+      state.primeMarket?.structure ||
+      map.structure ||
+      null;
+    const structureSide =
+      structureValue && typeof structureValue === 'object'
+        ? Number(structureValue.direction ?? structureValue.side)
+        : Number(structureValue);
     const structureText =
-      String(
-        state.primeMarket?.structure ||
-        map.structure ||
-        'WAITING'
-      ).toUpperCase();
+      structureSide === 1
+        ? 'BULLISH'
+        : structureSide === -1
+          ? 'BEARISH'
+          : typeof structureValue === 'string' && structureValue.trim()
+            ? structureValue.toUpperCase()
+            : 'WAITING';
 
     set(
       '#market-map-structure',
