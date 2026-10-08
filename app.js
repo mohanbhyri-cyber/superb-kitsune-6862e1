@@ -2827,6 +2827,17 @@
 
       } catch (error) {
 
+        // A failed older request must not clear valid futures state belonging
+        // to a newer symbol/timeframe or Replay session.
+        if (
+          state.symbol !== requestedSymbol ||
+          state.tf !== requestedTf ||
+          state.replay.active !== requestedReplay ||
+          state.replay.active
+        ) {
+          return;
+        }
+
         console.warn(
           'NIFTY futures VWAP unavailable:',
           error
