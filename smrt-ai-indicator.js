@@ -23,8 +23,11 @@ const wait = (
 ) => ({
   signal: 'AI WAIT',
   side: 0,
-  score,
-  confluenceScore: score,
+  // A blocked or unavailable AI result must never present directional
+  // confluence as actionable confidence. Preserve the reason and regime,
+  // but fail closed in both score fields.
+  score: 0,
+  confluenceScore: 0,
   regime,
   reasons: [
     reason,
