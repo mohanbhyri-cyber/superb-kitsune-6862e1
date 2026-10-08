@@ -16197,6 +16197,11 @@
     const futuresVwap =
       Number(state.futuresVWAP);
 
+    // Number(null) is 0; require a positive value before displaying VWAP.
+    const futuresVwapAvailable =
+      Number.isFinite(futuresVwap) &&
+      futuresVwap > 0;
+
     const currentPrice =
       Number(
         quote() ??
@@ -16204,7 +16209,7 @@
       );
 
     const vwapRelation =
-      Number.isFinite(futuresVwap) &&
+      futuresVwapAvailable &&
       Number.isFinite(currentPrice)
         ? currentPrice > futuresVwap
           ? 'ABOVE · ₹' + fmt(futuresVwap)
