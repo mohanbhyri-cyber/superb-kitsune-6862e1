@@ -9939,6 +9939,26 @@
         );
     }
 
+    function setAllIndicators(enabled) {
+      if (enabled) {
+        activateAllIndicators();
+      } else {
+        state.overlays = new Set();
+      }
+
+      const button = $('#indicators-all-toggle');
+      if (button) {
+        button.textContent = 'All indicators: ' + (enabled ? 'ON' : 'OFF');
+        button.setAttribute('aria-pressed', String(enabled));
+      }
+
+      $$('[data-indicator]').forEach(indicator => {
+        const active = state.overlays.has(indicator.dataset.indicator);
+        indicator.classList.toggle('on', active);
+        indicator.setAttribute('aria-pressed', String(active));
+      });
+    }
+
 
     /* ======================================================
        INDICATOR BUTTONS
@@ -10708,6 +10728,17 @@
               'hidden'
             );
         };
+    }
+
+    if ($('#indicators-all-toggle')) {
+      $('#indicators-all-toggle').onclick = () => {
+        const allEnabled = Object.keys(colors)
+          .every(name => state.overlays.has(name));
+        setAllIndicators(!allEnabled);
+        draw();
+        syncTradingViewLiteChart(true);
+        summary();
+      };
     }
 
 
