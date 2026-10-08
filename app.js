@@ -5273,6 +5273,7 @@
 
 
     let lastAnalysisKey = null;
+    let lastTradingViewSyncKey = null;
 
     let liveRenderTimer =
       null;
@@ -5677,7 +5678,10 @@
       );
 
 
-      syncTradingViewLiteChart();
+      if (analysisKey !== lastTradingViewSyncKey) {
+        lastTradingViewSyncKey = analysisKey;
+        syncTradingViewLiteChart();
+      }
 
 
       const {
