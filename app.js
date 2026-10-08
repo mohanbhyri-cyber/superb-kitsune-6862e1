@@ -6,6 +6,7 @@
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
     import { analyseSessionQuality } from './smrt-session-quality.js';
     import { analyseRisk } from './smrt-risk-engine.js';
+    import { analyseBestBuySetup } from './smrt-best-buy.js';
     import { proScalper } from './pro-scalper.js';
     import { SignalAlertTracker } from './signal-alerts.js';
     import { priceAction } from './price-action.js';
@@ -1180,6 +1181,7 @@
       renderPrimeMarket();
       renderAiIndicator();
       renderSmartMoneyTools();
+      renderBestBuySetup();
     }
 
     function renderSmartMoneyTools() {
@@ -15026,7 +15028,59 @@
     }
 
 
+    function renderBestBuySetup() {
+      const seconds = Number(intervals[state.tf]);
+      const now = state.replay.active
+        ? Number(state.data.at(-1)?.time) + seconds
+        : Date.now() / 1000;
+      const closedIndex = lastClosedCandleIndex(state.data, seconds, now);
+      const result = analyseBestBuySetup({
+        candles: state.data,
+        seconds,
+        now,
+        finalizer: state.tradeFinalizer,
+        prime: state.primeMarket,
+        consensus: state.allIndicatorsConsensus,
+        atr: state.trend?.atr?.[closedIndex],
+        sessionOpen: isNseCashMarketOpen(),
+        replay: state.replay.active,
+        sample: new URLSearchParams(window.location.search).get('sample') === '1'
+      });
+      const set = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+      };
+      set('best-buy-signal', result.signal);
+      const signal = document.getElementById('best-buy-signal');
+      if (signal) signal.className = result.side === 1 ? 'up' : 'muted';
+      set('best-buy-mode', result.mode + ' · ' + state.tf + ' · closed-candle confirmation');
+      set('best-buy-time', result.time
+        ? 'Closed candle ' + new Date(Number(result.time) * 1000).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+            hour: '2-digit', minute: '2-digit'
+          }) + ' IST'
+        : 'Waiting for closed-candle data');
+      set('best-buy-check-count', result.checks.filter(check => check.ok).length +
+        ' / ' + result.checks.length + ' checks passed');
+      set('best-buy-rr', result.rr1 === null ? '—' : '1 : ' + result.rr1.toFixed(2));
+      for (const [id, key] of [
+        ['best-buy-entry', 'entry'], ['best-buy-stop', 'stop'],
+        ['best-buy-tp1', 'target1'], ['best-buy-tp2', 'target2'], ['best-buy-tp3', 'target3']
+      ]) set(id, result.plan ? '₹' + fmt(result.plan[key]) : '—');
+      set('best-buy-reasons', result.reasons.join(' · '));
+      const checklist = document.getElementById('best-buy-checks');
+      if (checklist) {
+        checklist.replaceChildren();
+        for (const check of result.checks) {
+          const item = document.createElement('li');
+          item.textContent = (check.ok ? '✓ ' : '○ ') + check.name;
+          checklist.append(item);
+        }
+      }
+    }
+
     function renderTradeFinalizer() {
+      renderBestBuySetup();
       const samplePreview =
         new URLSearchParams(window.location.search).get('sample') === '1';
       const edge = state.niftyEdge?.latest;
