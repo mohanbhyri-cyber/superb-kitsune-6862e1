@@ -1,3 +1,5 @@
+import { isNseIntradayTime } from './nse-candle-time.js';
+
 // Upstox endpoints are throttled independently so a quote 429 does not
 // freeze history/profile flows, and a history 429 does not stop live quotes.
 const upstoxRetryAtByScope = new Map();
@@ -423,7 +425,7 @@ function normalizeCandle(c) {
       Number(c.volume) || 0
   };
 
-  return validCandle(candle)
+  return validCandle(candle) && isNseIntradayTime(candle.time)
     ? candle
     : null;
 }
@@ -836,11 +838,11 @@ export class UpstoxMarketAdapter {
 
         onTick?.({
 
-          time:
-            Number(q.time) ||
-            Math.floor(
-              Date.now() / 1000
-            ),
+          time: q.time !== null && q.time !== undefined &&
+            Number.isFinite(Number(q.time)) && Number(q.time) > 0
+              ? Number(q.time) : null,
+          timeSource: q.timeSource || null,
+          candleEligible: q.candleEligible !== false,
 
           price,
 

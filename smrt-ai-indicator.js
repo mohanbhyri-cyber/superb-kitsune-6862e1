@@ -1,3 +1,6 @@
+import { regularNseHours } from './options-context.js';
+import { isNseIntradayTime } from './nse-candle-time.js';
+
 // smrt-ai-indicator.js
 // ============================================================
 // SMRT AI INDICATOR
@@ -75,6 +78,7 @@ function addVote(
     weight,
     reason,
     mandatory = false,
+    neutralReason = null,
     requiredTime = null,
     sourceTime = null
   }
@@ -90,7 +94,7 @@ function addVote(
 
   if (side !== 1 && side !== -1) {
     if (mandatory) {
-      blockers.push(name + ' unavailable or neutral');
+      blockers.push(neutralReason || name + ' unavailable or neutral');
     }
 
     return;
@@ -117,8 +121,46 @@ export function analyseSmrtAiIndicator({
   finalizer,
   consensus,
   futuresVWAP,
+  seconds = 300,
+  now = Date.now() / 1000,
+  replay = false,
   minClosedCandles = 220
 } = {}) {
+  const latest = Array.isArray(candles) ? candles.at(-2) : null;
+  const validSessionTime = isNseIntradayTime(latest?.time);
+  const latestTime = validSessionTime ? Number(latest.time) : null;
+
+  // A market-closed result takes precedence over technical confluence.
+  // Never present after-hours polling candles as a live CLEAN TREND setup.
+  if (!replay && Number.isFinite(now) && !regularNseHours(now * 1000)) {
+    const historical = Array.isArray(candles)
+      ? candles.slice(0, -1).findLast(row => isNseIntradayTime(row?.time) &&
+          Number(row.time) + Number(seconds) <= now)
+      : null;
+    return wait('NSE regular session is closed; no live AI trade signal', {
+      time: historical?.time ?? null,
+      regime: 'MARKET CLOSED'
+    });
+  }
+
+  if (!Number.isFinite(now) || !Number.isFinite(seconds) || seconds <= 0) {
+    return wait('Analysis time or timeframe unavailable');
+  }
+  if (latest && !validSessionTime) {
+    return wait('Latest candle is outside the regular NSE session', { regime: 'INVALID DATA' });
+  }
+  if (latestTime !== null) {
+    const age = now - (latestTime + seconds);
+    if (age < 0) {
+      return wait('Latest candle has not closed yet', { time: latestTime, regime: 'FORMING' });
+    }
+    if (!replay && age > Math.max(seconds * 3, 900)) {
+      return wait('Latest closed candle is stale; waiting for fresh history', {
+        time: latestTime, regime: 'STALE DATA'
+      });
+    }
+  }
+
   if (!Array.isArray(candles) || candles.length < minClosedCandles + 1) {
     return wait(
       'Technical warm-up requires 220 closed candles before AI analysis',
@@ -192,6 +234,7 @@ export function analyseSmrtAiIndicator({
 
   addVote(votes, blockers, {
     name: 'EMA 9/21/50/200',
+    neutralReason: 'EMA 9/21/50/200 stack is mixed; directional confirmation incomplete',
     side: emaSide,
     weight: 12,
     reason:
@@ -524,10 +567,12 @@ export function analyseSmrtAiIndicator({
         time,
         score,
         regime,
-        reasons:
-          alignedVotes.length
+        reasons: [
+          ...blockers.slice(1),
+          ...(alignedVotes.length
             ? alignedVotes.map(vote => vote.reason)
-            : ['Inputs are mixed or insufficient']
+            : ['Inputs are mixed or insufficient'])
+        ]
       }
     );
   }
