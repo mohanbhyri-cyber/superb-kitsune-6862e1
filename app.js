@@ -10135,19 +10135,27 @@
     // Quotes arrive frequently, but closed-candle history must also be
     // refreshed during the session. Without this timer the chart can keep
     // showing a LIVE quote while its last confirmed candle becomes stale.
+    let historyRefreshInFlight = false;
+
     historyRefreshTimer = setInterval(() => {
       if (
         state.replay.active ||
         document.hidden ||
-        !isNseCashMarketOpen()
+        !isNseCashMarketOpen() ||
+        historyRefreshInFlight
       ) {
         return;
       }
 
-      loadData().catch(error => {
-        console.warn('Periodic candle history refresh failed:', error);
-      });
-    }, 60_000);
+      historyRefreshInFlight = true;
+      loadData()
+        .catch(error => {
+          console.warn('Periodic candle history refresh failed:', error);
+        })
+        .finally(() => {
+          historyRefreshInFlight = false;
+        });
+    }, 30_000);
 
     setupAllIndicatorsChat();
 
