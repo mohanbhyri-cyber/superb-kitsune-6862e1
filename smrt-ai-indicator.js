@@ -346,6 +346,8 @@ export function analyseSmrtAiIndicator({
 
   const finalizerSide = sideFromText(finalizer?.state);
 
+  const finalizerBlockerStart = blockers.length;
+
   addVote(votes, blockers, {
     name: 'Trade Finalizer',
     side: finalizerSide,
@@ -358,6 +360,22 @@ export function analyseSmrtAiIndicator({
     requiredTime: time,
     sourceTime: finalizer?.time ?? null
   });
+
+  // Keep the fail-closed gate, but expose the real Finalizer reason instead
+  // of making every neutral/blocked setup look like missing data.
+  if (
+    blockers.length > finalizerBlockerStart &&
+    blockers[finalizerBlockerStart] ===
+      'Trade Finalizer unavailable or neutral'
+  ) {
+    const finalizerReason = Array.isArray(finalizer?.reasons)
+      ? finalizer.reasons.find(Boolean)
+      : finalizer?.reason;
+
+    blockers[finalizerBlockerStart] = finalizerReason
+      ? 'Trade Finalizer: ' + String(finalizerReason)
+      : 'Trade Finalizer has no confirmed setup';
+  }
 
   const consensusSide = sideFromText(consensus?.signal);
 
