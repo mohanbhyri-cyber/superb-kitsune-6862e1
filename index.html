@@ -2056,6 +2056,43 @@
   </section>
 
 
+  <section class="panel" id="best-buy-panel" aria-labelledby="best-buy-heading" style="margin-top:0">
+    <div class="panel-heading">
+      <h2 id="best-buy-heading">Best Buy Setup</h2>
+      <span class="muted" id="best-buy-mode">NIFTY 50 · closed-candle confirmation</span>
+    </div>
+    <div class="pro-suite-grid" aria-live="polite">
+      <div class="pro-suite-card">
+        <small>Buy confirmation</small>
+        <strong id="best-buy-signal" class="muted">WAIT</strong>
+        <span id="best-buy-time">Waiting for closed-candle data</span>
+      </div>
+      <div class="pro-suite-card">
+        <small>Required confirmation</small>
+        <strong id="best-buy-check-count">Waiting for checks</strong>
+        <span>Finalizer · Prime · Consensus · Risk</span>
+      </div>
+      <div class="pro-suite-card">
+        <small>Target 1 reward / risk</small>
+        <strong id="best-buy-rr">—</strong>
+        <span>Minimum 1 : 1.50</span>
+      </div>
+    </div>
+    <div class="pro-backtest-grid" style="margin-top:10px">
+      <div><small>Entry</small><strong id="best-buy-entry">—</strong></div>
+      <div><small>Stop Loss</small><strong id="best-buy-stop">—</strong></div>
+      <div><small>TP1</small><strong id="best-buy-tp1">—</strong></div>
+      <div><small>TP2</small><strong id="best-buy-tp2">—</strong></div>
+      <div><small>TP3</small><strong id="best-buy-tp3">—</strong></div>
+    </div>
+    <p class="pa-note" id="best-buy-reasons">Waiting for a confirmed bullish setup.</p>
+    <details>
+      <summary>Setup checks</summary>
+      <ul id="best-buy-checks"></ul>
+    </details>
+    <p class="disclaimer">Buy setup confirmation from existing indicators. The panel does not place orders or guarantee results.</p>
+  </section>
+
   <section
     class="panel"
     id="trade-finalizer-panel"
@@ -2423,7 +2460,7 @@
 
 <script
   type="module"
-  src="app.js?v=95"
+  src="app.js?v=96"
 ></script>
 
 </body>
