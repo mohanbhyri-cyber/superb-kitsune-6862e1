@@ -2390,6 +2390,7 @@
 
     let reconnectTimer = null;
     let reconnectAttempts = 0;
+    let historyRefreshTimer = null;
 
     let geometry;
 
@@ -10130,6 +10131,23 @@
 
 
     loadData();
+
+    // Quotes arrive frequently, but closed-candle history must also be
+    // refreshed during the session. Without this timer the chart can keep
+    // showing a LIVE quote while its last confirmed candle becomes stale.
+    historyRefreshTimer = setInterval(() => {
+      if (
+        state.replay.active ||
+        document.hidden ||
+        !isNseCashMarketOpen()
+      ) {
+        return;
+      }
+
+      loadData().catch(error => {
+        console.warn('Periodic candle history refresh failed:', error);
+      });
+    }, 60_000);
 
     setupAllIndicatorsChat();
 
