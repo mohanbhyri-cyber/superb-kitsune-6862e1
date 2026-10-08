@@ -1,6 +1,7 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
+    import { liveCandleBucket } from './nse-candle-time.js';
     import { trendIndicators } from './trend-indicators.js';
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
@@ -53,7 +54,7 @@
       market,
       noteUpstoxRateLimit,
       strideSignals
-    } from './market.js?v=4';
+    } from './market.js?v=5';
 
 
     window.SMRTTradingViewDatafeed =
@@ -9589,44 +9590,60 @@
                 );
 
 
-              const tickTime =
-                Number.isFinite(
-                  Number(
-                    tick.time
-                  )
-                )
-                  ? Number(
-                      tick.time
-                    )
-                  : Math.floor(
-                      Date.now() /
-                      1000
-                    );
-
-
-              const seconds =
-                intervals[
-                  state.tf
-                ];
+              state.quotes[
+                state.symbol
+              ] =
+                price;
 
 
               if (
-                !Number.isFinite(
-                  seconds
-                ) ||
-                seconds <= 0
+                Number.isFinite(
+                  Number(
+                    tick.changePercent
+                  )
+                )
               ) {
-                return;
+                state.officialChange[
+                  state.symbol
+                ] =
+                  Number(
+                    tick.changePercent
+                  );
               }
 
 
-              const bucket =
-                Math.floor(
-                  tickTime /
-                  seconds
-                ) *
-                seconds;
+              if (
+                Number.isFinite(
+                  Number(
+                    tick.previousClose
+                  )
+                )
+              ) {
+                state.previousClose[
+                  state.symbol
+                ] =
+                  Number(
+                    tick.previousClose
+                  );
+              }
 
+
+              state.lastUpdate =
+                Date.now();
+
+
+              const seconds = intervals[state.tf];
+              const bucket = liveCandleBucket(tick, seconds);
+
+              if (bucket === null) {
+                // After-hours/stale quotes are display-only. Preserve the last
+                // real session OHLC instead of manufacturing flat candles.
+                refreshLiveTradeFinalizer();
+                recomputeAiNifty();
+                scheduleLiveRender();
+                setFeedStatus(isNseCashMarketOpen() ? 'STALE' : 'CLOSED');
+                return;
+              }
 
               let last =
                 state.data.at(-1);
@@ -9718,48 +9735,6 @@
                     );
                 }
               }
-
-
-              state.quotes[
-                state.symbol
-              ] =
-                price;
-
-
-              if (
-                Number.isFinite(
-                  Number(
-                    tick.changePercent
-                  )
-                )
-              ) {
-                state.officialChange[
-                  state.symbol
-                ] =
-                  Number(
-                    tick.changePercent
-                  );
-              }
-
-
-              if (
-                Number.isFinite(
-                  Number(
-                    tick.previousClose
-                  )
-                )
-              ) {
-                state.previousClose[
-                  state.symbol
-                ] =
-                  Number(
-                    tick.previousClose
-                  );
-              }
-
-
-              state.lastUpdate =
-                Date.now();
 
 
               refreshLiveTradeFinalizer();
@@ -13482,7 +13457,12 @@
           consensus:
             state.allIndicatorsConsensus,
           futuresVWAP:
-            state.futuresVWAP
+            state.futuresVWAP,
+          seconds: Number(intervals[state.tf]),
+          now: state.replay.active
+            ? Number(state.data.at(-1)?.time) + Number(intervals[state.tf])
+            : Date.now() / 1000,
+          replay: state.replay.active
         });
 
       renderAiIndicator();
@@ -14150,6 +14130,7 @@
         };
 
       if (!ai) {
+        set('#ai-indicator-status', 'Waiting for confirmed closed-candle data');
         set(
           '#ai-indicator-signal',
           'AI WAIT',
@@ -14204,17 +14185,27 @@
       set(
         '#ai-indicator-time',
         ai.time
-          ? 'Closed candle ' +
+          ? (ai.regime === 'MARKET CLOSED' ? 'Last session candle ' : 'Closed candle ') +
             new Date(
               Number(ai.time) * 1000
             ).toLocaleTimeString(
               'en-IN',
               {
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                timeZone: 'Asia/Kolkata'
               }
             )
           : 'Closed candle —'
+      );
+
+      set(
+        '#ai-indicator-status',
+        ai.regime === 'MARKET CLOSED'
+          ? 'Market closed · no live signal'
+          : ai.signal === 'AI WAIT'
+            ? ai.reasons?.[0] || 'Confirmation incomplete'
+            : 'Closed-candle confirmation complete'
       );
 
       set(

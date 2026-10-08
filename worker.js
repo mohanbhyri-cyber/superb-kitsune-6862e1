@@ -4,6 +4,7 @@
 
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
+import { isNseIntradayTime, quoteCandleTime } from './nse-candle-time.js';
 import { parse } from 'csv-parse/sync';
 
 const SYMBOLS = {
@@ -109,7 +110,7 @@ function isTodayFrom0915(value) {
     Number(candle.hour) * 60 +
     Number(candle.minute);
 
-  return minutes >= 9 * 60 + 15;
+  return isNseIntradayTime(Number(value) / 1000);
 }
 
 function normalizeCandle(row) {
@@ -192,10 +193,7 @@ function normalizeRegularSessionCandle(row) {
     Number(p.hour) * 60 +
     Number(p.minute);
 
-  if (
-    minutes < 9 * 60 + 15 ||
-    minutes > 15 * 60 + 30
-  ) {
+  if (!isNseIntradayTime(ms / 1000)) {
     return null;
   }
 
@@ -264,7 +262,7 @@ function normalizeCandleForISTDate(row, dateText) {
     Number(p.hour) * 60 +
     Number(p.minute);
 
-  if (minutes < 9 * 60 + 15) {
+  if (!isNseIntradayTime(ms / 1000)) {
     return null;
   }
 
@@ -475,6 +473,8 @@ async function liveQuote(url, token) {
         ? (netChange / previousClose) * 100
         : null;
 
+    const candleTime = quoteCandleTime(quote);
+
     return json({
       live: true,
       source: "UPSTOX",
@@ -505,18 +505,8 @@ async function liveQuote(url, token) {
         )
           ? Number(quote.volume)
           : 0,
-      time:
-        Number.isFinite(
-          Number(quote?.last_trade_time)
-        )
-          ? Math.floor(
-              Number(
-                quote.last_trade_time
-              ) / 1000
-            )
-          : Math.floor(
-              Date.now() / 1000
-            ),
+      ...candleTime,
+      candleEligible: isNseIntradayTime(candleTime.time),
       timestamp:
         quote?.timestamp ??
         quote?.last_trade_time ??
