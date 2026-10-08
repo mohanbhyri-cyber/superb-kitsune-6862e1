@@ -13506,6 +13506,38 @@
         row.append(label, status);
         fragment.append(row);
       }
+      const plan = finalizer?.plan;
+      const confirmationRows = [
+        ['Data feed', state.replay.active ? 'REPLAY' : state.feedStatus || 'UNAVAILABLE'],
+        ['Agreement', primeFinite(result?.confidence) ? result.confidence + '%' : 'WAIT'],
+        ['Risk Engine', state.riskEngine?.state || 'NO ACTIVE PLAN'],
+        ['Entry', primeFinite(plan?.entry) ? fmt(plan.entry) : '—'],
+        ['Stop-loss', primeFinite(plan?.stopLoss ?? plan?.stop) ? fmt(plan.stopLoss ?? plan.stop) : '—'],
+        ['Target 1 / 2', primeFinite(plan?.target1) && primeFinite(plan?.target2)
+          ? fmt(plan.target1) + ' / ' + fmt(plan.target2) : '—']
+      ];
+      const closedIndex = lastClosedCandleIndex(state.data, Number(intervals[state.tf]),
+        state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000);
+      const closedTime = state.data[closedIndex]?.time;
+      confirmationRows.splice(1, 0, ['Last closed candle', primeFinite(closedTime)
+        ? new Date(Number(closedTime) * 1000).toLocaleString('en-IN',
+          { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
+      for (const [name, value] of confirmationRows) {
+        const row = document.createElement('div');
+        row.className = 'chart-status-row';
+        const label = document.createElement('span');
+        label.textContent = name;
+        const valueEl = document.createElement('strong');
+        valueEl.textContent = value;
+        valueEl.className = 'muted';
+        row.append(label, valueEl);
+        fragment.append(row);
+      }
+      const explanation = document.createElement('p');
+      explanation.textContent = finalizer?.reasons?.length
+        ? finalizer.reasons.slice(0, 2).join(' · ')
+        : result?.reason || 'Waiting for confirmed setup';
+      fragment.append(explanation);
       panel.replaceChildren(fragment);
     }
 

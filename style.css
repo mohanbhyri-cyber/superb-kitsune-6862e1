@@ -881,3 +881,5 @@ body.light .tv-shell-mode .chart-footer{
 #terminal .chart-global-rows strong { white-space: nowrap; }
 
 #terminal .chart-wrap { --chart-height: max(720px, calc(100dvh - 160px)); }
+
+#terminal .chart-wrap { --chart-height: max(940px, calc(100dvh - 160px)); }
