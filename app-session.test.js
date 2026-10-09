@@ -17,7 +17,10 @@ function runTick(now, initialTime, tick) {
   const state = { tf: '3m', symbol: 'NIFTY', data: [{ ...original }],
     quotes: {}, officialChange: {}, previousClose: {} };
   const context = {
-    state, intervals: { '3m': 180 }, Date: { now: () => now * 1000 },
+    state, intervals: { '3m': 180, '5m': 300, '15m': 900, '1h': 3600 },
+    Date: { now: () => now * 1000 }, liveQuoteVersion: 0,
+    historyRefreshWarning: '', upstoxCooldownRemaining: () => 0,
+    crossedMtfFrames: () => [],
     liveCandleBucket: (tick, seconds) => liveCandleBucket(tick, seconds, now),
     isNseCashMarketOpen: () => regularNseHours(now * 1000),
     nseSessionMinutesFromEpoch: time => (time - nseSessionBounds(time).open) / 60,

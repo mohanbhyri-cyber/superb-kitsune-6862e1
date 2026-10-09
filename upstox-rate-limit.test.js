@@ -247,7 +247,7 @@ test('periodic history refresh skips cooldown, reconnect, hidden and in-flight s
     isNseCashMarketOpen: () => true,
     upstoxCooldownRemaining: scope => { assert.equal(scope, 'history'); return remaining; },
     setInterval: (callback, ms) => { assert.equal(ms, 30000); tick = callback; return 1; },
-    loadData: async () => { calls++; }, console
+    refreshCandleHistory: async () => { calls++; }, console
   });
   vm.runInContext(appSource.slice(start, end), context);
   remaining = 60000; tick(); assert.equal(calls, 0);
