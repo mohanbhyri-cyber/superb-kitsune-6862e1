@@ -76,7 +76,8 @@ test('intraday cooldown covers all timeframes and credentials remain isolated', 
 });
 
 test('missing or invalid Retry-After uses safe floor; HTTP-date header is honored', async () => {
-  for (const retry of [undefined, 'invalid', '1']) {
+  for (const retry of [undefined, '', ' ', 'invalid', '0', '-1', 'Infinity',
+    new Date(now - 1000).toUTCString()]) {
     const f = workerFixture(() => limited(retry));
     await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'),
       error => error.status === 429 && error.retryAfterMs === 60000);
@@ -84,6 +85,35 @@ test('missing or invalid Retry-After uses safe floor; HTTP-date header is honore
   const f = workerFixture(() => limited(new Date(now + 300000).toUTCString()));
   await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'),
     error => error.retryAfterMs === 300000);
+});
+
+test('short provider Retry-After durations are honored without a fallback minute', async () => {
+  for (const seconds of [1, 10, 15, 59]) {
+    const f = workerFixture((_url, _options, call) => call === 1
+      ? limited(seconds) : ok({ data: { price: 22000 } }));
+    await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'),
+      error => error.retryAfterMs === seconds * 1000);
+    f.advance(seconds * 1000 - 1);
+    await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'),
+      error => error.status === 429);
+    assert.equal(f.calls.length, 1, 'No early request');
+    f.advance(1);
+    await f.upstoxFetch(quote('NIFTY'), 'fixture-a');
+    assert.equal(f.calls.length, 2, 'Retry at the provider deadline');
+  }
+});
+
+test('short HTTP-date deadline is not extended to a minute', async () => {
+  const f = workerFixture((_url, _options, call) => call === 1
+    ? limited(new Date(now + 20000).toUTCString()) : ok({ data: {} }));
+  await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'),
+    error => error.retryAfterMs === 20000);
+  f.advance(19999);
+  await assert.rejects(f.upstoxFetch(quote('NIFTY'), 'fixture-a'));
+  assert.equal(f.calls.length, 1);
+  f.advance(1);
+  await f.upstoxFetch(quote('NIFTY'), 'fixture-a');
+  assert.equal(f.calls.length, 2);
 });
 
 test('concurrent 429s cannot shorten an existing API cooldown', async () => {
@@ -181,10 +211,84 @@ function marketFixture(fetcher) {
     .replace(/^import .*;\r?\n/, '')
     .replace(/\bexport (?=(?:async )?function|class|const)/g, '');
   vm.runInContext(source +
-    '\nthis.api = { upstoxRequest, upstoxCooldownRemaining, UpstoxMarketAdapter };', context);
+    '\nthis.api = { upstoxRequest, upstoxCooldownRemaining, noteUpstoxRateLimit, UpstoxMarketAdapter };', context);
   return { ...context.api, calls, context, document, timers, listeners,
     advance: ms => { clock += ms; } };
 }
+
+test('client short remaining deadlines do not restart endpoint fallback waits', async () => {
+  for (const scope of ['quote', 'history', 'mtfHistory', 'previousHistory', 'auth', 'default']) {
+    const f = marketFixture(() => new Response(JSON.stringify({ retryAfterMs: 1000 }), { status: 429 }));
+    await assert.rejects(f.upstoxRequest('/api/fixture', {}, scope),
+      error => error.retryAfterMs === 1000);
+    f.advance(999);
+    await assert.rejects(f.upstoxRequest('/api/fixture', {}, scope));
+    assert.equal(f.calls.length, 1);
+    f.advance(1);
+    await assert.rejects(f.upstoxRequest('/api/fixture', {}, scope));
+    assert.equal(f.calls.length, 2, 'No unnecessary scope floor');
+  }
+});
+
+test('client missing or invalid durations retain conservative scope fallback', async () => {
+  for (const [scope, floor] of [['quote', 15000], ['history', 30000], ['auth', 120000]]) {
+    for (const value of [undefined, null, '', 'invalid', -1, 0, Infinity]) {
+      const f = marketFixture(() => ok({}));
+      assert.equal(f.noteUpstoxRateLimit(value, scope), floor);
+      assert.equal(f.upstoxCooldownRemaining(scope), floor);
+    }
+  }
+});
+
+test('client chooses the longest body/header deadline and supports HTTP-date', async () => {
+  for (const [body, header, expected] of [
+    [{ retryAfterMs: 1000 }, '20', 20000],
+    [{ retryAfterMs: 253527 }, '1', 253527],
+    [{ retry_after_ms: 5000, retry_after: 10 }, '1', 10000],
+    [{}, new Date(now + 10000).toUTCString(), 10000]
+  ]) {
+    const f = marketFixture(() => new Response(JSON.stringify(body), {
+      status: 429, headers: { 'retry-after': header }
+    }));
+    await assert.rejects(f.upstoxRequest('/api/fixture', {}, 'quote'),
+      error => error.retryAfterMs === expected);
+    assert.equal(f.upstoxCooldownRemaining('quote'), expected);
+  }
+});
+
+test('client short deadlines cannot shorten an already active long cooldown', () => {
+  const f = marketFixture(() => ok({}));
+  f.noteUpstoxRateLimit(253527, 'quote');
+  f.advance(10000);
+  assert.equal(f.noteUpstoxRateLimit(1000, 'quote'), 243527);
+  assert.equal(f.upstoxCooldownRemaining('quote'), 243527);
+  assert.equal(f.upstoxCooldownRemaining('history'), 0);
+});
+
+test('short quote retry resumes at the deadline without fabricated ticks', async () => {
+  let attempts = 0;
+  const f = marketFixture(() => ++attempts === 1
+    ? new Response(JSON.stringify({ retryAfterMs: 5000 }), { status: 429 })
+    : ok({ live: true, price: 22000, time: now / 1000, candleEligible: true }));
+  const ticks = [];
+  const adapter = new f.UpstoxMarketAdapter();
+  const stop = adapter.subscribe('NIFTY', '3m', tick => ticks.push(tick), () => {});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ticks.length, 0);
+  const [timerId, timer] = [...f.timers][0];
+  assert.equal(timer.ms, 5000);
+  f.advance(4999);
+  await assert.rejects(f.upstoxRequest('/api/live-quote', {}, 'quote'));
+  assert.equal(f.calls.length, 1);
+  f.advance(1);
+  f.timers.delete(timerId);
+  await timer.callback();
+  assert.equal(f.calls.length, 2);
+  assert.equal(ticks.length, 1);
+  assert.equal(adapter.status, 'LIVE');
+  stop();
+  assert.equal(f.timers.size, 0);
+});
 
 test('client honors body Retry-After, suppresses repeated context calls and keeps quotes independent', async () => {
   const f = marketFixture(url => url.includes('options')

@@ -56,7 +56,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=6';
+    } from './market.js?v=7';
 
 
     window.SMRTTradingViewDatafeed =
