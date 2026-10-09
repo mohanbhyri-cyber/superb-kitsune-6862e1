@@ -57,7 +57,9 @@ function parseRetryAfterMs(response, body = {}) {
   const headerSeconds = header && Number.isFinite(Number(header))
     ? Number(header)
     : header
-      ? (Date.parse(header) - Date.now()) / 1000
+      ? (Date.parse(header) - (
+          Date.parse(response.headers.get('date') || '') || Date.now()
+        )) / 1000
       : 0;
   const bodyDelay = Number(body.retryAfterMs ?? body.retry_after_ms);
   const bodySeconds = Number(body.retryAfter ?? body.retry_after);
