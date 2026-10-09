@@ -56,6 +56,12 @@ async function cachedApiResponse(request, ttlSeconds, loader, context) {
 
   const response = await loader();
   if (!cache || !response.ok) return response;
+  if (new URL(request.url).pathname === '/api/live-quote') {
+    const quote = await response.clone().json().catch(() => null);
+    // Share only real successful quotes. Never cache a provider error as LIVE.
+    if (quote?.live !== true || !Number.isFinite(Number(quote.price)) ||
+        Number(quote.price) <= 0) return response;
+  }
 
   const headers = new Headers(response.headers);
   headers.set(
@@ -928,6 +934,8 @@ async function intradayHistory(url, token) {
 // If today's session has fewer than 260 candles,
 // add the most recent previous trading session.
 let previousCandles = [];
+let warmupRateLimited = false;
+let warmupRetryAfterMs = 0;
 
 if (todayCandles.length < 260) {
   try {
@@ -947,7 +955,11 @@ if (todayCandles.length < 260) {
       error?.rateLimited === true ||
       error?.status === 429
     ) {
-      throw error;
+      // Today's genuine intraday candles are still usable for the chart.
+      // Do not retry the blocked API or fabricate missing warm-up bars.
+      // Existing indicator/AI minimum-candle gates remain in force.
+      warmupRateLimited = true;
+      warmupRetryAfterMs = error.retryAfterMs || 60000;
     }
 
     console.warn(
@@ -1012,6 +1024,8 @@ let candles = [
         todayCandles.length,
       historyMode:
         "intraday-with-historical-fallback",
+      warmupRateLimited,
+      warmupRetryAfterMs,
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
@@ -2800,9 +2814,14 @@ export default {
     if (
       url.pathname === "/api/live-quote"
     ) {
-      return liveQuote(
-        url,
-        token
+      // Share successful quotes between Worker instances at the same edge.
+      // This 5s cache adds at most 5s to the existing 15s upstream cache;
+      // exchange/provider timestamps and the app's 30s freshness guard remain.
+      return cachedApiResponse(
+        request,
+        5,
+        () => liveQuote(url, token),
+        context
       );
     }
 
