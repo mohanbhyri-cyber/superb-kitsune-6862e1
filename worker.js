@@ -319,8 +319,17 @@ function istDateMinusDays(days) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-// Cooldowns are shared by credential within this Worker instance.
+// Limits are per API and user, not one global pause for every data source.
+// All instruments/timeframes of the same API share its credential cooldown.
 const upstoxCooldowns = new Map();
+
+function upstoxRateLimitKey(endpoint, token) {
+  const url = new URL(endpoint);
+  const api = url.pathname
+    .replace(/(\/v\d+\/historical-candle\/intraday)\/.*/, '$1')
+    .replace(/(\/v\d+\/historical-candle)\/(?!intraday(?:\/|$)).*/, '$1');
+  return token + '|' + url.origin + api;
+}
 const upstoxResponseCache = new Map();
 const upstoxInFlight = new Map();
 
@@ -334,7 +343,14 @@ function upstoxCacheTtl(endpoint) {
   if (endpoint.includes('/market-quote/quotes')) return 15000;
   if (endpoint.includes('/option/chain')) return 60000;
   if (endpoint.includes('/option/contract')) return 6 * 60 * 60 * 1000;
-  if (endpoint.includes('/historical-candle/')) return 30000;
+  if (endpoint.includes('/historical-candle/')) {
+    // Reuse the multi-day warm-up range. Current intraday candles still
+    // refresh every 30s and override overlapping warm-up candles.
+    const range = new URL(endpoint).pathname.match(
+      /\/minutes\/\d+\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/
+    );
+    return range && range[1] > range[2] ? 300000 : 30000;
+  }
   if (endpoint.includes('/instruments/search')) return 6 * 60 * 60 * 1000;
   return 10000;
 }
@@ -355,9 +371,10 @@ async function upstoxFetch(endpoint, token) {
   const pending = upstoxInFlight.get(cacheKey);
   if (pending) return cloneJson(await pending);
 
-  const until = upstoxCooldowns.get(token) || 0;
+  const cooldownKey = upstoxRateLimitKey(endpoint, token);
+  const until = upstoxCooldowns.get(cooldownKey) || 0;
   if (until > Date.now()) throw upstoxCooldownError(until);
-  upstoxCooldowns.delete(token);
+  upstoxCooldowns.delete(cooldownKey);
   const request = (async () => {
     const response = await fetch(endpoint, {
       method: "GET",
@@ -392,7 +409,12 @@ async function upstoxFetch(endpoint, token) {
         ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
       error.retryAfterMs = response.status === 429
         ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
-      if (error.rateLimited) upstoxCooldowns.set(token, Date.now() + error.retryAfterMs);
+      if (error.rateLimited) {
+        upstoxCooldowns.set(cooldownKey, Math.max(
+          upstoxCooldowns.get(cooldownKey) || 0,
+          Date.now() + error.retryAfterMs
+        ));
+      }
 
       error.details = details;
 
