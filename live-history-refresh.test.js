@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { validCandle } from './market.js';
-import { isNseIntradayTime, nseCandleBucket, liveCandleBucket } from './nse-candle-time.js';
+import { isNseIntradayTime, nseCandleBucket, liveCandleBucket, liveCandleRejectionReason } from './nse-candle-time.js';
 import { regularNseHours } from './options-context.js';
 import { analyseSmrtAiIndicator as analyse } from './smrt-ai-indicator.js';
 
@@ -38,6 +38,7 @@ function fixture(fetchHistory) {
     document: { hidden: false }, Date: { now: () => clock * 1000 },
     validCandle, isNseIntradayTime, nseCandleBucket,
     liveCandleBucket: (tick, seconds) => liveCandleBucket(tick, seconds, clock),
+    liveCandleRejectionReason: (tick, seconds) => liveCandleRejectionReason(tick, seconds, clock),
     isNseCashMarketOpen: () => regularNseHours(clock * 1000),
     upstoxCooldownRemaining: scope => {
       assert.equal(scope, 'history'); return Math.max(0, cooldownUntil - clock * 1000);

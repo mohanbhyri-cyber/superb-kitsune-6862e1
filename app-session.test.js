@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { liveCandleBucket, nseSessionBounds } from './nse-candle-time.js';
+import { liveCandleBucket, liveCandleRejectionReason, nseSessionBounds } from './nse-candle-time.js';
 import { regularNseHours } from './options-context.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
@@ -22,10 +22,11 @@ function runTick(now, initialTime, tick) {
     historyRefreshWarning: '', upstoxCooldownRemaining: () => 0,
     crossedMtfFrames: () => [],
     liveCandleBucket: (tick, seconds) => liveCandleBucket(tick, seconds, now),
+    liveCandleRejectionReason: (tick, seconds) => liveCandleRejectionReason(tick, seconds, now),
     isNseCashMarketOpen: () => regularNseHours(now * 1000),
     nseSessionMinutesFromEpoch: time => (time - nseSessionBounds(time).open) / 60,
     refreshLiveTradeFinalizer() {}, recomputeAiNifty() {}, scheduleLiveRender() {},
-    setFeedStatus: status => { state.feedStatus = status; }, updateTradingDate() {},
+    setFeedStatus: (status, message) => { state.feedStatus = status; state.feedMessage = message; }, updateTradingDate() {},
     processSignalAlerts() {}, processScalpAlerts() {}, processMomentumAlerts() {}, checkAlerts() {},
     refreshFuturesVWAP: async () => {}, refreshMTF: async () => {}
   };
@@ -60,4 +61,20 @@ test('actual app callback still creates and updates fresh in-session 3m candles'
   const result = runTick(now, epoch('12:00:00'), { time: now, price: 22020 });
   assert.equal(result.state.data.length, 1);
   assert.equal(result.state.data[0].high, 22020);
+});
+
+test('actual app callback explains rejected quotes without changing genuine candles or quote display', () => {
+  const now = epoch('12:00:00');
+  for (const [tick, reason] of [
+    [{ time: null, price: 22020 }, /no valid provider timestamp/],
+    [{ time: now - 31, price: 22020 }, /31s old/],
+    [{ time: now + 6, price: 22020 }, /6s ahead/],
+    [{ time: now, price: 22020, candleEligible: false }, /not eligible/]
+  ]) {
+    const { state, original } = runTick(now, epoch('11:57:00'), tick);
+    assert.deepEqual(state.data, [original]);
+    assert.equal(state.quotes.NIFTY, 22020);
+    assert.equal(state.feedStatus, 'STALE');
+    assert.match(state.feedMessage, reason);
+  }
 });
