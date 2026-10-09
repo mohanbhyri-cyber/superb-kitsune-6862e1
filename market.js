@@ -1,4 +1,8 @@
 import { isNseIntradayTime } from './nse-candle-time.js';
+import { observeServerDate, clockStatus } from './market-clock.js';
+
+// Read-only clock diagnostics. Market timestamps must still come from Upstox.
+export function upstoxClockStatus() { return clockStatus(); }
 
 // Upstox endpoints are throttled independently so a quote 429 does not
 // freeze history/profile flows, and a history 429 does not stop live quotes.
@@ -74,7 +78,11 @@ function marketRateLimitError(scope = 'default') {
 }
 export async function upstoxRequest(url, options = {}, scope = 'default') {
   if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
+  const requestStartedAt = Date.now();
   const response = await fetch(url, options);
+  const responseReceivedAt = Date.now();
+  const serverDate = response.headers.get('date');
+  if (serverDate) observeServerDate(serverDate, requestStartedAt, responseReceivedAt);
   if (response.status === 429) {
     const body = await response.clone().json().catch(() => ({}));
     const delay = parseRetryAfterMs(response, body);
