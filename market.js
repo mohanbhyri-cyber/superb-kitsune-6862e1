@@ -67,11 +67,12 @@ function parseRetryAfterMs(response, body = {}) {
 function marketRateLimitError(scope = 'default') {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
+  error.rateLimited = true;
   error.scope = upstoxScope(scope);
   error.retryAfterMs = Math.max(1000, upstoxCooldownRemaining(scope));
   return error;
 }
-async function upstoxRequest(url, options = {}, scope = 'default') {
+export async function upstoxRequest(url, options = {}, scope = 'default') {
   if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
   const response = await fetch(url, options);
   if (response.status === 429) {

@@ -52,9 +52,10 @@
       intervals,
       indicators,
       market,
-      noteUpstoxRateLimit,
+      upstoxCooldownRemaining,
+      upstoxRequest,
       strideSignals
-    } from './market.js?v=5';
+    } from './market.js?v=6';
 
 
     window.SMRTTradingViewDatafeed =
@@ -2450,37 +2451,10 @@
       url,
       options = {}
     ) {
-      const response =
-        await fetch(
-          url,
-          options
-        );
-
-      if (response.status !== 429) {
-        return response;
-      }
-
-      const payload =
-        await response.clone()
-          .json()
-          .catch(() => ({}));
-
-      const delay =
-        noteUpstoxRateLimit(
-          payload?.retryAfterMs
-        );
-
-      const error =
-        new Error(
-          payload?.reason ||
-          'Upstox rate limit reached. Waiting before retry.'
-        );
-
-      error.status = 429;
-      error.retryAfterMs = delay;
-      error.rateLimited = true;
-
-      throw error;
+      // Context routes must honor their own cooldown before sending another
+      // request; they must not pause the primary quote/history scopes.
+      const scope = 'context:' + new URL(url, window.location.origin).pathname;
+      return upstoxRequest(url, options, scope);
     }
 
 
@@ -9855,7 +9829,11 @@
                   ? 'RECONNECTING'
                   : 'CLOSED',
                 isNseCashMarketOpen()
-                  ? 'Live quote retrying · chart preserved'
+                  ? isUpstoxRateLimit(error)
+                    ? 'Upstox quote cooldown · retrying in ' +
+                      Math.ceil((error.retryAfterMs || 0) / 1000) +
+                      's · chart preserved'
+                    : 'Live quote retrying · chart preserved'
                   : ''
               );
             }
@@ -10119,7 +10097,9 @@
         state.replay.active ||
         document.hidden ||
         !isNseCashMarketOpen() ||
-        historyRefreshInFlight
+        historyRefreshInFlight ||
+        reconnectTimer !== null ||
+        upstoxCooldownRemaining('history') > 0
       ) {
         return;
       }
