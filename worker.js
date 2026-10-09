@@ -409,12 +409,14 @@ async function upstoxFetch(endpoint, token) {
       // Special handling for Upstox rate limit
       error.rateLimited = response.status === 429;
 
-      // Respect Retry-After when Upstox provides it.
+      // Honor a usable provider deadline without adding our fallback minute.
+      // Missing, invalid or expired deadlines still use conservative backoff.
       const retryHeader = response.headers.get('retry-after');
       const seconds = retryHeader && Number.isFinite(Number(retryHeader))
         ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
       error.retryAfterMs = response.status === 429
-        ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
+        ? (Number.isFinite(seconds) && seconds > 0
+          ? Math.max(1000, seconds * 1000) : 60000) : 0;
       if (error.rateLimited) {
         upstoxCooldowns.set(cooldownKey, Math.max(
           upstoxCooldowns.get(cooldownKey) || 0,
