@@ -1,4 +1,8 @@
 import { isNseIntradayTime } from './nse-candle-time.js';
+import { observeServerDate, clockStatus } from './market-clock.js';
+
+// Read-only clock diagnostics. Market timestamps must still come from Upstox.
+export function upstoxClockStatus() { return clockStatus(); }
 
 // Upstox endpoints are throttled independently so a quote 429 does not
 // freeze history/profile flows, and a history 429 does not stop live quotes.
@@ -53,7 +57,9 @@ function parseRetryAfterMs(response, body = {}) {
   const headerSeconds = header && Number.isFinite(Number(header))
     ? Number(header)
     : header
-      ? (Date.parse(header) - Date.now()) / 1000
+      ? (Date.parse(header) - (
+          Date.parse(response.headers.get('date') || '') || Date.now()
+        )) / 1000
       : 0;
   const bodyDelay = Number(body.retryAfterMs ?? body.retry_after_ms);
   const bodySeconds = Number(body.retryAfter ?? body.retry_after);
@@ -72,16 +78,40 @@ function marketRateLimitError(scope = 'default') {
   error.retryAfterMs = Math.max(1000, upstoxCooldownRemaining(scope));
   return error;
 }
+// Concurrent identical GET requests share one network call. Every consumer
+// receives its own Response clone so reading a body never consumes another's.
+const upstoxInFlight = new Map();
 export async function upstoxRequest(url, options = {}, scope = 'default') {
   if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
-  const response = await fetch(url, options);
-  if (response.status === 429) {
-    const body = await response.clone().json().catch(() => ({}));
-    const delay = parseRetryAfterMs(response, body);
-    noteUpstoxRateLimit(delay, scope);
-    throw marketRateLimitError(scope);
+  const method = String(options.method || 'GET').toUpperCase();
+  // Only coalesce ordinary same-origin GETs with no custom headers or signal.
+  const canShare = method === 'GET' && !options.signal && !options.headers &&
+    !options.body && !options.credentials && !options.mode;
+  const key = canShare ? scope + ':' + url : null;
+  if (key && upstoxInFlight.has(key)) {
+    return (await upstoxInFlight.get(key)).clone();
   }
-  return response;
+  const request = (async () => {
+    const requestStartedAt = Date.now();
+    const response = await fetch(url, options);
+    const responseReceivedAt = Date.now();
+    const serverDate = response.headers.get('date');
+    if (serverDate) observeServerDate(serverDate, requestStartedAt, responseReceivedAt);
+    if (response.status === 429) {
+      const body = await response.clone().json().catch(() => ({}));
+      const delay = parseRetryAfterMs(response, body);
+      noteUpstoxRateLimit(delay, scope);
+      throw marketRateLimitError(scope);
+    }
+    return response;
+  })();
+  if (key) upstoxInFlight.set(key, request);
+  try {
+    const response = await request;
+    return key ? response.clone() : response;
+  } finally {
+    if (key && upstoxInFlight.get(key) === request) upstoxInFlight.delete(key);
+  }
 }
 
 // market.js
