@@ -1,7 +1,7 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
-    import { liveCandleBucket } from './nse-candle-time.js';
+    import { liveCandleBucket, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js';
     import { trendIndicators } from './trend-indicators.js';
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
@@ -54,6 +54,7 @@
       market,
       upstoxCooldownRemaining,
       upstoxRequest,
+      validCandle,
       strideSignals
     } from './market.js?v=6';
 
@@ -2395,6 +2396,11 @@
     let reconnectTimer = null;
     let reconnectAttempts = 0;
     let historyRefreshTimer = null;
+    let historyRefreshInFlight = false;
+    let fullHistoryRequest = null;
+    let loadedHistoryKey = null;
+    let liveQuoteVersion = 0;
+    let historyRefreshWarning = '';
 
     let geometry;
 
@@ -9092,7 +9098,118 @@
     ====================================================== */
 
 
+    function crossedMtfFrames(previousTime, currentTime) {
+      return ['5m', '15m', '1h'].filter(timeframe => {
+        const seconds = intervals[timeframe];
+        const previousBucket = nseCandleBucket(previousTime, seconds);
+        const currentBucket = nseCandleBucket(currentTime, seconds);
+        return previousBucket !== null && currentBucket !== null &&
+          currentBucket > previousBucket;
+      });
+    }
+
+    async function refreshCandleHistory() {
+      const symbol = state.symbol;
+      const timeframe = state.tf;
+      const key = symbol + ':' + timeframe;
+      const seconds = Number(intervals[timeframe]);
+
+      if (state.replay.active || document.hidden || !isNseCashMarketOpen() ||
+          historyRefreshInFlight || fullHistoryRequest !== null ||
+          loadedHistoryKey !== key || !state.data.length ||
+          upstoxCooldownRemaining('history') > 0 ||
+          !Number.isFinite(seconds) || seconds <= 0) return;
+
+      const id = request;
+      const startedAt = Date.now() / 1000;
+      const quoteVersion = liveQuoteVersion;
+      const stillCurrent = () => id === request && symbol === state.symbol &&
+        timeframe === state.tf && loadedHistoryKey === key && !state.replay.active;
+
+      historyRefreshInFlight = true;
+      try {
+        const incoming = await market.history(symbol, timeframe);
+        if (!stillCurrent()) return;
+
+        const now = Date.now() / 1000;
+        const eligible = candle => validCandle(candle) &&
+          isNseIntradayTime(candle.time) && Number(candle.time) <= now &&
+          nseCandleBucket(candle.time, seconds) === Number(candle.time);
+        const history = Array.isArray(incoming) ? incoming.filter(eligible) : [];
+        if (!history.length) throw new Error('No valid refreshed session candles.');
+
+        const previousTime = state.data.at(-1)?.time;
+        const byTime = new Map(state.data.filter(eligible)
+          .map(candle => [Number(candle.time), { ...candle }]));
+
+        for (const candle of history) {
+          const live = byTime.get(Number(candle.time));
+          // Server history is authoritative for bars already closed at fetch
+          // start. Keep genuine ticks received during the request for bars
+          // that were still forming then (including a boundary crossed in flight).
+          if (live && liveQuoteVersion !== quoteVersion &&
+              Number(candle.time) + seconds > startedAt) {
+            byTime.set(Number(candle.time), {
+              ...candle,
+              close: live.close,
+              high: Math.max(Number(candle.high), Number(live.high)),
+              low: Math.min(Number(candle.low), Number(live.low)),
+              volume: Math.max(Number(candle.volume) || 0, Number(live.volume) || 0)
+            });
+          } else {
+            byTime.set(Number(candle.time), { ...candle });
+          }
+        }
+
+        state.data = [...byTime.values()]
+          .sort((a, b) => Number(a.time) - Number(b.time)).slice(-500);
+        historyRefreshWarning = '';
+        lastAnalysisKey = null;
+        updateTradingDate();
+        refreshLiveTradeFinalizer();
+        draw();
+        summary();
+
+        const latestTime = state.data.at(-1)?.time;
+        const framesDue = crossedMtfFrames(previousTime, latestTime);
+        if (framesDue.length) {
+          refreshMTF(framesDue).then(() => {
+            if (stillCurrent()) {
+              lastAnalysisKey = null;
+              scheduleLiveRender(true);
+            }
+          }).catch(() => {});
+        }
+        if (Number(latestTime) > Number(previousTime) && symbol === 'NIFTY') {
+          refreshFuturesVWAP().then(() => {
+            if (stillCurrent()) {
+              lastAnalysisKey = null;
+              scheduleLiveRender(true);
+            }
+          }).catch(() => {});
+        }
+      } catch (error) {
+        if (!stillCurrent()) return;
+        console.warn('Candle history refresh failed:', error);
+        historyRefreshWarning = 'Candle history retry pending';
+        const remaining = upstoxCooldownRemaining('history');
+        setFeedStatus(isNseCashMarketOpen() ? 'RECONNECTING' : 'CLOSED',
+          isUpstoxRateLimit(error)
+            ? 'Candle history cooldown · retrying in ' +
+              Math.ceil((remaining || error.retryAfterMs || 0) / 1000) +
+              's · quote feed preserved'
+            : 'Candle history retry pending · quote feed preserved');
+        // Keep real candles and the existing quote subscription. The adapter
+        // enforces history Retry-After; the normal timer retries only when due.
+        // Existing session, freshness, AI and risk checks remain unchanged.
+      } finally {
+        historyRefreshInFlight = false;
+      }
+    }
+
     async function loadData() {
+      loadedHistoryKey = null;
+      historyRefreshWarning = '';
       state.rawTradeFinalizer = null;
       state.tradeFinalizer = null;
       state.liveTradeFinalizer = null;
@@ -9132,6 +9249,7 @@
 
       const id =
         ++request;
+      fullHistoryRequest = id;
       lastAnalysisKey = null;
 
 
@@ -9350,6 +9468,8 @@
         }
 
 
+        loadedHistoryKey = state.symbol + ':' + state.tf;
+
         /*
           SESSION OPEN REFERENCE:
           history now contains yesterday/previous trading
@@ -9412,79 +9532,8 @@
         draw();
         summary();
 
-        // Load previous trading session in the background so it never
-        // blocks today's live chart or quote.
-        market.previousHistory(
-          state.symbol,
-          state.tf
-        ).then(
-          previousCandles => {
-
-            if (
-              id !== request ||
-              !Array.isArray(
-                previousCandles
-              ) ||
-              !previousCandles.length
-            ) {
-              return;
-            }
-
-            const merged =
-              [
-                ...previousCandles,
-                ...state.data
-              ]
-                .sort(
-                  (x, y) =>
-                    x.time - y.time
-                );
-
-            const unique = [];
-
-            for (
-              const candle of merged
-            ) {
-              const last =
-                unique.at(-1);
-
-              if (
-                last &&
-                last.time ===
-                  candle.time
-              ) {
-                unique[
-                  unique.length - 1
-                ] =
-                  candle;
-              } else {
-                unique.push(
-                  candle
-                );
-              }
-            }
-
-            state.data =
-              unique.slice(
-                -500
-              );
-
-            lastAnalysisKey =
-              null;
-
-            updateTradingDate();
-
-            scheduleLiveRender(
-              true
-            );
-
-            refreshMTF().catch(
-              () => {}
-            );
-          }
-        ).catch(
-          () => {}
-        );
+        // /api/upstox-history already includes genuine previous-session
+        // warm-up. Do not request it again or reload all MTF frames twice.
 
         // The optional futures VWAP request must not hold up the first chart.
         refreshFuturesVWAP().then(() => {
@@ -9628,6 +9677,8 @@
               }
 
 
+              liveQuoteVersion += 1;
+
               const isNewCandle =
                 bucket >
                 last.time;
@@ -9761,41 +9812,9 @@
                   }).catch(() => {});
                 }
 
-                const closedTime =
-                  Number(last?.time);
-
-                const closedEndTime =
-                  Number.isFinite(closedTime)
-                    ? closedTime + Number(seconds)
-                    : NaN;
-
-                const framesDue = [];
-
-                if (
-                  Number.isFinite(closedEndTime)
-                ) {
-                  const sessionMinutes =
-                    nseSessionMinutesFromEpoch(
-                      closedEndTime
-                    );
-
-                  if (
-                    Number.isFinite(sessionMinutes) &&
-                    sessionMinutes >= 0
-                  ) {
-                    if (sessionMinutes % 5 === 0) {
-                      framesDue.push('5m');
-                    }
-
-                    if (sessionMinutes % 15 === 0) {
-                      framesDue.push('15m');
-                    }
-
-                    if (sessionMinutes % 60 === 0) {
-                      framesDue.push('1h');
-                    }
-                  }
-                }
+                // Refresh frames whose boundary was crossed, not only exact
+                // multiples: a 3m chart crosses a 5m boundary at 09:21, etc.
+                const framesDue = crossedMtfFrames(last?.time, bucket);
 
                 if (framesDue.length) {
                   refreshMTF(framesDue).catch(
@@ -9807,12 +9826,19 @@
               checkAlerts();
 
 
+              const historyDelay = upstoxCooldownRemaining('history');
               setFeedStatus(
                 !isNseCashMarketOpen()
                   ? 'CLOSED'
                   : tick.fallback
                     ? 'FALLBACK'
-                    : 'LIVE'
+                    : 'LIVE',
+                !isNseCashMarketOpen() ? '' : historyDelay > 0
+                  ? 'Quotes updating · candle history cooldown ' +
+                    Math.ceil(historyDelay / 1000) + 's'
+                  : historyRefreshWarning
+                    ? 'Quotes updating · ' + historyRefreshWarning
+                    : ''
               );
             },
 
@@ -9843,6 +9869,8 @@
         error
       ) {
 
+        if (id !== request) return;
+        loadedHistoryKey = null;
         console.error(
           'Upstox history error:',
           error
@@ -9870,6 +9898,8 @@
 
 
         scheduleReconnect(error?.retryAfterMs);
+      } finally {
+        if (fullHistoryRequest === id) fullHistoryRequest = null;
       }
     }
 
@@ -10090,8 +10120,6 @@
     // Quotes arrive frequently, but closed-candle history must also be
     // refreshed during the session. Without this timer the chart can keep
     // showing a LIVE quote while its last confirmed candle becomes stale.
-    let historyRefreshInFlight = false;
-
     historyRefreshTimer = setInterval(() => {
       if (
         state.replay.active ||
@@ -10104,14 +10132,9 @@
         return;
       }
 
-      historyRefreshInFlight = true;
-      loadData()
-        .catch(error => {
-          console.warn('Periodic candle history refresh failed:', error);
-        })
-        .finally(() => {
-          historyRefreshInFlight = false;
-        });
+      refreshCandleHistory().catch(error => {
+        console.warn('Periodic candle history refresh failed:', error);
+      });
     }, 30_000);
 
     setupAllIndicatorsChat();
