@@ -954,6 +954,17 @@
         confidence: 0, primeConfirmed: false, reasons, reason: reasons.join(' · '), invalidation: reasons[0] };
     }
 
+    function gateStartupConfirmation(prime) {
+      if (!state.startupConfirmationsPending || state.replay.active) return prime;
+      const reason = 'Chart ready; required timeframe confirmations are still loading';
+      return {
+        ...prime, signal: 'NO TRADE', side: 0, plan: null, score: 0,
+        checks: [...(prime?.checks || []),
+          { name: 'Startup timeframe confirmations', required: true, ok: false }],
+        reasons: [reason, ...(prime?.reasons || [])]
+      };
+    }
+
     function refreshPrimeConfirmation() {
       const now = state.replay.active
         ? Number(state.data.at(-1)?.time) + Number(intervals[state.tf] || 0)
@@ -1125,6 +1136,8 @@
         // ========================================================
         // PRIME-GATED CONSENSUS
         // ========================================================
+
+        state.primeMarket = gateStartupConfirmation(state.primeMarket);
 
         state.allIndicatorsConsensus =
           primeGate(
@@ -2173,6 +2186,8 @@
       data: [],
 
       primeMarket: null,
+
+      startupConfirmationsPending: false,
 
       primeMtfSymbol: null,
 
@@ -5588,7 +5603,8 @@
       state.tradeFinalizer = state.rawTradeFinalizer;
 
       state.riskEngine = analyseRisk(
-        state.tradeFinalizer?.plan,
+        state.startupConfirmationsPending && !state.replay.active
+          ? null : state.tradeFinalizer?.plan,
         {
           side:
             Number(state.tradeFinalizer?.side || 0),
@@ -8807,6 +8823,10 @@
 
     async function refreshMTF(requestedFrames = ['5m', '15m', '1h']) {
       const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedId = request;
+      const stillCurrent = () => state.symbol === requestedSymbol &&
+        state.tf === requestedTf && request === requestedId && !state.replay.active;
       const frames = ['5m', '15m', '1h'].filter(
         timeframe => requestedFrames.includes(timeframe)
       );
@@ -8830,6 +8850,7 @@
        const settled = [];
 
     for (const timeframe of frames) {
+      if (!stillCurrent()) return;
       try {
         const candles =
           await market.mtfHistory(
@@ -8876,7 +8897,7 @@
           '1h': loaded['1h']?.length || 0
         });
 
-        if (state.symbol !== requestedSymbol || state.replay.active) return;
+        if (!stillCurrent()) return;
         state.primeMtfSymbol = requestedSymbol;
 
         for (const timeframe of frames) {
@@ -8991,6 +9012,7 @@
         error
       ) {
 
+        if (!stillCurrent()) return;
         state.primeMtfSymbol = null;
         state.primeMtfData = {
           '5m': [],
@@ -9034,7 +9056,7 @@
         // An older request may finish after the symbol changes or Replay
         // starts. Do not let that stale request clear/loading-render the
         // current MTF state or trigger a consensus recomputation.
-        if (state.symbol === requestedSymbol && !state.replay.active) {
+        if (stillCurrent()) {
           state.mtf.loading =
             false;
 
@@ -9207,9 +9229,26 @@
       }
     }
 
+    async function loadStartupConfirmations(id) {
+      try {
+        await refreshMTF();
+      } catch (error) {
+        console.warn('Startup confirmations unavailable:', error);
+      } finally {
+        // An old download must not release the new view's WAIT gate, or
+        // rerender a live view after Replay has been entered.
+        if (id === request && !state.replay.active) {
+          state.startupConfirmationsPending = false;
+          lastAnalysisKey = null;
+          scheduleLiveRender(true);
+        }
+      }
+    }
+
     async function loadData() {
       loadedHistoryKey = null;
       historyRefreshWarning = '';
+      state.startupConfirmationsPending = true;
       state.rawTradeFinalizer = null;
       state.tradeFinalizer = null;
       state.liveTradeFinalizer = null;
@@ -9225,6 +9264,11 @@
         '5m': [],
         '15m': [],
         '1h': []
+      };
+
+      state.mtf = {
+        loading: false, updated: 0, '5m': null, '15m': null, '1h': null,
+        overall: 'NO TRADE'
       };
 
       lastAnalysisKey = null;
@@ -9521,16 +9565,18 @@
         updateTradingDate();
 
 
-        // Load 5m / 15m / 1h history BEFORE the first Prime/consensus calculation.
-        // This prevents Prime from receiving an empty mtfData object during startup.
-        await refreshMTF();
-
         activateAllIndicators();
 
         refreshLiveTradeFinalizer();
 
         draw();
         summary();
+
+        // Paint genuine main-timeframe candles and start quotes without waiting
+        // for three supporting downloads. The explicit startup gate keeps
+        // Prime/finalizer/consensus at WAIT until the downloads settle; missing
+        // or failed frames still fail the existing Prime confirmation checks.
+        loadStartupConfirmations(id);
 
         // /api/upstox-history already includes genuine previous-session
         // warm-up. Do not request it again or reload all MTF frames twice.
@@ -9581,8 +9627,8 @@
         );
 
 
-        // MTF was already loaded before the first Prime calculation.
-        // Avoid an immediate duplicate request (helps prevent Upstox 429 throttling).
+        // Supporting MTF downloads already run in the background. Do not
+        // duplicate them when starting the independent external context feed.
         refreshExternalNifty().catch(
           () => {}
         );
