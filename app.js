@@ -1,7 +1,7 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
-    import { liveCandleBucket, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js';
+    import { liveCandleBucket, liveCandleRejectionReason, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js?v=2';
     import { trendIndicators } from './trend-indicators.js';
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
@@ -2859,7 +2859,7 @@
         el.textContent =
           '● LIVE · UPSTOX · ' +
           formatISTTime() +
-          ' IST';
+          ' IST' + (message ? ' · ' + message : '');
 
         return;
       }
@@ -2883,7 +2883,7 @@
         el.textContent =
           '● FALLBACK · UPSTOX 1m · ' +
           formatISTTime() +
-          ' IST';
+          ' IST' + (message ? ' · ' + message : '');
 
         return;
       }
@@ -9656,7 +9656,8 @@
 
 
               const seconds = intervals[state.tf];
-              const bucket = liveCandleBucket(tick, seconds);
+              const quoteNow = Date.now() / 1000;
+              const bucket = liveCandleBucket(tick, seconds, quoteNow);
 
               if (bucket === null) {
                 // After-hours/stale quotes are display-only. Preserve the last
@@ -9664,7 +9665,8 @@
                 refreshLiveTradeFinalizer();
                 recomputeAiNifty();
                 scheduleLiveRender();
-                setFeedStatus(isNseCashMarketOpen() ? 'STALE' : 'CLOSED');
+                setFeedStatus(isNseCashMarketOpen() ? 'STALE' : 'CLOSED',
+                  liveCandleRejectionReason(tick, seconds, quoteNow));
                 return;
               }
 
@@ -10488,6 +10490,14 @@
     ====================================================== */
 
 
+    function syncTimeframeButtons() {
+      $$('[data-tf]').forEach(button => {
+        button.classList.toggle('active', button.dataset.tf === state.tf);
+      });
+    }
+
+    syncTimeframeButtons();
+
     $$('[data-tf]')
       .forEach(
         button => {
@@ -10516,6 +10526,14 @@
               }
 
 
+              // Selecting an already loaded live timeframe only synchronizes
+              // the two toolbars; it must not restart history or quotes.
+              if (tf === state.tf && !state.replay.active &&
+                  state.data.length && loadedHistoryKey === state.symbol + ':' + tf) {
+                syncTimeframeButtons();
+                return;
+              }
+
               if (
                 state.replay.active
               ) {
@@ -10534,14 +10552,7 @@
                 null;
 
 
-              $$('[data-tf]')
-                .forEach(
-                  x =>
-                    x.classList.toggle(
-                      'active',
-                      x === button
-                    )
-                );
+              syncTimeframeButtons();
 
 
               loadData();

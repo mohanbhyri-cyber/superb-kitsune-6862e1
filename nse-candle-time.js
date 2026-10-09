@@ -52,3 +52,35 @@ export function liveCandleBucket(tick, seconds, now = Date.now() / 1000) {
       nseSessionBounds(time).open !== nseSessionBounds(now)?.open) return null;
   return nseCandleBucket(time, seconds);
 }
+
+// Diagnostic only. liveCandleBucket remains the authority for eligibility;
+// these messages never relax its session or timestamp checks.
+export function liveCandleRejectionReason(tick, seconds, now = Date.now() / 1000) {
+  if (!regularNseHours(Number(now) * 1000)) return 'NSE regular session is closed';
+  if (tick?.time === null || tick?.time === undefined || tick?.time === '' ||
+      !Number.isFinite(Number(tick.time)) || Number(tick.time) <= 0) {
+    return 'Quote has no valid provider timestamp; price display only';
+  }
+  const time = Number(tick.time);
+  if (!isNseIntradayTime(time)) {
+    return 'Quote timestamp is outside NSE regular hours; price display only';
+  }
+  if (tick?.candleEligible === false) {
+    return 'Provider quote is not eligible for candle updates; price display only';
+  }
+  if (nseSessionBounds(time).open !== nseSessionBounds(now)?.open) {
+    return 'Quote belongs to a different NSE session; price display only';
+  }
+  if (time > Number(now) + 5) {
+    return 'Quote timestamp is ' + Math.ceil(time - Number(now)) +
+      's ahead of device time (maximum 5s); price display only';
+  }
+  if (Number(now) - time > 30) {
+    return 'Quote timestamp is ' + Math.ceil(Number(now) - time) +
+      's old (maximum 30s); price display only';
+  }
+  if (nseCandleBucket(time, seconds) === null) {
+    return 'Candle interval is invalid; price display only';
+  }
+  return '';
+}
