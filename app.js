@@ -6,6 +6,7 @@
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
     import { analyseSessionQuality } from './smrt-session-quality.js';
+    import { analyseMarketContext } from './market-context.js';
     import { analyseRisk } from './smrt-risk-engine.js';
     import { analyseBestBuySetup } from './smrt-best-buy.js';
     import { proScalper } from './pro-scalper.js';
@@ -5471,6 +5472,13 @@
 
       state.sessionQuality = analyseSessionQuality(
         indicatorData,
+        Number(intervals[state.tf])
+      );
+
+      // Descriptive levels only: they never create or override a signal.
+      state.marketContext = analyseMarketContext(
+        indicatorData,
+        state.calc,
         Number(intervals[state.tf])
       );
 
