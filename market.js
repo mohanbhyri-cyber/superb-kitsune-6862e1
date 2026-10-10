@@ -34,18 +34,17 @@ export function upstoxCooldownRemaining(scope) {
 
 export function noteUpstoxRateLimit(retryAfterMs, scope = 'default') {
   const key = upstoxScope(scope);
-  const delay = Math.max(
-    upstoxRetryFloor(key),
-    Number.isFinite(Number(retryAfterMs))
-      ? Number(retryAfterMs)
-      : 0
-  );
+  const providedDelay = Number(retryAfterMs);
+  // The server may return the last few seconds of an existing cooldown.
+  // Only use the scope fallback when no usable retry duration is supplied.
+  const delay = Number.isFinite(providedDelay) && providedDelay > 0
+    ? Math.max(1000, providedDelay) : upstoxRetryFloor(key);
   const retryAt = Math.max(
     upstoxRetryAtByScope.get(key) || 0,
     Date.now() + delay
   );
   upstoxRetryAtByScope.set(key, retryAt);
-  return delay;
+  return Math.max(0, retryAt - Date.now());
 }
 
 function parseRetryAfterMs(response, body = {}) {
@@ -452,6 +451,7 @@ export class UpstoxMarketAdapter {
     this.lastUpdate = null;
 
     this.quotes = {};
+    this.historyWarmup = new Map();
   }
 
 
@@ -476,6 +476,8 @@ export class UpstoxMarketAdapter {
 // ----------------------------------------------------------
 
   async history(symbol, timeframe) {
+    const historyKey = symbol + ':' + timeframe;
+    this.historyWarmup.delete(historyKey);
 
     if (!intervals[timeframe]) {
       throw new Error(
@@ -595,6 +597,10 @@ export class UpstoxMarketAdapter {
 
 
     this.status = 'LIVE';
+
+    if (data.warmup && typeof data.warmup === 'object') {
+      this.historyWarmup.set(historyKey, { ...data.warmup });
+    }
 
     this.lastUpdate =
       Date.now();

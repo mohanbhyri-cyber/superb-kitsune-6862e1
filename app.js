@@ -57,7 +57,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=6';
+    } from './market.js?v=8';
 
 
     window.SMRTTradingViewDatafeed =
@@ -735,8 +735,11 @@
         trap?.state || 'Liquidity trap unavailable', false);
 
       const session = legacy.sessionQuality;
-      const sessionClosed = session?.ready === true &&
-        (session.quality === 'CLOSED' || session.state === 'MARKET CLOSED');
+      // Session quality describes the historical candle, not whether NSE is
+      // open now. Replay retains historical context; live gates use the clock.
+      const sessionClosed = (!replay && !regularNseHours(Number(now) * 1000)) ||
+        (session?.ready === true &&
+          (session.quality === 'CLOSED' || session.state === 'MARKET CLOSED'));
       check('NSE session open', session?.ready === true && !sessionClosed,
         sessionClosed ? 'NSE session is closed' : 'Session quality is unavailable');
       check('Session quality', session?.ready === true && session.quality !== 'CAUTION' && !sessionClosed,
@@ -1935,6 +1938,12 @@
       status.style.cssText = 'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
 
       add('h2', 'Prime Market Confirmation');
+      const historyWarmup = !state.replay.active &&
+        market.historyWarmup?.get(state.symbol + ':' + state.tf);
+      if (historyWarmup && !historyWarmup.ready) {
+        add('p', 'History warm-up: ' + historyWarmup.closedCandles + '/' +
+          historyWarmup.requiredClosedCandles + ' closed candles · ' + historyWarmup.reason, 'muted');
+      }
       if (!p) {
         add('p', 'WAIT · Loading confirmed closed-candle data', 'muted');
         return;
@@ -9245,7 +9254,7 @@
       renderAllIndicatorsConsensus();
       renderProSuiteSummary();
 
-      activateAllIndicators();
+      syncIndicatorControls();
 
       clearTimeout(
         reconnectTimer
@@ -9533,7 +9542,7 @@
         // This prevents Prime from receiving an empty mtfData object during startup.
         await refreshMTF();
 
-        activateAllIndicators();
+        syncIndicatorControls();
 
         refreshLiveTradeFinalizer();
 
@@ -9915,41 +9924,19 @@
 
 
     function activateAllIndicators() {
-
-      state.overlays =
-        new Set(
-          Object.keys(
-            colors
-          )
-        );
-
-      $$('#indicators [data-indicator]')
-        .forEach(
-          button => {
-
-            button.classList.add(
-              'on'
-            );
-
-            button.setAttribute(
-              'aria-pressed',
-              'true'
-            );
-          }
-        );
+      state.overlays = new Set(Object.keys(colors));
+      syncIndicatorControls();
     }
 
-    function setAllIndicators(enabled) {
-      if (enabled) {
-        activateAllIndicators();
-      } else {
-        state.overlays = new Set();
-      }
-
+    function syncIndicatorControls() {
+      const names = Object.keys(colors);
+      const activeCount = names.filter(name => state.overlays.has(name)).length;
+      const allEnabled = names.length > 0 && activeCount === names.length;
+      const label = allEnabled ? 'ON' : activeCount === 0 ? 'OFF' : 'MIXED';
       const button = $('#indicators-all-toggle');
       if (button) {
-        button.textContent = 'All indicators: ' + (enabled ? 'ON' : 'OFF');
-        button.setAttribute('aria-pressed', String(enabled));
+        button.textContent = 'All indicators: ' + label;
+        button.setAttribute('aria-pressed', allEnabled ? 'true' : activeCount ? 'mixed' : 'false');
       }
 
       $$('[data-indicator]').forEach(indicator => {
@@ -9957,6 +9944,11 @@
         indicator.classList.toggle('on', active);
         indicator.setAttribute('aria-pressed', String(active));
       });
+    }
+
+    function setAllIndicators(enabled) {
+      state.overlays = new Set(enabled ? Object.keys(colors) : []);
+      syncIndicatorControls();
     }
 
 
@@ -10003,6 +9995,7 @@
           .join('');
     }
 
+    syncIndicatorControls();
 
     function runSmrtDiagnostics() {
 
@@ -10015,7 +10008,6 @@
         'market-map-panel',
         'candle-scanner-panel',
         'all-indicators-panel',
-        'all-indicators-chat-panel',
         'global-watch-panel',
         'ai-indicator-panel',
         'ai-nifty-panel',
@@ -10733,6 +10725,7 @@
             )
           );
 
+          syncIndicatorControls();
 
           draw();
 
@@ -14237,6 +14230,14 @@
           ? ai.reasons.join(' · ')
           : 'AI WAIT: inputs are missing, stale, conflicting, or below threshold.'
       );
+      const historyWarmup = !state.replay.active &&
+        market.historyWarmup?.get(state.symbol + ':' + state.tf);
+      if (historyWarmup && !historyWarmup.ready) {
+        const reasons = $('#ai-indicator-reasons');
+        if (reasons) reasons.textContent += ' · History warm-up ' +
+          historyWarmup.closedCandles + '/' + historyWarmup.requiredClosedCandles +
+          ': ' + historyWarmup.reason;
+      }
     }
 
 

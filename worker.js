@@ -409,12 +409,14 @@ async function upstoxFetch(endpoint, token) {
       // Special handling for Upstox rate limit
       error.rateLimited = response.status === 429;
 
-      // Respect Retry-After when Upstox provides it.
+      // Honor a usable provider deadline without adding our fallback minute.
+      // Missing, invalid or expired deadlines still use conservative backoff.
       const retryHeader = response.headers.get('retry-after');
       const seconds = retryHeader && Number.isFinite(Number(retryHeader))
         ? Number(retryHeader) : retryHeader ? (Date.parse(retryHeader) - Date.now()) / 1000 : 0;
       error.retryAfterMs = response.status === 429
-        ? Math.max(60000, Number.isFinite(seconds) ? seconds * 1000 : 0) : 0;
+        ? (Number.isFinite(seconds) && seconds > 0
+          ? Math.max(1000, seconds * 1000) : 60000) : 0;
       if (error.rateLimited) {
         upstoxCooldowns.set(cooldownKey, Math.max(
           upstoxCooldowns.get(cooldownKey) || 0,
@@ -871,73 +873,40 @@ async function intradayHistory(url, token) {
 }
     }
 
+    let previousSession = null;
     if (!rows.length) {
-      const previous =
+      previousSession =
         await previousTradingSession(
           instrumentKey,
           interval,
           token
         );
 
-      if (
-        previous.candles.length
-      ) {
+      if (!previousSession.candles.length) {
         return json({
-          live: true,
+          live: false,
           source: "UPSTOX",
           symbol,
           timeframe,
-          instrumentKey,
-          sessionStart: "09:15",
-          timezone: IST,
-          count:
-            previous.candles.length,
-          currentSessionDate:
-            today,
-          currentSessionCount:
-            0,
-          sessionDate:
-            previous.date,
-          marketOpen:
-            false,
-          historyMode:
-            "previous-session-preopen-fallback",
-          firstCandleTime:
-            previous.candles[0].time,
-          lastCandleTime:
-            previous.candles[
-              previous.candles.length - 1
-            ].time,
-          candles:
-            previous.candles,
+          reason: "No current or previous-session candles returned by Upstox.",
+          candles: [],
         });
       }
-
-      return json({
-        live: false,
-        source: "UPSTOX",
-        symbol,
-        timeframe,
-        reason:
-          "No current or previous-session candles returned by Upstox.",
-        candles: [],
-      });
     }
 
-    let todayCandles =
-  rows
-    .map(normalizeRegularSessionCandle)
-    .filter(Boolean)
-    .sort((a, b) => a.time - b.time);
+    const sessionCandles = previousSession?.candles || rows
+      .map(normalizeRegularSessionCandle)
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
 
 // Prime / Advanced Engine requires 220 closed candles.
-// If today's session has fewer than 260 candles,
-// add the most recent previous trading session.
+// Include genuine multi-session history even on the previous-session fallback.
 let previousCandles = [];
 let warmupRateLimited = false;
 let warmupRetryAfterMs = 0;
+let warmupFailure = '';
 
-if (todayCandles.length < 260) {
+if (sessionCandles.length < 260) {
   try {
     const warmupBody = await upstoxFetch(
       historicalWarmupEndpoint,
@@ -960,6 +929,12 @@ if (todayCandles.length < 260) {
       // Existing indicator/AI minimum-candle gates remain in force.
       warmupRateLimited = true;
       warmupRetryAfterMs = error.retryAfterMs || 60000;
+      warmupFailure = 'Historical warm-up rate limited; waiting for the broker retry deadline.';
+    } else if (error?.status === 401 || error?.status === 403) {
+      warmupFailure = 'Historical warm-up authorization failed (HTTP ' + error.status + '). Check broker history access.';
+    } else {
+      // Do not expose arbitrary broker error text or credential-bearing URLs.
+      warmupFailure = 'Historical warm-up request failed. Session candles remain available.';
     }
 
     console.warn(
@@ -971,10 +946,9 @@ if (todayCandles.length < 260) {
 
 let candles = [
   ...previousCandles,
-  ...todayCandles
+  ...sessionCandles
 ]
-  .sort((a, b) => a.time - b.time)
-  .slice(-260);
+  .sort((a, b) => a.time - b.time);
 
     const unique = [];
 
@@ -993,7 +967,9 @@ let candles = [
       }
     }
 
-    candles = unique;
+    // Deduplicate before trimming: overlapping intraday/range responses must
+    // not use two slots for one candle. Intraday rows still win overlaps.
+    candles = unique.slice(-260);
 
     if (!candles.length) {
       return json({
@@ -1009,6 +985,12 @@ let candles = [
       });
     }
 
+    const closedCount = candles.filter(c => c.time + interval * 60 <= Date.now() / 1000).length;
+    const warmupReady = closedCount >= 220;
+    const currentSessionCount = sessionCandles.filter(c => {
+      const p = getISTParts(c.time * 1000);
+      return `${p.year}-${p.month}-${p.day}` === today;
+    }).length;
     return json({
       live: true,
       source: "UPSTOX",
@@ -1021,11 +1003,20 @@ let candles = [
       currentSessionDate:
         todayIST(),
       currentSessionCount:
-        todayCandles.length,
+        currentSessionCount,
+      ...(previousSession ? { sessionDate: previousSession.date, marketOpen: false } : {}),
       historyMode:
-        "intraday-with-historical-fallback",
+        previousSession ? "previous-session-with-historical-warmup" : "intraday-with-historical-fallback",
       warmupRateLimited,
       warmupRetryAfterMs,
+      warmup: {
+        requiredClosedCandles: 220,
+        closedCandles: closedCount,
+        ready: warmupReady,
+        status: warmupReady ? 'READY' : warmupRateLimited ? 'RATE_LIMITED' : warmupFailure ? 'UNAVAILABLE' : 'INSUFFICIENT_HISTORY',
+        reason: warmupReady ? '' : warmupFailure || `Broker returned ${closedCount}/220 distinct closed candles; more historical session data is required.`,
+        retryAfterMs: warmupRetryAfterMs,
+      },
       firstCandleTime:
         candles[0].time,
       lastCandleTime:
