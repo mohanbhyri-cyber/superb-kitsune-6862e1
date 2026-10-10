@@ -57,7 +57,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=6';
+    } from './market.js?v=8';
 
 
     window.SMRTTradingViewDatafeed =
@@ -1935,6 +1935,12 @@
       status.style.cssText = 'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
 
       add('h2', 'Prime Market Confirmation');
+      const historyWarmup = !state.replay.active &&
+        market.historyWarmup?.get(state.symbol + ':' + state.tf);
+      if (historyWarmup && !historyWarmup.ready) {
+        add('p', 'History warm-up: ' + historyWarmup.closedCandles + '/' +
+          historyWarmup.requiredClosedCandles + ' closed candles · ' + historyWarmup.reason, 'muted');
+      }
       if (!p) {
         add('p', 'WAIT · Loading confirmed closed-candle data', 'muted');
         return;
@@ -14237,6 +14243,14 @@
           ? ai.reasons.join(' · ')
           : 'AI WAIT: inputs are missing, stale, conflicting, or below threshold.'
       );
+      const historyWarmup = !state.replay.active &&
+        market.historyWarmup?.get(state.symbol + ':' + state.tf);
+      if (historyWarmup && !historyWarmup.ready) {
+        const reasons = $('#ai-indicator-reasons');
+        if (reasons) reasons.textContent += ' · History warm-up ' +
+          historyWarmup.closedCandles + '/' + historyWarmup.requiredClosedCandles +
+          ': ' + historyWarmup.reason;
+      }
     }
 
 
