@@ -13585,8 +13585,13 @@
         ['Target 1 / 2', primeFinite(plan?.target1) && primeFinite(plan?.target2)
           ? fmt(plan.target1) + ' / ' + fmt(plan.target2) : '—']
       ];
-      const closedIndex = lastClosedCandleIndex(state.data, Number(intervals[state.tf]),
-        state.replay.active ? Number(state.data.at(-1)?.time) : Date.now() / 1000);
+      // Replay's visible bar is completed at its END, as in draw() and Prime.
+      // Using its OPEN here incorrectly labels the preceding candle.
+      const seconds = Number(intervals[state.tf]);
+      const analysisNow = state.replay.active
+        ? Number(state.data.at(-1)?.time) + seconds
+        : Date.now() / 1000;
+      const closedIndex = lastClosedCandleIndex(state.data, seconds, analysisNow);
       const closedTime = state.data[closedIndex]?.time;
       confirmationRows.splice(1, 0, ['Last closed candle', primeFinite(closedTime)
         ? new Date(Number(closedTime) * 1000).toLocaleString('en-IN',
