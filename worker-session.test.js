@@ -69,3 +69,70 @@ test('Worker history endpoints strip pre-open, 15:30-start and 4pm candles', asy
     assert.deepEqual(body.candles.map(row => row.time), [epoch('09:15:00'), epoch('15:27:00')]);
   }
 });
+
+test('production futures route separates completed confirmation from forming display across intervals', async t => {
+  const worker = await workerWith(t, {}, '12:00:05');
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(typeof input === 'string' ? input : input.url);
+    requests.push(url.pathname);
+    if (url.pathname.endsWith('/instruments/search')) {
+      return new Response(JSON.stringify({ data: [{ instrument_key: 'NSE_FO|fixture',
+        instrument_type: 'FUT', segment: 'NSE_FO', underlying_symbol: 'NIFTY',
+        trading_symbol: 'NIFTY FUT FIXTURE', expiry: '2026-10-29' }] }));
+    }
+    assert.match(url.pathname, /historical-candle\/intraday/);
+    const seconds = Number(url.pathname.split('/').at(-1)) * 60;
+    const rows = [];
+    for (let time = epoch('09:15:00'); time <= epoch('12:00:00'); time += seconds) {
+      const forming = time + seconds > epoch('12:00:05');
+      rows.push([new Date(time * 1000).toISOString(), 110, forming ? 1000 : 120,
+        100, forming ? 999 : 115, forming ? 1000000 : 100]);
+    }
+    // Genuine after-hours data cannot enter either confirmation series.
+    rows.push(['2026-10-08T16:00:00+05:30', 110, 1000, 100, 999, 1000000]);
+    return new Response(JSON.stringify({ data: { candles: rows.reverse() } }));
+  });
+  for (const interval of [1, 3, 5, 15]) {
+    const seconds = interval * 60;
+    const body = await (await worker.fetch(new Request(
+      'https://example.test/api/nifty-futures-vwap?interval=' + interval),
+      { UPSTOX_EXTENDED_TOKEN: 'fixture-token' })).json();
+    const closed = body.closedVwapConfirmation;
+    assert.equal(body.live, true);
+    assert.equal(body.futuresPrice, 999);
+    assert.equal(closed.available, true);
+    assert.equal(closed.seconds, seconds);
+    assert.equal(closed.lastCandleTime, epoch('12:00:00') - seconds);
+    assert.equal(closed.futuresPrice, 115);
+    assert.ok(Math.abs(closed.vwap - (120 + 100 + 115) / 3) < 1e-10);
+    if (interval < 15) {
+      assert.equal(body.volumeConfirmation.available, true);
+      assert.equal(body.volumeConfirmation.lastCandleTime, closed.lastCandleTime);
+      assert.equal(body.volumeConfirmation.relative, 1);
+    } else assert.equal(body.volumeConfirmation.available, false); // Only 11 closed 15m bars.
+  }
+  assert.equal(requests.filter(path => path.endsWith('/instruments/search')).length, 1);
+  assert.equal(requests.filter(path => path.includes('/intraday/')).length, 4);
+});
+
+test('production futures route does not turn missing provider volume into valid closed VWAP', async t => {
+  const worker = await workerWith(t, {}, '10:18:05');
+  const rows = Array.from({ length: 22 }, (_, i) => [
+    new Date((epoch('09:15:00') + i * 180) * 1000).toISOString(),
+    110, 120, 100, 115, i === 5 ? null : 100
+  ]);
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(typeof input === 'string' ? input : input.url);
+    const data = url.pathname.endsWith('/instruments/search')
+      ? [{ instrument_key: 'NSE_FO|fixture', instrument_type: 'FUT', segment: 'NSE_FO',
+        underlying_symbol: 'NIFTY', trading_symbol: 'NIFTY FUT FIXTURE', expiry: '2026-10-29' }]
+      : { candles: rows };
+    return new Response(JSON.stringify({ data }));
+  });
+  const body = await (await worker.fetch(new Request(
+    'https://example.test/api/nifty-futures-vwap?interval=3'),
+    { UPSTOX_EXTENDED_TOKEN: 'fixture-token' })).json();
+  assert.equal(body.live, true);
+  assert.equal(body.closedVwapConfirmation.available, false);
+});

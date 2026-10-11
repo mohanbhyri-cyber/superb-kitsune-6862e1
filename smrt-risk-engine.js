@@ -1,7 +1,7 @@
 // smrt-risk-engine.js
 // Trade-plan quality control. It does not create BUY/SELL direction.
 
-const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+const finite=v=>(typeof v==='number'||(typeof v==='string'&&v.trim()!==''))&&Number.isFinite(Number(v));
 
 export function analyseRisk(plan,{atr=null,side=0,contextFresh=true}={}){
   if(contextFresh!==true)
@@ -14,29 +14,31 @@ export function analyseRisk(plan,{atr=null,side=0,contextFresh=true}={}){
   const t2=Number(plan.target2);
   const t3=Number(plan.target3);
 
-  if(![entry,stop,t1].every(finite)||entry<=0||stop<=0||t1<=0||entry===stop)
-    return {ready:true,state:'INVALID PLAN',quality:'BLOCK',score:0,reasons:['Entry, stop or target is invalid']};
+  const levels=[plan.entry,plan.stopLoss ?? plan.stop,plan.target1,plan.target2,plan.target3];
+  if(!levels.every(v=>finite(v)&&Number(v)>0)||entry===stop)
+    return {ready:true,state:'INVALID PLAN',quality:'BLOCK',score:0,reasons:['Entry, stop and all three targets must be valid positive prices']};
 
   if(side!==1&&side!==-1)
     return {ready:true,state:'INVALID DIRECTION',quality:'BLOCK',score:0,reasons:['Trade direction is unavailable']};
 
   const risk=Math.abs(entry-stop);
-  const rewards=[t1,t2,t3].map(t=>finite(t)?Math.abs(t-entry):null);
+  // Signed rewards must not make targets on the losing side look profitable.
+  const rewards=[t1,t2,t3].map(t=>(t-entry)*side);
   const rr1=rewards[0]/risk;
   const rr2=finite(rewards[1])?rewards[1]/risk:null;
   const rr3=finite(rewards[2])?rewards[2]/risk:null;
   const atrRisk=finite(atr)&&Number(atr)>0?risk/Number(atr):null;
 
   const directionValid=side===1
-    ? stop<entry&&t1>entry
+    ? stop<entry&&t1>entry&&t2>t1&&t3>t2
     : side===-1
-      ? stop>entry&&t1<entry
+      ? stop>entry&&t1<entry&&t2<t1&&t3<t2
       : false;
 
   let score=100;
   const reasons=[];
 
-  if(!directionValid){score=0;reasons.push('Stop/target direction invalid');}
+  if(!directionValid){score=0;reasons.push('Stop/target direction or target order invalid');}
   if(rr1<1){score-=35;reasons.push('T1 reward is below 1R');}
   else if(rr1<1.25){score-=15;reasons.push('T1 reward is marginal');}
 
