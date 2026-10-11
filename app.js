@@ -7,7 +7,8 @@
     import { analyseLiquidityTrap } from './smrt-liquidity-trap.js';
     import { analyseSessionQuality } from './smrt-session-quality.js';
     import { analyseMarketContext } from './market-context.js';
-    import { analyseRisk } from './smrt-risk-engine.js';
+    import { analyseRisk } from './smrt-risk-engine.js?v=2';
+    import { resolveClosedVwap } from './closed-vwap-confirmation.js';
     import { analyseBestBuySetup } from './smrt-best-buy.js';
     import { proScalper } from './pro-scalper.js';
     import { SignalAlertTracker } from './signal-alerts.js';
@@ -403,7 +404,7 @@
       };
     }
 
-    function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, futuresVolume = null, replay = false }) {
+    function analysePrimeMarket({ data, seconds, now, mtfData = {}, legacy = {}, futuresVolume = null, futuresVwap = null, replay = false }) {
       const result = { signal: 'NO TRADE', side: 0, reasons: [], checks: [], structure: null,
         volume: null, mtf: {}, time: null };
       const check = (name, ok, reason, required = true) => {
@@ -618,9 +619,10 @@
       };
       check('Volume pressure', volumeAvailable && relative >= 1.1 && side !== 0 && pressure * side >= 0.15,
         volumeAvailable ? 'Volume pressure does not confirm' : 'Volume unavailable; NIFTY index volume is not fabricated');
-      const vwap = technical.values?.vwap;
-      check('Closed-candle VWAP', primeFinite(vwap) && side !== 0 && (last.close - Number(vwap)) * side > 0,
-        'Closed-candle VWAP unavailable or conflicting; live futures VWAP is not substituted');
+      result.vwap = resolveClosedVwap({ indexVwap: technical.values?.vwap,
+        last, side, symbol: state.symbol, seconds, now, futures: futuresVwap, replay });
+      check('Closed-candle VWAP', result.vwap.ok, result.vwap.reason);
+      result.checks.at(-1).source = result.vwap.source;
       for (const [tf, duration] of [['5m', 300], ['15m', 900], ['1h', 3600]]) {
         const m = primeClosed(mtfData[tf], duration, now);
         const t = m.error ? { side: 0, error: m.error } : primeTechnical(m.candles);
@@ -1074,6 +1076,11 @@
               state.replay.active
                 ? null
                 : state.futuresVolumeConfirmation,
+
+            futuresVwap:
+              state.replay.active
+                ? null
+                : state.futuresClosedVwapConfirmation,
 
             mtfData:
               state.primeMtfSymbol ===
@@ -2059,7 +2066,8 @@
         requiredChecks.filter(item => item.ok).length + '/' + requiredChecks.length + ' passed');
       if (!requiredChecks.length) add('p', 'WAIT · Mandatory checks unavailable', 'muted');
       for (const item of requiredChecks) {
-        add('p', (item.ok ? '✓ ' : '✕ ') + item.name, item.ok ? 'up' : 'muted');
+        add('p', (item.ok ? '✓ ' : '✕ ') + item.name +
+          (item.source ? ' · ' + item.source : ''), item.ok ? 'up' : 'muted');
       }
 
       add('h3', 'Supporting confirmations · ' +
@@ -2258,6 +2266,8 @@
       futuresVWAPUpdated: 0,
 
       futuresVolumeConfirmation: null,
+
+      futuresClosedVwapConfirmation: null,
 
       feedStatus: 'LOADING',
 
@@ -2736,6 +2746,7 @@
         state.futuresVWAPCandleTime = null;
         state.futuresVolumeConfirmation = null;
         state.futuresVWAPReason = 'VWAP is only available for NIFTY futures.';
+        state.futuresClosedVwapConfirmation = null;
         return;
       }
 
@@ -2756,6 +2767,7 @@
         state.futuresVolumeConfirmation = null;
         state.futuresVWAPReason =
           'Futures VWAP is unavailable for the selected timeframe.';
+        state.futuresClosedVwapConfirmation = null;
         return;
       }
 
@@ -2805,6 +2817,11 @@
             ? data.volumeConfirmation
             : null;
 
+        state.futuresClosedVwapConfirmation =
+          data?.live === true && data?.closedVwapConfirmation?.available === true
+            ? data.closedVwapConfirmation
+            : null;
+
         state.futuresVWAPUpdated =
           state.futuresVWAP === null
             ? 0
@@ -2836,6 +2853,8 @@
           'NIFTY futures VWAP unavailable:',
           error
         );
+
+        state.futuresClosedVwapConfirmation = null;
 
 
         state.futuresVWAPUpdated = 0;

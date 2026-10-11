@@ -5,6 +5,7 @@
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
 import { isNseIntradayTime, quoteCandleTime } from './nse-candle-time.js';
+import { buildClosedFuturesVwap, completedFuturesCandles } from './closed-vwap-confirmation.js';
 import { parse } from 'csv-parse/sync';
 
 const SYMBOLS = {
@@ -1619,6 +1620,11 @@ async function futuresVWAP(url, token) {
 
     const candles =
       rows
+        // Missing/invalid volume is not genuine zero-volume data. Dropping
+        // such a bar makes closed VWAP fail its complete-session/gap check.
+        .filter(row => Array.isArray(row) &&
+          (typeof row[5] === 'number' || (typeof row[5] === 'string' && row[5].trim() !== '')) &&
+          Number.isFinite(Number(row[5])) && Number(row[5]) >= 0)
         .map(normalizeCandle)
         .filter(Boolean)
         .sort(
@@ -1651,6 +1657,12 @@ async function futuresVWAP(url, token) {
 
     const latest =
       candles[candles.length - 1];
+
+    const confirmationNow = Date.now() / 1000;
+    const closedCandles = completedFuturesCandles(candles, interval * 60, confirmationNow);
+    const closedVwapConfirmation = buildClosedFuturesVwap(
+      candles, interval * 60, confirmationNow, contract
+    );
 
     const vwap =
       Number(
@@ -1712,7 +1724,8 @@ async function futuresVWAP(url, token) {
       // confirmation. This adds no extra Upstox request and never fabricates
       // index volume.
       volumeConfirmation: (() => {
-        const sample = candles.slice(-21);
+        const sample = closedCandles.slice(-21);
+        const closedLatest = sample.at(-1);
         const valid = sample.length >= 21 &&
           sample.every(c => Number.isFinite(Number(c.volume)) && Number(c.volume) > 0);
         if (!valid) {
@@ -1735,16 +1748,18 @@ async function futuresVWAP(url, token) {
               return sum + Number(c.volume) * proxy;
             }, 0) / recentVolume
           : null;
-        const relative = baseline > 0 ? Number(latest.volume) / baseline : null;
+        const relative = baseline > 0 ? Number(closedLatest.volume) / baseline : null;
         return {
           available: Number.isFinite(pressure) && Number.isFinite(relative),
           pressure,
           relative,
           source: "NIFTY futures OHLCV proxy; not bid/ask delta",
           candleCount: sample.length,
-          lastCandleTime: latest.time
+          lastCandleTime: closedLatest.time
         };
       })(),
+
+      closedVwapConfirmation,
 
       firstCandleTime:
         candles[0].time,
