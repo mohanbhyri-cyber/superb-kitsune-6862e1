@@ -4,7 +4,7 @@
 
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
-import { isNseIntradayTime, quoteCandleTime } from './nse-candle-time.js';
+import { isNseIntradayTime, nseCandleBucket, quoteCandleTime } from './nse-candle-time.js';
 import { buildClosedFuturesVwap, completedFuturesCandles } from './closed-vwap-confirmation.js';
 import { parse } from 'csv-parse/sync';
 
@@ -362,6 +362,16 @@ function upstoxCacheTtl(endpoint) {
   return 10000;
 }
 
+function upstoxCandleCacheDeadline(endpoint, startedAt) {
+  const match = new URL(endpoint).pathname.match(
+    /\/historical-candle\/intraday\/[^/]+\/minutes\/(\d+)$/
+  );
+  if (!match || !regularNseHours(startedAt)) return Infinity;
+  const seconds = Number(match[1]) * 60;
+  const bucket = nseCandleBucket(startedAt / 1000, seconds);
+  return bucket === null ? Infinity : (bucket + seconds) * 1000;
+}
+
 function upstoxCooldownError(until) {
   const error = new Error('Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
@@ -382,6 +392,10 @@ async function upstoxFetch(endpoint, token) {
   const until = upstoxCooldowns.get(cooldownKey) || 0;
   if (until > Date.now()) throw upstoxCooldownError(until);
   upstoxCooldowns.delete(cooldownKey);
+  // A snapshot fetched before the close must not survive into the next bar.
+  // Anchor this deadline at request start: a slow response cannot extend it.
+  // The existing TTL, request deduplication and provider cooldown still apply.
+  const candleDeadline = upstoxCandleCacheDeadline(endpoint, Date.now());
   const request = (async () => {
     const response = await fetch(endpoint, {
       method: "GET",
@@ -433,7 +447,7 @@ async function upstoxFetch(endpoint, token) {
     const body = await response.json();
     upstoxResponseCache.set(cacheKey, {
       body,
-      expiresAt: Date.now() + upstoxCacheTtl(endpoint)
+      expiresAt: Math.min(Date.now() + upstoxCacheTtl(endpoint), candleDeadline)
     });
     return body;
   })().finally(() => {

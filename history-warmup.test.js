@@ -146,7 +146,7 @@ test('AI warm-up explanation is text-only, retains closed-session WAIT, and is a
     reasons: ['NSE regular session is closed; no live AI trade signal']
   } };
   const context = vm.createContext({
-    state, Date,
+    state, Date, intervals: { '3m': 180 },
     $: selector => {
       if (!nodes.has(selector)) nodes.set(selector, { textContent: '', className: '' });
       return nodes.get(selector);
@@ -156,11 +156,20 @@ test('AI warm-up explanation is text-only, retains closed-session WAIT, and is a
       reason: 'Historical warm-up authorization failed (HTTP 403).'
     }]]) }
   });
-  vm.runInContext(source.slice(start, end) + '\nrenderAiIndicator();', context);
+  const helpers = source.slice(source.indexOf('    function primeFinite('),
+    source.indexOf('    function primeEpochSeconds('));
+  vm.runInContext(helpers + source.slice(start, end) + '\nrenderAiIndicator();', context);
   assert.match(nodes.get('#ai-indicator-reasons').textContent, /125\/220.*HTTP 403/);
   assert.equal(nodes.get('#ai-indicator-signal').textContent, 'AI WAIT');
   assert.equal(nodes.get('#ai-indicator-status').textContent, 'Market closed · no live signal');
+  state.aiIndicator.time = Date.parse('2026-10-09T13:30:00+05:30') / 1000;
+  vm.runInContext('renderAiIndicator();', context);
+  assert.equal(nodes.get('#ai-indicator-time').textContent,
+    'Last session candle 01:30 pm (closed 01:33 pm IST)');
+  state.data = [{ time: state.aiIndicator.time }];
   state.replay.active = true;
   vm.runInContext('renderAiIndicator();', context);
   assert.ok(!nodes.get('#ai-indicator-reasons').textContent.includes('History warm-up'));
+  assert.equal(nodes.get('#ai-indicator-time').textContent,
+    'Last session candle 01:30 pm (closed 01:33 pm IST)');
 });
