@@ -98,6 +98,14 @@
       return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
     }
 
+    function closedCandleTiming(time, seconds, now = Date.now() / 1000) {
+      if (!primeFinite(time) || Number(time) <= 0 ||
+          !primeFinite(seconds) || Number(seconds) <= 0 || !primeFinite(now)) return null;
+      const start = Number(time), end = start + Number(seconds);
+      if (end > Number(now)) return null;
+      return { start, end, ageSeconds: Math.max(0, Number(now) - end) };
+    }
+
     function primeEpochSeconds(value) {
       if (value === null || value === undefined || value === '') return null;
       const numeric = Number(value);
@@ -1922,15 +1930,12 @@
       const istMinutes = Number(istPart('hour')) * 60 + Number(istPart('minute'));
       const regularSessionOpen = !['Sat', 'Sun'].includes(istWeekday) &&
         istMinutes >= 9 * 60 + 15 && istMinutes < 15 * 60 + 30;
-      const latestClosedTime = Number(p?.time);
       const chartSeconds = Number(intervals[state.tf] || 60);
       // p.time is the candle OPEN timestamp. Compare wall clock with the
       // candle END so the status badge uses the same freshness basis as Prime.
-      const latestClosedEnd = primeFinite(latestClosedTime)
-        ? latestClosedTime + chartSeconds
-        : null;
-      const closedAgeMinutes = primeFinite(latestClosedEnd)
-        ? Math.max(0, Math.round((Date.now() / 1000 - latestClosedEnd) / 60))
+      const closedTiming = closedCandleTiming(p?.time, chartSeconds);
+      const closedAgeMinutes = closedTiming
+        ? Math.round(closedTiming.ageSeconds / 60)
         : null;
       const staleClosedCandle = Number.isFinite(closedAgeMinutes) &&
         closedAgeMinutes > Math.max(Math.round(chartSeconds / 60) * 3, 15);
@@ -1938,10 +1943,12 @@
       const status = add('div',
         !regularSessionOpen
           ? 'MARKET CLOSED · Historical/closed-candle analysis only · NO LIVE TRADE'
+          : !closedTiming
+            ? 'CLOSED-CANDLE DATA UNAVAILABLE · WAIT · NO LIVE TRADE'
           : staleClosedCandle
             ? 'STALE DATA · Last closed candle ' + closedAgeMinutes + ' min old · NO LIVE TRADE'
             : 'MARKET OPEN · CLOSED-CANDLE DATA CURRENT',
-        regularSessionOpen && !staleClosedCandle ? 'up' : 'muted');
+        regularSessionOpen && closedTiming && !staleClosedCandle ? 'up' : 'muted');
       status.style.cssText = 'font-weight:800;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line,#445);border-radius:8px';
 
       add('h2', 'Prime Market Confirmation');
@@ -13615,6 +13622,10 @@
       confirmationRows.splice(1, 0, ['Last closed candle', primeFinite(closedTime)
         ? new Date(Number(closedTime) * 1000).toLocaleString('en-IN',
           { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
+      const closedTiming = closedCandleTiming(closedTime, seconds, analysisNow);
+      confirmationRows.splice(2, 0, ['Candle closed at', closedTiming
+        ? new Date(closedTiming.end * 1000).toLocaleTimeString('en-IN',
+          { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
       for (const [name, value] of confirmationRows) {
         const row = document.createElement('div');
         row.className = 'chart-status-row';
@@ -14237,6 +14248,15 @@
             )
           : 'Closed candle —'
       );
+      const aiTiming = closedCandleTiming(ai.time, intervals[state.tf],
+        state.replay.active ? Number(state.data?.at(-1)?.time) + Number(intervals[state.tf])
+          : Date.now() / 1000);
+      if (aiTiming) {
+        $('#ai-indicator-time').textContent += ' (closed ' +
+          new Date(aiTiming.end * 1000).toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit'
+          }) + ' IST)';
+      }
 
       set(
         '#ai-indicator-status',

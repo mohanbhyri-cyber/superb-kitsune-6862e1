@@ -63,7 +63,9 @@ function fixture(tf = '3m', replay = true, now = epoch('13:33:00')) {
         'renderChartIndicatorStatus({ confidence: 0, votes: [] });\n}).call(this);', context);
       const rows = nodes.get('#chart-status-rows').children;
       const row = rows.find(row => row.children[0]?.textContent === 'Last closed candle');
-      return { chart: row.children[1].textContent, ai: state.aiIndicator, prime: context.primeTime };
+      const closedAt = rows.find(row => row.children[0]?.textContent === 'Candle closed at');
+      return { chart: row.children[1].textContent, closedAt: closedAt.children[1].textContent,
+        ai: state.aiIndicator, prime: context.primeTime };
     },
     render: () => {
       vm.runInContext('renderChartIndicatorStatus({ confidence: 0, votes: [] });', context);
@@ -80,6 +82,8 @@ test('Replay chart, AI and Prime identify the same completed bar across supporte
     const result = f.run();
     const visible = original.at(-1).time;
     assert.equal(result.chart, display(visible), tf);
+    assert.equal(result.closedAt, new Date((visible + intervals[tf]) * 1000)
+      .toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST');
     assert.equal(result.ai.time, visible, tf);
     assert.equal(result.prime, visible, tf);
     assert.equal(result.ai.signal, 'AI WAIT', 'Missing confirmations are not overridden');
@@ -110,6 +114,7 @@ test('live chart still excludes a forming bar until its real close', () => {
   const f = fixture('3m', false, epoch('13:31:00'));
   const result = f.run();
   assert.equal(result.chart, display(epoch('13:27:00')));
+  assert.equal(result.closedAt, '01:30 pm IST');
   assert.equal(result.ai.time, epoch('13:27:00'));
   assert.equal(result.prime, epoch('13:27:00'));
   assert.equal(f.state.aiIndicatorCandles.length, f.state.data.length);

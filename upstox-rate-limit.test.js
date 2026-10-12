@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { nseCandleBucket } from './nse-candle-time.js';
+import { regularNseHours } from './options-context.js';
 
 const workerSource = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
 const marketSource = readFileSync(new URL('./market.js', import.meta.url), 'utf8');
@@ -26,6 +28,7 @@ function workerFixture(fetcher) {
   assert.ok(start >= 0 && end > start, 'Use actual Worker request/cache implementation');
   const context = vm.createContext({
     URL, Response, Date: { now: () => clock, parse: Date.parse },
+    nseCandleBucket, regularNseHours,
     console: { error() {} },
     fetch: async (url, options) => {
       calls.push({ url, options });
@@ -36,6 +39,45 @@ function workerFixture(fetcher) {
     '\nthis.api = { upstoxFetch, upstoxCacheTtl, upstoxRateLimitKey };', context);
   return { ...context.api, calls, advance: ms => { clock += ms; } };
 }
+
+test('intraday cache cannot carry a pre-close snapshot across a candle boundary', async () => {
+  for (const tf of [1, 3, 5, 15, 60]) {
+    const f = workerFixture((_url, _options, call) => ok({ snapshot: call }));
+    // Fixture starts at 09:30 IST; hour candles are anchored at 09:15.
+    const untilBoundary = tf === 60 ? 45 * 60000 : tf * 60000;
+    f.advance(untilBoundary - 1000);
+    assert.equal((await f.upstoxFetch(intraday('NIFTY', tf), 'fixture-a')).snapshot, 1);
+    f.advance(999);
+    await f.upstoxFetch(intraday('NIFTY', tf), 'fixture-a');
+    assert.equal(f.calls.length, 1, 'Reuse before the boundary');
+    f.advance(1);
+    assert.equal((await f.upstoxFetch(intraday('NIFTY', tf), 'fixture-a')).snapshot, 2);
+    await f.upstoxFetch(intraday('NIFTY', tf), 'fixture-a');
+    assert.equal(f.calls.length, 2, 'Reuse the fresh snapshot; do not poll faster');
+  }
+});
+
+test('an in-flight pre-boundary history response cannot restart its cache after close', async () => {
+  let complete;
+  const f = workerFixture((_url, _options, call) => call === 1
+    ? new Promise(resolve => { complete = resolve; }) : ok({ snapshot: call }));
+  f.advance(179000);
+  const pending = f.upstoxFetch(intraday(), 'fixture-a');
+  f.advance(2000);
+  complete(ok({ snapshot: 1 }));
+  await pending;
+  assert.equal((await f.upstoxFetch(intraday(), 'fixture-a')).snapshot, 2);
+});
+
+test('candle boundary expiration does not bypass the provider cooldown', async () => {
+  const f = workerFixture(() => limited(120));
+  f.advance(179000);
+  await assert.rejects(f.upstoxFetch(intraday(), 'fixture-a'));
+  f.advance(1000);
+  await assert.rejects(f.upstoxFetch(intraday(), 'fixture-a'),
+    error => error.retryAfterMs === 119000);
+  assert.equal(f.calls.length, 1);
+});
 
 test('quote 429 respects Retry-After but does not stop intraday or options APIs', async () => {
   const f = workerFixture(url => url.includes('/market-quote/')
