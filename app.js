@@ -15137,6 +15137,30 @@
       }
     }
 
+    function finalizerDiagnosticChecklist(m) {
+      if (!m) return '';
+
+      const direction = (bull, bear) => {
+        if (bull === true && bear === true) return 'MIXED';
+        if (bull === true) return 'BULLISH';
+        if (bear === true) return 'BEARISH';
+        return 'NEUTRAL/UNAVAILABLE';
+      };
+      const value = (number, decimals) => primeFinite(number)
+        ? ' (' + Number(number).toFixed(decimals) + ')'
+        : '';
+
+      return 'Indicator directions (not trade approval): ' + [
+        'EMA ' + direction(m.emaBull, m.emaBear),
+        'Supertrend ' + direction(m.supertrendBull, m.supertrendBear),
+        'ADX/DMI ' + direction(m.dmiBull, m.dmiBear) + value(m.adx, 1),
+        'RSI ' + direction(m.rsiBull, m.rsiBear) + value(m.rsi, 1),
+        'MACD ' + direction(m.macdBull, m.macdBear) + value(m.macdHistogram, 2),
+        'MTF ' + (m.mtfSide === 1 ? 'BULLISH'
+          : m.mtfSide === -1 ? 'BEARISH' : 'WAITING')
+      ].join(' | ');
+    }
+
     function renderTradeFinalizer() {
       renderBestBuySetup();
       const samplePreview =
@@ -15323,7 +15347,7 @@
 
         if (!m.dmiBull && !m.dmiBear) {
           mandatoryBlockers.push(
-            Number.isFinite(Number(m.adx))
+            primeFinite(m.adx)
               ? 'ADX/DMI not aligned (ADX ' +
                 Number(m.adx).toFixed(1) +
                 ')'
@@ -15333,7 +15357,7 @@
 
         if (!m.rsiBull && !m.rsiBear) {
           mandatoryBlockers.push(
-            Number.isFinite(Number(m.rsi))
+            primeFinite(m.rsi)
               ? 'RSI outside Prime regime (' +
                 Number(m.rsi).toFixed(1) +
                 ')'
@@ -15353,72 +15377,7 @@
         }
       }
 
-      const m = f.mandatory;
-
-      const diagnosticChecklist =
-        m
-          ? [
-              'EMA ' +
-                (
-                  m.emaBull || m.emaBear
-                    ? '✓'
-                    : '✕'
-                ),
-              'Supertrend ' +
-                (
-                  m.supertrendBull || m.supertrendBear
-                    ? '✓'
-                    : '✕'
-                ),
-              'ADX/DMI ' +
-                (
-                  m.dmiBull || m.dmiBear
-                    ? '✓'
-                    : '✕'
-                ) +
-                (
-                  Number.isFinite(Number(m.adx))
-                    ? ' (' +
-                      Number(m.adx).toFixed(1) +
-                      ')'
-                    : ''
-                ),
-              'RSI ' +
-                (
-                  m.rsiBull || m.rsiBear
-                    ? '✓'
-                    : '✕'
-                ) +
-                (
-                  Number.isFinite(Number(m.rsi))
-                    ? ' (' +
-                      Number(m.rsi).toFixed(1) +
-                      ')'
-                    : ''
-                ),
-              'MACD ' +
-                (
-                  m.macdBull || m.macdBear
-                    ? '✓'
-                    : '✕'
-                ) +
-                (
-                  Number.isFinite(Number(m.macdHistogram))
-                    ? ' (' +
-                      Number(m.macdHistogram).toFixed(2) +
-                      ')'
-                    : ''
-                ),
-              'MTF ' +
-                (
-                  m.mtfSide === 1
-                    ? '✓ BULLISH'
-                    : m.mtfSide === -1
-                      ? '✓ BEARISH'
-                      : '✕ WAITING'
-                )
-            ].join(' | ')
-          : '';
+      const diagnosticChecklist = finalizerDiagnosticChecklist(f.mandatory);
 
       const reasonText =
         [
