@@ -13672,7 +13672,7 @@
         : Date.now() / 1000;
       const closedIndex = lastClosedCandleIndex(state.data, seconds, analysisNow);
       const closedTime = state.data[closedIndex]?.time;
-      const riskDisplay = riskMapDisplay({ finalizer, prime: state.primeMarket,
+      const riskDisplay = riskMapDisplay({ finalizer, prime: state.marketMap ? state.primeMarket : null,
         consensus: result, risk: state.riskEngine, closedTime,
         atr: chartRiskPoints, sessionOpen: isNseCashMarketOpen(), replay: state.replay.active });
       const plan = riskDisplay.plan;
@@ -15606,7 +15606,6 @@
         state.marketMap;
 
       if (!map) {
-
         return;
       }
 

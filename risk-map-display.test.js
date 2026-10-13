@@ -208,6 +208,8 @@ test('actual panels withhold levels and agree for closed, stale, blocked and inc
 test('losing Market Map data clears a previous risk plan and all displayed levels', () => {
   const p = panels(sample()); p.state.marketMap = null; p.render();
   assert.equal(p.nodes.get('#market-map-risk-engine').textContent, 'WAIT · DATA UNAVAILABLE');
+  assert.equal(p.row('Risk Engine'), p.nodes.get('#market-map-risk-engine').textContent);
+  assert.equal(p.row('Entry'), '—');
   for (const id of ['#market-map-entry-stop', '#market-map-targets', '#market-map-rr', '#market-map-atr-risk']) {
     assert.equal(p.nodes.get(id).textContent, '—');
   }
