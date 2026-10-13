@@ -277,6 +277,8 @@ test('startup no longer repeats previous-session history or an immediate full MT
     app.indexOf('    function activateAllIndicators()', app.indexOf('    async function loadData()')));
   assert.equal(fullLoad.includes('market.previousHistory('), false);
   assert.equal(fullLoad.includes('refreshMTF().catch('), false);
-  assert.equal(fullLoad.includes('await refreshMTF();'), true,
-    'Startup still obtains all required MTF confirmations before initial analysis');
+  assert.equal(fullLoad.includes('await refreshMTF();'), false,
+    'Supporting histories must not hold up first chart paint or live quotes');
+  assert.equal(fullLoad.match(/startStartupConfirmations\(id\)/g)?.length, 1,
+    'Load supporting histories once, with all Prime MTF gates preserved');
 });
