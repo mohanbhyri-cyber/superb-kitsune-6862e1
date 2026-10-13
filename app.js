@@ -1,6 +1,7 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { regularNseHours } from './options-context.js';
+    import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=1';
     import { liveCandleBucket, liveCandleRejectionReason, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js?v=2';
     import { trendIndicators } from './trend-indicators.js';
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
@@ -2428,6 +2429,7 @@
     let loadedHistoryKey = null;
     let liveQuoteVersion = 0;
     let historyRefreshWarning = '';
+    const historyRefreshSchedule = createCandleRefreshSchedule();
 
     let geometry;
 
@@ -9182,7 +9184,7 @@
           historyRefreshInFlight || fullHistoryRequest !== null ||
           loadedHistoryKey !== key || !state.data.length ||
           upstoxCooldownRemaining('history') > 0 ||
-          !Number.isFinite(seconds) || seconds <= 0) return;
+          !Number.isFinite(seconds) || seconds <= 0) return null;
 
       const id = request;
       const startedAt = Date.now() / 1000;
@@ -9193,7 +9195,7 @@
       historyRefreshInFlight = true;
       try {
         const incoming = await market.history(symbol, timeframe);
-        if (!stillCurrent()) return;
+        if (!stillCurrent()) return null;
 
         const now = Date.now() / 1000;
         const eligible = candle => validCandle(candle) &&
@@ -9252,8 +9254,12 @@
             }
           }).catch(() => {});
         }
+        // Only the provider's returned history can complete this schedule;
+        // a quote-derived forming bar is not proof of reconciled closed OHLC.
+        const target = nseCandleBucket(startedAt, seconds) - seconds;
+        return history.some(candle => Number(candle.time) === target);
       } catch (error) {
-        if (!stillCurrent()) return;
+        if (!stillCurrent()) return null;
         console.warn('Candle history refresh failed:', error);
         historyRefreshWarning = 'Candle history retry pending';
         const remaining = upstoxCooldownRemaining('history');
@@ -9266,9 +9272,22 @@
         // Keep real candles and the existing quote subscription. The adapter
         // enforces history Retry-After; the normal timer retries only when due.
         // Existing session, freshness, AI and risk checks remain unchanged.
+        return false;
       } finally {
         historyRefreshInFlight = false;
       }
+    }
+
+    async function runScheduledCandleRefresh() {
+      const key = state.symbol + ':' + state.tf;
+      if (state.replay.active || document.hidden || !isNseCashMarketOpen() ||
+          historyRefreshInFlight || fullHistoryRequest !== null ||
+          reconnectTimer !== null || loadedHistoryKey !== key || !state.data.length ||
+          upstoxCooldownRemaining('history') > 0) return;
+      const job = historyRefreshSchedule.take(key, Number(intervals[state.tf]), Date.now());
+      if (!job) return;
+      const confirmed = await refreshCandleHistory();
+      historyRefreshSchedule.finish(job, confirmed, Date.now());
     }
 
     function startStartupConfirmations(id) {
@@ -9289,6 +9308,7 @@
 
     async function loadData() {
       loadedHistoryKey = null;
+      historyRefreshSchedule.reset();
       historyRefreshWarning = '';
       state.rawTradeFinalizer = null;
       state.tradeFinalizer = null;
@@ -9554,6 +9574,12 @@
 
 
         loadedHistoryKey = state.symbol + ':' + state.tf;
+        const loadedAt = Date.now();
+        const loadedSeconds = Number(intervals[state.tf]);
+        const confirmedStart = state.data.filter(candle =>
+          Number(candle.time) + loadedSeconds <= loadedAt / 1000).at(-1)?.time;
+        historyRefreshSchedule.markLoaded(loadedHistoryKey, loadedSeconds,
+          loadedAt, confirmedStart);
 
         /*
           SESSION OPEN REFERENCE:
@@ -10189,25 +10215,18 @@
 
     loadData();
 
-    // Quotes arrive frequently, but closed-candle history must also be
-    // refreshed during the session. Without this timer the chart can keep
-    // showing a LIVE quote while its last confirmed candle becomes stale.
+    // Check the clock, not the broker, each second. Fetch once just after
+    // candle close instead of repeatedly fetching the same bar every 30s.
     historyRefreshTimer = setInterval(() => {
-      if (
-        state.replay.active ||
-        document.hidden ||
-        !isNseCashMarketOpen() ||
-        historyRefreshInFlight ||
-        reconnectTimer !== null ||
-        upstoxCooldownRemaining('history') > 0
-      ) {
-        return;
-      }
-
-      refreshCandleHistory().catch(error => {
+      runScheduledCandleRefresh().catch(error => {
         console.warn('Periodic candle history refresh failed:', error);
       });
-    }, 30_000);
+    }, 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) runScheduledCandleRefresh().catch(error => {
+        console.warn('Resumed candle history refresh failed:', error);
+      });
+    });
 
     setupAllIndicatorsChat();
 

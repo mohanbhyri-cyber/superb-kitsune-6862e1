@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createCandleRefreshSchedule } from './candle-refresh-schedule.js';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { nseCandleBucket, nseSessionBounds } from './nse-candle-time.js';
@@ -388,14 +389,22 @@ test('periodic history refresh skips cooldown, reconnect, hidden and in-flight s
   let calls = 0;
   let remaining = 0;
   const context = vm.createContext({
-    state: { replay: { active: false } },
-    document: { hidden: false }, historyRefreshInFlight: false, reconnectTimer: null,
+    state: { symbol: 'NIFTY', tf: '3m', data: [{ time: 1791527400 }],
+      replay: { active: false } },
+    intervals: { '3m': 180 }, loadedHistoryKey: 'NIFTY:3m', fullHistoryRequest: null,
+    historyRefreshSchedule: createCandleRefreshSchedule(),
+    Date: { now: () => Date.parse('2026-10-09T12:06:02+05:30') },
+    document: { hidden: false, addEventListener() {} },
+    historyRefreshInFlight: false, reconnectTimer: null,
     isNseCashMarketOpen: () => true,
     upstoxCooldownRemaining: scope => { assert.equal(scope, 'history'); return remaining; },
-    setInterval: (callback, ms) => { assert.equal(ms, 30000); tick = callback; return 1; },
-    refreshCandleHistory: async () => { calls++; }, console
+    setInterval: (callback, ms) => { assert.equal(ms, 1000); tick = callback; return 1; },
+    refreshCandleHistory: async () => { calls++; return true; }, console
   });
-  vm.runInContext(appSource.slice(start, end), context);
+  const runnerStart = appSource.indexOf('    async function runScheduledCandleRefresh()');
+  const runnerEnd = appSource.indexOf('    function startStartupConfirmations(', runnerStart);
+  assert.ok(runnerStart >= 0 && runnerEnd > runnerStart);
+  vm.runInContext(appSource.slice(runnerStart, runnerEnd) + appSource.slice(start, end), context);
   remaining = 60000; tick(); assert.equal(calls, 0);
   remaining = 0; context.reconnectTimer = 1; tick(); assert.equal(calls, 0);
   context.reconnectTimer = null; context.document.hidden = true; tick(); assert.equal(calls, 0);
