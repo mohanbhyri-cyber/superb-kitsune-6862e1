@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { riskMapDisplay } from './risk-map-display.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
@@ -71,6 +72,7 @@ test('warm-up branch clears an old signal rather than leaving BUY or SELL stale'
   const end = app.indexOf('        return;', start);
   const rows = {};
   vm.runInNewContext(app.slice(start + '      if (!map) {'.length, end), {
+    riskMapDisplay, isNseCashMarketOpen: () => true, state: { replay: { active: false } },
     set: (selector, value, className) => { rows[selector] = { value, className }; }
   });
   assert.deepEqual(rows['#market-map-signal'], { value: 'WAIT', className: 'muted' });

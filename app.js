@@ -10,6 +10,7 @@
     import { analyseSessionQuality } from './smrt-session-quality.js';
     import { analyseMarketContext } from './market-context.js';
     import { analyseRisk } from './smrt-risk-engine.js?v=2';
+    import { riskMapDisplay } from './risk-map-display.js?v=1';
     import { resolveClosedVwap } from './closed-vwap-confirmation.js';
     import { analyseBestBuySetup } from './smrt-best-buy.js';
     import { proScalper } from './pro-scalper.js';
@@ -13645,14 +13646,9 @@
       triggerRow.title = trigger?.reason || 'Waiting for confirmation';
       triggerRow.append(triggerLabel, triggerStatus);
       fragment.append(triggerRow);
-      const riskPlan = state.tradeFinalizer?.plan;
-      const riskEntry = riskPlan?.entry;
-      const riskStop = riskPlan?.stopLoss ?? riskPlan?.stop;
-      const chartRiskPoints = primeFinite(riskEntry) && primeFinite(riskStop)
-        ? Math.abs(Number(riskEntry) - Number(riskStop))
-        : state.marketMap?.atr;
+      const chartRiskPoints = state.marketMap?.atr;
       const contextRows = [
-        ['ATR Risk', primeFinite(chartRiskPoints) ? fmt(chartRiskPoints) + ' pts' : 'WAIT'],
+        ['ATR (volatility)', primeFinite(chartRiskPoints) ? fmt(chartRiskPoints) + ' pts' : 'WAIT'],
         ['Premium / Discount', structure?.zone || 'WAIT'],
         ['Smart Money', structure
           ? (structure.blocks || []).filter(item => item.active).length + ' OB · ' +
@@ -13670,11 +13666,23 @@
         row.append(label, status);
         fragment.append(row);
       }
-      const plan = finalizer?.plan;
+      const seconds = Number(intervals[state.tf]);
+      const analysisNow = state.replay.active
+        ? Number(state.data.at(-1)?.time) + seconds
+        : Date.now() / 1000;
+      const closedIndex = lastClosedCandleIndex(state.data, seconds, analysisNow);
+      const closedTime = state.data[closedIndex]?.time;
+      const riskDisplay = riskMapDisplay({ finalizer, prime: state.primeMarket,
+        consensus: result, risk: state.riskEngine, closedTime,
+        atr: chartRiskPoints, sessionOpen: isNseCashMarketOpen(), replay: state.replay.active });
+      const plan = riskDisplay.plan;
       const confirmationRows = [
         ['Data feed', state.replay.active ? 'REPLAY' : state.feedStatus || 'UNAVAILABLE'],
         ['Agreement', primeFinite(result?.confidence) ? result.confidence + '%' : 'WAIT'],
-        ['Risk Engine', state.riskEngine?.state || 'NO ACTIVE PLAN'],
+        ['Risk Engine', riskDisplay.status],
+        ['Risk reason', riskDisplay.reason],
+        ['Stop distance', riskDisplay.analysis ? fmt(riskDisplay.analysis.risk) + ' pts' : '—'],
+        ['Target 1 R/R', riskDisplay.analysis ? '1 : ' + riskDisplay.analysis.rr1.toFixed(2) : '—'],
         ['Entry', primeFinite(plan?.entry) ? fmt(plan.entry) : '—'],
         ['Stop-loss', primeFinite(plan?.stopLoss ?? plan?.stop) ? fmt(plan.stopLoss ?? plan.stop) : '—'],
         ['Target 1 / 2', primeFinite(plan?.target1) && primeFinite(plan?.target2)
@@ -13682,12 +13690,6 @@
       ];
       // Replay's visible bar is completed at its END, as in draw() and Prime.
       // Using its OPEN here incorrectly labels the preceding candle.
-      const seconds = Number(intervals[state.tf]);
-      const analysisNow = state.replay.active
-        ? Number(state.data.at(-1)?.time) + seconds
-        : Date.now() / 1000;
-      const closedIndex = lastClosedCandleIndex(state.data, seconds, analysisNow);
-      const closedTime = state.data[closedIndex]?.time;
       confirmationRows.splice(1, 0, ['Last closed candle', primeFinite(closedTime)
         ? new Date(Number(closedTime) * 1000).toLocaleString('en-IN',
           { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
@@ -13697,12 +13699,13 @@
           { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
       for (const [name, value] of confirmationRows) {
         const row = document.createElement('div');
-        row.className = 'chart-status-row';
+        row.className = 'chart-status-row' + (name === 'Risk Engine' || name === 'Risk reason'
+          ? ' chart-risk-row' : '');
         const label = document.createElement('span');
         label.textContent = name;
         const valueEl = document.createElement('strong');
         valueEl.textContent = value;
-        valueEl.className = 'muted';
+        valueEl.className = name === 'Risk Engine' ? riskDisplay.tone : 'muted';
         row.append(label, valueEl);
         fragment.append(row);
       }
@@ -15603,6 +15606,7 @@
         state.marketMap;
 
       if (!map) {
+
         return;
       }
 
@@ -15801,6 +15805,14 @@
 
       if (!map) {
 
+        const unavailableRisk = riskMapDisplay({ sessionOpen: isNseCashMarketOpen(),
+          replay: state.replay.active });
+        set('#market-map-risk-engine', unavailableRisk.status, unavailableRisk.tone);
+        set('#market-map-risk-reason', unavailableRisk.reason);
+        for (const selector of ['#market-map-entry-stop', '#market-map-targets',
+          '#market-map-rr', '#market-map-atr-risk']) set(selector, '—', 'muted');
+        set('#market-map-premium-bias', 'NO TRADE', 'muted');
+        set('#market-map-single-option', 'NO TRADE', 'muted');
         set('#market-map-signal', 'WAIT', 'muted');
         set('#market-map-signal-context', 'Waiting for closed-candle data');
         set('#market-map-signal-reason', 'Market Map data is unavailable or warming up.');
@@ -16050,11 +16062,7 @@
       null;
 
     const atrValue =
-      Number(
-        state.trend?.atr?.at(-2) ??
-        state.trend?.atr?.at(-1) ??
-        map.atr
-      );
+      primeFinite(map.atr) && Number(map.atr) > 0 ? Number(map.atr) : NaN;
 
     const adxValue =
       Number(
@@ -16250,26 +16258,16 @@
     set('#market-map-aroon', Number.isFinite(ext.aroonUp) ? 'UP '+ext.aroonUp.toFixed(0)+' / DOWN '+ext.aroonDown.toFixed(0) : 'WARMING UP','muted');
     set('#market-map-choppiness', Number.isFinite(ext.chop) ? ext.chop.toFixed(1) : 'WARMING UP','muted');
 
-    const finalPlan =
-      finalizer?.plan ||
-      null;
+    const riskSeconds = Number(intervals[state.tf]);
+    const riskAnalysisNow = state.replay.active
+      ? Number(state.data.at(-1)?.time) + riskSeconds : Date.now() / 1000;
+    const riskClosedIndex = lastClosedCandleIndex(state.data, riskSeconds, riskAnalysisNow);
+    const riskDisplay = riskMapDisplay({ finalizer, prime, consensus,
+      risk: state.riskEngine, closedTime: state.data[riskClosedIndex]?.time,
+      atr: atrValue, sessionOpen: isNseCashMarketOpen(), replay: state.replay.active });
+    const finalPlan = riskDisplay.plan;
 
-    const entry =
-      Number(finalPlan?.entry);
-
-    const stop =
-      Number(
-        finalPlan?.stopLoss ??
-        finalPlan?.stop
-      );
-
-    const riskPoints =
-      Number.isFinite(entry) &&
-      Number.isFinite(stop)
-        ? Math.abs(entry - stop)
-        : Number.isFinite(atrValue)
-          ? atrValue
-          : null;
+    const riskPoints = atrValue;
 
     set(
       '#market-map-atr-risk',
@@ -16330,7 +16328,7 @@
     // Premium Map summary. Display-only: final trade still requires
     // Prime + Trade Finalizer + Consensus confirmation.
     const premiumSide =
-      finalTradeConfirmed
+      finalPlan && finalTradeConfirmed
         ? finalTradeSide
         : 0;
 
@@ -16525,42 +16523,19 @@
           : '—'
     );
 
-    const reward =
-      Number.isFinite(planEntry) &&
-      Number.isFinite(planStop) &&
-      Number.isFinite(target1)
-        ? Math.abs(target1 - planEntry)
-        : null;
-
-    const risk =
-      Number.isFinite(planEntry) &&
-      Number.isFinite(planStop)
-        ? Math.abs(planEntry - planStop)
-        : null;
-
     set(
       '#market-map-rr',
-      Number.isFinite(reward) &&
-      Number.isFinite(risk) &&
-      risk > 0
-        ? '1 : ' + (reward / risk).toFixed(2)
+      riskDisplay.analysis
+        ? '1 : ' + riskDisplay.analysis.rr1.toFixed(2)
         : '—'
     );
 
-    const riskEngine =
-      state.riskEngine || null;
-
     set(
       '#market-map-risk-engine',
-      riskEngine?.ready === true
-        ? riskEngine.state + ' · ' + riskEngine.score + '/100'
-        : riskEngine?.state || 'NO ACTIVE PLAN',
-      riskEngine?.quality === 'GOOD'
-        ? 'up'
-        : riskEngine?.quality === 'BLOCK'
-          ? 'down'
-          : 'muted'
+      riskDisplay.status,
+      riskDisplay.tone
     );
+    set('#market-map-risk-reason', riskDisplay.reason);
 
     // Premium context placeholders are fail-closed until genuine live
     // constituent breadth / derivatives data is connected.
