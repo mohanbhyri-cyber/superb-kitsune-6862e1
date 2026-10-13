@@ -15237,6 +15237,25 @@
       renderBestBuySetup();
       const samplePreview =
         new URLSearchParams(window.location.search).get('sample') === '1';
+      const contextEl = $('#finalizer-context');
+      if (contextEl) {
+        const instrument = instruments.find(item => item.id === state.symbol)?.name ||
+          state.symbol || 'Instrument';
+        const feed = String(state.feedStatus || '').toUpperCase();
+        const context = samplePreview
+          ? 'SAMPLE · not a live trade'
+          : state.replay?.active
+            ? 'REPLAY · historical candles · not a live trade'
+            : !isNseCashMarketOpen()
+              ? 'MARKET CLOSED · last session data'
+              : feed === 'LIVE'
+                ? 'LIVE setup preview'
+                : ['STALE', 'FALLBACK', 'RECONNECTING', 'DATA UNAVAILABLE', 'CLOSED'].includes(feed)
+                  ? feed + ' · no live confirmation'
+                  : 'WAITING FOR LIVE DATA';
+        contextEl.textContent = instrument + ' · ' + (state.tf || '—') + ' · ' +
+          context + ' · closed-candle framework';
+      }
       const edge = state.niftyEdge?.latest;
       const sampleFinalizer =
         samplePreview &&

@@ -11,7 +11,7 @@ const renderStart = app.indexOf('    function renderTradeFinalizer(');
 const renderer = app.slice(helperStart < 0 ? renderStart : helperStart,
   app.indexOf('    function renderCandleScanner(', renderStart));
 
-function render(mandatory, overrides = {}) {
+function render(mandatory, overrides = {}, display = {}) {
   const nodes = new Map();
   const finalizer = {
     state: 'NO TRADE', score: 0, bullScore: 30, bearScore: 70,
@@ -22,8 +22,12 @@ function render(mandatory, overrides = {}) {
   };
   const before = JSON.stringify(finalizer);
   const context = vm.createContext({
-    URLSearchParams, window: { location: { search: '' } },
-    state: { liveTradeFinalizer: finalizer }, renderBestBuySetup() {},
+    URLSearchParams, window: { location: { search: display.sample ? '?sample=1' : '' } },
+    state: { liveTradeFinalizer: display.noFinalizer ? null : finalizer,
+      symbol: display.symbol || 'NIFTY', tf: display.tf || '3m',
+      feedStatus: display.feed || 'LIVE', replay: { active: !!display.replay } },
+    instruments: [{ id: 'NIFTY', name: 'NIFTY 50' }, { id: 'BANKNIFTY', name: 'NIFTY BANK' }],
+    isNseCashMarketOpen: () => display.open !== false, renderBestBuySetup() {},
     fmt: value => Number(value).toFixed(2),
     $: selector => {
       if (!nodes.has(selector)) nodes.set(selector, {});
@@ -112,4 +116,42 @@ test('absent diagnostic input preserves existing waiting reason', () => {
   const get = render(undefined, { reasons: [] });
   assert.equal(get('#finalizer-reasons'),
     'WAITING · mandatory closed-candle confirmation is incomplete');
+});
+
+test('closed session heading overrides a leftover LIVE feed label without changing trade state', () => {
+  const get = render(bearish, { invalidation: 'NSE regular session has ended', plan: null },
+    { open: false });
+  assert.match(get('#finalizer-context'), /NIFTY 50 · 3m · MARKET CLOSED · last session data/);
+  assert.doesNotMatch(get('#finalizer-context'), /LIVE setup preview/);
+  assert.equal(get('#finalizer-state'), 'NO TRADE');
+  assert.equal(get('#finalizer-entry'), '—');
+});
+
+test('open session heading uses actual instrument/timeframe and claims LIVE only for live data', () => {
+  const live = render(bearish, {}, { symbol: 'BANKNIFTY', tf: '5m' });
+  assert.match(live('#finalizer-context'), /NIFTY BANK · 5m · LIVE setup preview/);
+  for (const feed of ['STALE', 'FALLBACK', 'RECONNECTING', 'DATA UNAVAILABLE', 'CLOSED']) {
+    const get = render(bearish, {}, { feed });
+    assert.ok(get('#finalizer-context').includes(feed + ' · no live confirmation'));
+    assert.doesNotMatch(get('#finalizer-context'), /LIVE setup preview/);
+  }
+  assert.match(render(bearish, {}, { feed: 'UNKNOWN' })('#finalizer-context'), /WAITING FOR LIVE DATA/);
+});
+
+test('Replay and sample headings remain explicitly non-live, even after hours', () => {
+  for (const open of [true, false]) {
+    assert.match(render(bearish, {}, { replay: true, open })('#finalizer-context'),
+      /REPLAY · historical candles · not a live trade/);
+    assert.match(render(bearish, {}, { sample: true, open })('#finalizer-context'),
+      /SAMPLE · not a live trade/);
+  }
+});
+
+test('heading updates before analysis is available and HTML does not hard-code LIVE', () => {
+  const get = render(undefined, {}, { noFinalizer: true, open: false });
+  assert.match(get('#finalizer-context'), /MARKET CLOSED/);
+  assert.equal(get('#finalizer-state'), 'NO TRADE');
+  const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  assert.equal((html.match(/id="finalizer-context"/g) || []).length, 1);
+  assert.doesNotMatch(html, /NIFTY 50 · LIVE setup preview/);
 });
