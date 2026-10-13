@@ -1,5 +1,6 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
+    import { createClosedIndicatorCache } from './closed-indicator-cache.js?v=1';
     import { regularNseHours } from './options-context.js';
     import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=1';
     import { liveCandleBucket, liveCandleRejectionReason, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js?v=2';
@@ -61,6 +62,8 @@
       strideSignals
     } from './market.js?v=8';
 
+
+    const advancedIndicatorCache = createClosedIndicatorCache(analyseAdvancedIndicators);
 
     window.SMRTTradingViewDatafeed =
       createTradingViewDatafeed(
@@ -994,15 +997,18 @@
         ? []
         : advancedClosed.candles;
 
-    const technicalIndicators =
-      analyseAdvancedIndicators(
-        advancedCandles
-      );
+    const advancedResult = advancedIndicatorCache.read(
+      advancedCandles,
+      [state.symbol, state.tf, state.replay.active ? 'replay' : 'live'].join(':')
+    );
+    const technicalIndicators = advancedResult.value;
 
     window.SMRTAdvancedIndicators =
       technicalIndicators;
 
-    renderIndicatorReadout(advancedCandles, technicalIndicators);
+    if (advancedResult.changed) {
+      renderIndicatorReadout(advancedCandles, technicalIndicators);
+    }
 
     window.SMRTAdvancedIndicatorStatus = {
       sourceCount:
@@ -1020,7 +1026,7 @@
         advancedClosed.error || null
     };
 
-    if (advancedCandles.length > 0) {
+    if (advancedResult.changed && advancedCandles.length > 0) {
       console.log(
         'SMRT ADVANCED INDICATORS',
         technicalIndicators
