@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { validCandle } from './market.js';
 import { isNseIntradayTime, nseCandleBucket, liveCandleBucket, liveCandleRejectionReason } from './nse-candle-time.js';
 import { regularNseHours } from './options-context.js';
+import { createCandleRefreshSchedule } from './candle-refresh-schedule.js';
 import { analyseSmrtAiIndicator as analyse } from './smrt-ai-indicator.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
@@ -30,10 +31,13 @@ function fixture(fetchHistory) {
   const state = { symbol: 'NIFTY', tf: '3m', replay: { active: false },
     data: [candle('11:57:00'), candle('12:00:00'), candle('12:03:00')],
     quotes: {}, officialChange: {}, previousClose: {} };
+  const historyRefreshSchedule = createCandleRefreshSchedule();
+  historyRefreshSchedule.markLoaded('NIFTY:3m', 180, clock * 1000, epoch('12:00:00'));
   const context = vm.createContext({
     state, request: 7, loadedHistoryKey: 'NIFTY:3m', fullHistoryRequest: null,
     historyRefreshInFlight: false, liveQuoteVersion: 0, historyRefreshWarning: '',
     reconnectTimer: null,
+    historyRefreshSchedule,
     intervals: { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600 },
     document: { hidden: false }, Date: { now: () => clock * 1000 },
     validCandle, isNseIntradayTime, nseCandleBucket,
@@ -72,7 +76,8 @@ function fixture(fetchHistory) {
     cooldown: ms => { cooldownUntil = clock * 1000 + ms; },
     timer: () => {
       let callback;
-      context.setInterval = (fn, ms) => { assert.equal(ms, 30000); callback = fn; return 1; };
+      context.setInterval = (fn, ms) => { assert.equal(ms, 1000); callback = fn; return 1; };
+      context.document.addEventListener = () => {};
       const start = app.indexOf('    historyRefreshTimer = setInterval(');
       const end = app.indexOf('\n    setupAllIndicatorsChat();', start);
       vm.runInContext(app.slice(start, end), context);
@@ -201,6 +206,7 @@ test('concurrent periodic refresh attempts share the existing in-flight guard', 
   const pending = deferred();
   const f = fixture(() => pending.promise);
   const tick = f.timer();
+  f.clock('12:06:02');
   tick(); tick();
   await f.refresh();
   assert.equal(f.stats.histories.length, 1);
@@ -209,6 +215,66 @@ test('concurrent periodic refresh attempts share the existing in-flight guard', 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.context.historyRefreshInFlight, false);
   assert.equal(f.stats.fullLoads, 0);
+});
+
+test('scheduled history checks once after close and not on each clock tick', async () => {
+  const f = fixture();
+  const tick = f.timer();
+  for (const time of ['12:04:01', '12:04:30', '12:05:59', '12:06:01']) {
+    f.clock(time); tick();
+  }
+  assert.equal(f.stats.histories.length, 0);
+  f.clock('12:06:02'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 1);
+  for (const time of ['12:06:03', '12:06:30', '12:07:00', '12:08:59']) {
+    f.clock(time); tick();
+  }
+  assert.equal(f.stats.histories.length, 1);
+});
+
+test('scheduled boundary refresh honors provider cooldown and resumes when it expires', async () => {
+  const f = fixture();
+  const tick = f.timer();
+  f.clock('12:06:02'); f.cooldown(75000); tick();
+  f.clock('12:07:16'); tick();
+  assert.equal(f.stats.histories.length, 0);
+  f.clock('12:07:17'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 1);
+  assert.equal(f.stats.fullLoads, 0);
+});
+
+test('quote-derived bars cannot falsely complete a scheduled provider reconciliation', async () => {
+  const f = fixture(() => [candle('11:57:00'), candle('12:00:00')]);
+  const tick = f.timer();
+  f.clock('12:06:02');
+  f.tick({ time: f.now(), price: 22035 });
+  tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 1);
+  f.clock('12:07:01'); tick();
+  assert.equal(f.stats.histories.length, 1);
+  f.clock('12:07:02'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 2);
+  f.clock('12:08:02'); tick();
+  assert.equal(f.stats.histories.length, 2, 'One retry only in this candle bucket');
+});
+
+test('scheduled refresh skips replay, hidden, closed, loading and reconnecting views', () => {
+  for (const configure of [
+    f => { f.context.document.hidden = true; },
+    f => { f.clock('16:00:00'); },
+    f => { f.state.replay.active = true; },
+    f => { f.context.fullHistoryRequest = 7; },
+    f => { f.context.reconnectTimer = 1; },
+    f => { f.state.tf = '5m'; }
+  ]) {
+    const f = fixture(); const tick = f.timer();
+    f.clock('12:06:02'); configure(f); tick();
+    assert.equal(f.stats.histories.length, 0);
+  }
 });
 
 test('hidden, closed-session, replay, initial-load, missing and unlike-timeframe views do not refresh', async () => {

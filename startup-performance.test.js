@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { createCandleRefreshSchedule } from './candle-refresh-schedule.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 const deferred = () => {
@@ -20,6 +21,8 @@ function startup() {
   const context = vm.createContext({
     state, request: 0, loadedHistoryKey: null, historyRefreshWarning: '',
     fullHistoryRequest: null, lastAnalysisKey: null,
+    historyRefreshSchedule: createCandleRefreshSchedule(),
+    intervals: { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600 },
     reconnectTimer: null, reconnectAttempts: 0, unsubscribe: null,
     clearTimeout() {}, console: { warn() {}, error() {} },
     formatTradingDate: () => '2026-10-13', isNseCashMarketOpen: () => true,
