@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { analyseSmrtAiIndicator } from './smrt-ai-indicator.js';
+import { riskMapDisplay } from './risk-map-display.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 const intervals = { '1m': 60, '3m': 180, '5m': 300, '15m': 900 };
@@ -44,7 +45,7 @@ function fixture(tf = '3m', replay = true, now = epoch('13:33:00')) {
     document: { createElement: node, createDocumentFragment: node },
     isNseCashMarketOpen: () => false,
     fmt: value => Number(value).toFixed(2),
-    analyseSmrtAiIndicator, renderAiIndicator() {}
+    analyseSmrtAiIndicator, riskMapDisplay, renderAiIndicator() {}
   });
   vm.runInContext(section('    function primeFinite(', '    function primeEpochSeconds(') +
     section('    function primeClosed(', '    function nseSessionMinutesFromEpoch(') +

@@ -845,6 +845,8 @@ body.light .tv-shell-mode .chart-footer{
   border-top: 1px solid #34464d66;
 }
 #terminal .chart-status-row strong { flex-shrink: 0; }
+#terminal .chart-risk-row { flex-direction: column; gap: 2px; }
+#terminal .chart-risk-row strong { white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   #terminal .chart-indicator-status { width: 215px; font-size: 11px; }
 }
