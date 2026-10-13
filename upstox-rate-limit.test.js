@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { nseCandleBucket } from './nse-candle-time.js';
+import { nseCandleBucket, nseSessionBounds } from './nse-candle-time.js';
 import { regularNseHours } from './options-context.js';
 
 const workerSource = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
@@ -28,7 +28,7 @@ function workerFixture(fetcher) {
   assert.ok(start >= 0 && end > start, 'Use actual Worker request/cache implementation');
   const context = vm.createContext({
     URL, Response, Date: { now: () => clock, parse: Date.parse },
-    nseCandleBucket, regularNseHours,
+    nseCandleBucket, nseSessionBounds, regularNseHours,
     console: { error() {} },
     fetch: async (url, options) => {
       calls.push({ url, options });

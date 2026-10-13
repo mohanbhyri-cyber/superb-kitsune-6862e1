@@ -4,7 +4,7 @@
 
 import { regularNseHours, summarizeOptions } from './options-context.js';
 import { summarizeBreadth } from './breadth-context.js';
-import { isNseIntradayTime, nseCandleBucket, quoteCandleTime } from './nse-candle-time.js';
+import { isNseIntradayTime, nseCandleBucket, nseSessionBounds, quoteCandleTime } from './nse-candle-time.js';
 import { buildClosedFuturesVwap, completedFuturesCandles } from './closed-vwap-confirmation.js';
 import { parse } from 'csv-parse/sync';
 
@@ -42,48 +42,97 @@ function json(data, status = 200) {
   });
 }
 
+// Keep edge responses in the same candle/session epoch as the upstream cache.
+// A request started before a close must never fill the next candle's cache.
+function candleApiCacheWindow(request, startedAt) {
+  const url = new URL(request.url);
+  let minutes;
+  if (url.pathname === '/api/upstox-history') {
+    minutes = TIMEFRAMES[url.searchParams.get('timeframe') || '1m'];
+  } else if (url.pathname === '/api/upstox-mtf-history') {
+    minutes = { '5m': 5, '15m': 15, '1h': 60 }[
+      url.searchParams.get('timeframe') || '5m'];
+  } else if (url.pathname === '/api/nifty-futures-vwap') {
+    minutes = Number(url.searchParams.get('interval') || 1);
+    if (![1, 3, 5, 15].includes(minutes)) return null;
+  } else return null;
+  if (!minutes) return null;
+
+  const time = startedAt / 1000;
+  const session = nseSessionBounds(time);
+  if (!session) return null;
+  const bucket = nseCandleBucket(time, minutes * 60);
+  const epoch = bucket !== null ? bucket
+    : session.open + ':' + (time < session.open ? 'PREOPEN' : 'CLOSED');
+  const deadline = bucket !== null
+    ? Math.min(bucket + minutes * 60, session.close) * 1000
+    : time < session.open ? session.open * 1000 : Infinity;
+  // Version the internal key so pre-fix cache entries cannot survive rollout.
+  url.searchParams.set('__smrt_candle_epoch', 'v2:' + epoch);
+  url.searchParams.sort();
+  return { key: new Request(url, { method: 'GET' }), deadline };
+}
+
+const apiResponseInFlight = new Map();
+
 async function cachedApiResponse(request, ttlSeconds, loader, context) {
   let cache = null;
+  const window = request.method === 'GET'
+    ? candleApiCacheWindow(request, Date.now()) : null;
+  const cacheKey = window?.key || request;
 
   if (request.method === "GET" && typeof caches !== "undefined") {
     try {
       cache = caches.default;
-      const cached = await cache.match(request);
-      if (cached) return cached;
+      const cached = await cache.match(cacheKey);
+      if (cached && (!window || window.deadline > Date.now())) return cached;
     } catch (error) {
       console.warn("Edge cache read unavailable", error?.message || error);
     }
   }
 
-  const response = await loader();
-  if (!cache || !response.ok) return response;
-  if (new URL(request.url).pathname === '/api/live-quote') {
-    const quote = await response.clone().json().catch(() => null);
-    // Share only real successful quotes. Never cache a provider error as LIVE.
-    if (quote?.live !== true || !Number.isFinite(Number(quote.price)) ||
-        Number(quote.price) <= 0) return response;
-  }
+  // Merge identical concurrent misses, including the assembled history/warm-up
+  // response. The candle epoch keeps a post-close caller out of an old flight.
+  const flightKey = request.method === 'GET' ? cacheKey.url : null;
+  const pending = flightKey && apiResponseInFlight.get(flightKey);
+  if (pending) return (await pending).clone();
+  const loading = (async () => {
+    const response = await loader();
+    if (!cache || !response.ok) return response;
+    if (new URL(request.url).pathname === '/api/live-quote') {
+      const quote = await response.clone().json().catch(() => null);
+      // Share only real successful quotes. Never cache a provider error as LIVE.
+      if (quote?.live !== true || !Number.isFinite(Number(quote.price)) ||
+          Number(quote.price) <= 0) return response;
+    }
 
-  const headers = new Headers(response.headers);
-  headers.set(
-    "cache-control",
-    `public, max-age=0, s-maxage=${Math.max(1, Number(ttlSeconds) || 1)}`
-  );
-  const cacheable = new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
+    const seconds = Math.min(Math.max(1, Number(ttlSeconds) || 1),
+      window ? Math.floor((window.deadline - Date.now()) / 1000) : Infinity);
+    // Do not round a fraction up past a close, or cache a late old response.
+    if (seconds < 1) return response;
+    const headers = new Headers(response.headers);
+    headers.set('cache-control', `public, max-age=0, s-maxage=${seconds}`);
+    const cacheable = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+
+    try {
+      const write = cache.put(cacheKey, cacheable.clone()).catch(error => {
+        console.warn('Edge cache write unavailable', error?.message || error);
+      });
+      if (context?.waitUntil) context.waitUntil(write);
+      else await write;
+    } catch (error) {
+      console.warn('Edge cache write unavailable', error?.message || error);
+    }
+    return cacheable;
+  })().finally(() => {
+    if (flightKey) apiResponseInFlight.delete(flightKey);
   });
-
-  try {
-    const write = cache.put(request, cacheable.clone());
-    if (context?.waitUntil) context.waitUntil(write);
-    else await write;
-  } catch (error) {
-    console.warn("Edge cache write unavailable", error?.message || error);
-  }
-
-  return cacheable;
+  if (flightKey) apiResponseInFlight.set(flightKey, loading);
+  return (await loading).clone();
 }
 
 function getISTParts(value = Date.now()) {
@@ -364,12 +413,13 @@ function upstoxCacheTtl(endpoint) {
 
 function upstoxCandleCacheDeadline(endpoint, startedAt) {
   const match = new URL(endpoint).pathname.match(
-    /\/historical-candle\/intraday\/[^/]+\/minutes\/(\d+)$/
+    /\/historical-candle\/intraday\/[^/]+\/(minutes|hours)\/(\d+)$/
   );
   if (!match || !regularNseHours(startedAt)) return Infinity;
-  const seconds = Number(match[1]) * 60;
+  const seconds = Number(match[2]) * (match[1] === 'hours' ? 3600 : 60);
   const bucket = nseCandleBucket(startedAt / 1000, seconds);
-  return bucket === null ? Infinity : (bucket + seconds) * 1000;
+  return bucket === null ? Infinity
+    : Math.min(bucket + seconds, nseSessionBounds(startedAt / 1000).close) * 1000;
 }
 
 function upstoxCooldownError(until) {
@@ -386,7 +436,14 @@ async function upstoxFetch(endpoint, token) {
   upstoxResponseCache.delete(cacheKey);
 
   const pending = upstoxInFlight.get(cacheKey);
-  if (pending) return cloneJson(await pending);
+  if (pending) {
+    const joinedAt = Date.now();
+    const body = await pending.promise;
+    if (pending.deadline > joinedAt) return cloneJson(body);
+    // A post-close caller waits for the old flight, then shares one fresh
+    // request. No overlapping retry or early bypass of a provider 429.
+    return upstoxFetch(endpoint, token);
+  }
 
   const cooldownKey = upstoxRateLimitKey(endpoint, token);
   const until = upstoxCooldowns.get(cooldownKey) || 0;
@@ -454,7 +511,7 @@ async function upstoxFetch(endpoint, token) {
     upstoxInFlight.delete(cacheKey);
   });
 
-  upstoxInFlight.set(cacheKey, request);
+  upstoxInFlight.set(cacheKey, { promise: request, deadline: candleDeadline });
   return cloneJson(await request);
 }
 // ----------------------------------------------------
