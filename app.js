@@ -2882,6 +2882,15 @@
       state.feedStatus =
         status;
 
+      // The header describes the observed feed, not a permanent LIVE claim.
+      const header = $('#header-feed-status');
+      if (header) {
+        header.textContent = '● ' +
+          (status === 'CLOSED' ? 'MARKET CLOSED' : status) + ' · UPSTOX';
+        header.title = message || '';
+        header.dataset.feedStatus = status;
+      }
+
       const el =
         $('#updated');
 
@@ -3055,7 +3064,7 @@
                   <span class="watch-price">
 
                     <strong>
-                      ${fmt(price)}
+                      ${Number.isFinite(price) ? fmt(price) : '—'}
                     </strong>
 
                     <span class="${
@@ -3105,7 +3114,7 @@
                   </span>
 
                   <b>
-                    ${fmt(price)}
+                    ${Number.isFinite(price) ? fmt(price) : '—'}
                   </b>
 
                   <span class="${
@@ -8850,6 +8859,8 @@
 
     async function refreshMTF(requestedFrames = ['5m', '15m', '1h']) {
       const requestedSymbol = state.symbol;
+      const requestedTf = state.tf;
+      const requestedLoad = request;
       const frames = ['5m', '15m', '1h'].filter(
         timeframe => requestedFrames.includes(timeframe)
       );
@@ -8864,6 +8875,11 @@
 
       state.mtf.loading =
         true;
+      const job = {};
+      state.mtf.activeRequest = job;
+      const stillCurrent = () => state.mtf.activeRequest === job &&
+        request === requestedLoad && state.symbol === requestedSymbol &&
+        state.tf === requestedTf && !state.replay.active;
 
       renderMTF();
 
@@ -8873,6 +8889,7 @@
        const settled = [];
 
     for (const timeframe of frames) {
+      if (!stillCurrent()) return;
       try {
         const candles =
           await market.mtfHistory(
@@ -8919,7 +8936,7 @@
           '1h': loaded['1h']?.length || 0
         });
 
-        if (state.symbol !== requestedSymbol || state.replay.active) return;
+        if (!stillCurrent()) return;
         state.primeMtfSymbol = requestedSymbol;
 
         for (const timeframe of frames) {
@@ -9034,6 +9051,7 @@
         error
       ) {
 
+        if (!stillCurrent()) return;
         state.primeMtfSymbol = null;
         state.primeMtfData = {
           '5m': [],
@@ -9077,10 +9095,13 @@
         // An older request may finish after the symbol changes or Replay
         // starts. Do not let that stale request clear/loading-render the
         // current MTF state or trigger a consensus recomputation.
-        if (state.symbol === requestedSymbol && !state.replay.active) {
+        const current = stillCurrent();
+        if (state.mtf.activeRequest === job) {
           state.mtf.loading =
             false;
-
+          state.mtf.activeRequest = null;
+        }
+        if (current) {
           renderMTF();
 
           recomputeAllIndicatorsConsensus?.();
@@ -9250,6 +9271,22 @@
       }
     }
 
+    function startStartupConfirmations(id) {
+      const symbol = state.symbol;
+      const timeframe = state.tf;
+      // Keep the broker requests sequential; only remove their dependency
+      // from first paint and quote subscription. Missing MTF still fails closed.
+      return refreshMTF().then(() => {
+        if (id !== request || state.symbol !== symbol ||
+            state.tf !== timeframe || state.replay.active) return;
+        lastAnalysisKey = null;
+        refreshLiveTradeFinalizer();
+        scheduleLiveRender(true);
+      }).catch(error => {
+        console.warn('Startup timeframe confirmation unavailable:', error);
+      });
+    }
+
     async function loadData() {
       loadedHistoryKey = null;
       historyRefreshWarning = '';
@@ -9263,6 +9300,11 @@
       // Reset Prime safely before loading fresh history.
       state.primeMarket = null;
       state.primeMtfSymbol = null;
+      // Invalidate older background responses before starting another load.
+      state.mtf.activeRequest = null;
+      state.mtf.loading = false;
+      state.mtf.overall = 'MTF WARMING UP';
+      for (const timeframe of ['5m', '15m', '1h']) state.mtf[timeframe] = null;
 
       state.primeMtfData = {
         '5m': [],
@@ -9564,9 +9606,8 @@
         updateTradingDate();
 
 
-        // Load 5m / 15m / 1h history BEFORE the first Prime/consensus calculation.
-        // This prevents Prime from receiving an empty mtfData object during startup.
-        await refreshMTF();
+        // Paint real main candles immediately. Prime receives empty MTF data
+        // until background confirmation completes and therefore remains WAIT.
 
         syncIndicatorControls();
 
@@ -9624,8 +9665,7 @@
         );
 
 
-        // MTF was already loaded before the first Prime calculation.
-        // Avoid an immediate duplicate request (helps prevent Upstox 429 throttling).
+        // External context is optional and never blocks the first chart.
         refreshExternalNifty().catch(
           () => {}
         );
@@ -9909,6 +9949,10 @@
               );
             }
           );
+
+        // Start live quotes before waiting on supporting timeframe histories.
+        // A late result cannot update a changed chart, new load or Replay.
+        startStartupConfirmations(id);
 
       } catch (
         error

@@ -29,16 +29,73 @@ function controls() {
     selected: () => buttons.filter(b => b.active).map(b => b.toolbar + ':' + b.dataset.tf) };
 }
 
-function status() {
+function status(includeFooter = true) {
   const state = {};
   const el = { textContent: '' };
-  const context = { state, $: selector => { assert.equal(selector, '#updated'); return el; },
+  const header = { textContent: '', title: '', dataset: {} };
+  const context = { state, $: selector => {
+    if (selector === '#header-feed-status') return header;
+    assert.equal(selector, '#updated'); return includeFooter ? el : null;
+  },
     formatISTTime: () => '12:00:00' };
   const start = app.indexOf('    function setFeedStatus(');
   const end = app.indexOf('    function renderWatch()', start);
   vm.runInNewContext(app.slice(start, end) + '\nthis.set = setFeedStatus;', context);
-  return { state, el, set: context.set };
+  return { state, el, header, set: context.set };
 }
+
+function watchDisplay(price) {
+  const watch = { innerHTML: '' }, ticker = { innerHTML: '' };
+  const context = vm.createContext({
+    state: { symbol: 'NIFTY', filter: 'all', quotes: {} },
+    instruments: [{ id: 'NIFTY', name: 'NIFTY 50', kind: 'INDEX' }],
+    $: selector => selector === '#watch-rows' ? watch : ticker,
+    quote: () => price, change: () => null, formatChange: () => '—'
+  });
+  const start = app.indexOf('    const fmt = n => {');
+  const end = app.indexOf('    const read =', start);
+  vm.runInContext(app.slice(start, end), context);
+  const renderStart = app.indexOf('    function renderWatch()');
+  const renderEnd = app.indexOf('    function refreshProSuite()', renderStart);
+  vm.runInContext(app.slice(renderStart, renderEnd) + '\nrenderWatch();', context);
+  return [watch.innerHTML, ticker.innerHTML];
+}
+
+test('header follows the actual feed state and exposes retry details, not a permanent LIVE claim', () => {
+  const f = status();
+  for (const feed of ['LOADING', 'RECONNECTING', 'DATA UNAVAILABLE', 'STALE', 'FALLBACK', 'LIVE', 'REPLAY', 'CLOSED']) {
+    f.set(feed, 'Current feed details');
+    assert.equal(f.header.textContent, '● ' + (feed === 'CLOSED' ? 'MARKET CLOSED' : feed) + ' · UPSTOX');
+    assert.equal(f.header.dataset.feedStatus, feed);
+    assert.equal(f.header.title, 'Current feed details');
+  }
+  f.set('LIVE');
+  assert.equal(f.header.title, '', 'Clear old cooldown details on recovery');
+});
+
+test('header updates even if the footer is absent and starts with an honest loading label', () => {
+  const f = status(false);
+  f.set('RECONNECTING', 'Upstox cooling down');
+  assert.equal(f.header.textContent, '● RECONNECTING · UPSTOX');
+  const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  assert.match(index, /id="header-feed-status"[^>]*>● LOADING · UPSTOX/);
+  assert.ok(!index.includes('UPSTOX LIVE MARKET'));
+});
+
+test('missing prices stay unavailable in the ticker and watchlist instead of becoming zero', () => {
+  for (const price of [null, undefined, NaN, Infinity, '']) {
+    for (const html of watchDisplay(price)) {
+      assert.ok(!html.includes('0.00'));
+      assert.match(html, /—/);
+    }
+  }
+});
+
+test('real numeric prices retain Indian decimal formatting, including numeric zero', () => {
+  for (const [price, display] of [[25432.5, '25,432.50'], [0, '0.00']]) {
+    for (const html of watchDisplay(price)) assert.ok(html.includes(display));
+  }
+});
 
 test('both timeframe toolbars show the initial selected timeframe', () => {
   assert.deepEqual(controls().selected(), ['main:5m', 'chart:5m']);
@@ -136,6 +193,6 @@ test('app imports the diagnostic helper with a fresh cache key and uses the same
   assert.ok(app.includes('liveCandleBucket(tick, seconds, quoteNow)'));
   assert.ok(app.includes('liveCandleRejectionReason(tick, seconds, quoteNow)'));
   const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  assert.ok(index.includes('app.js?v=109'));
+  assert.ok(index.includes('app.js?v=111'));
   assert.ok(app.includes("'./market.js?v=8'"));
 });
