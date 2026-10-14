@@ -23,7 +23,7 @@
     import {
       scanCandles,
       candleConfluence
-    } from './smrt-candle-scanner.js';
+    } from './smrt-candle-scanner.js?v=2';
     import { finalizeTrade } from './smrt-trade-finalizer.js';
     import { analyseGainzSSL } from './smrt-gainz-ssl-combo.js';
     import {
@@ -5480,6 +5480,7 @@
         closedCandle?.close,
         closedCandle?.volume,
         state.signalSensitivity,
+        state.mtf?.overall || 'MTF UNAVAILABLE',
         Number.isFinite(
           state.futuresVWAP
         )
@@ -8852,16 +8853,8 @@
           state.mtf.overall;
 
 
-        overall.className =
-          state.mtf.overall.includes(
-            'BUY'
-          )
-            ? 'up'
-            : state.mtf.overall.includes(
-                'SELL'
-              )
-              ? 'down'
-              : 'muted';
+        const overallSide = primeSide(state.mtf.overall);
+        overall.className = overallSide === 1 ? 'up' : overallSide === -1 ? 'down' : 'muted';
       }
     }
 
@@ -9111,9 +9104,14 @@
           state.mtf.activeRequest = null;
         }
         if (current) {
+          // Supporting MTF data affects candle confluence and Finalizer, not
+          // just Prime. Rebuild the cached legacy calculations on the next
+          // coalesced render, even when price/closed OHLC did not change.
+          lastAnalysisKey = null;
           renderMTF();
 
           recomputeAllIndicatorsConsensus?.();
+          scheduleLiveRender(true);
         }
       }
     }

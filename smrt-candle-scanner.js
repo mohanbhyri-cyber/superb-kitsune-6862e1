@@ -132,6 +132,14 @@ export function scanCandles(candles) {
   return { rows, latest, latestStrong };
 }
 
+function mtfConfluenceSide(value) {
+  const text = String(value || '').trim().toUpperCase();
+  if (!text || /NO\s*TRADE|WAIT(?:ING)?|MIXED|CONFLICT(?:ING)?|UNAVAILABLE|NOT\s*READY|WARM(?:ING)?|NEUTRAL|RANGE|\bN\/?A\b/.test(text)) return 0;
+  const bullish = /\b(BUY|BULLISH|LONG)\b/.test(text);
+  const bearish = /\b(SELL|BEARISH|SHORT)\b/.test(text);
+  return bullish === bearish ? 0 : bullish ? 1 : -1;
+}
+
 export function candleConfluence(scanner, marketMap, edge, mtf) {
   const latest = scanner?.latest;
   if (!latest) {
@@ -166,7 +174,7 @@ export function candleConfluence(scanner, marketMap, edge, mtf) {
   const edgeSide = edge?.latestActionable?.side || 0;
   if (edgeSide === side) score += 2;
 
-  const mtfSide = mtf?.overall?.includes('BUY') ? 1 : mtf?.overall?.includes('SELL') ? -1 : 0;
+  const mtfSide = mtfConfluenceSide(mtf?.overall);
   if (mtfSide === side) score += 2;
 
   const action =

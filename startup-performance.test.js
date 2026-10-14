@@ -98,9 +98,10 @@ function mtfFixture() {
   const state = { symbol: 'NIFTY', tf: '3m', replay: { active: false },
     primeMtfData: { '5m': [], '15m': [], '1h': [] }, mtf: { loading: false } };
   const context = vm.createContext({
-    state, request: 1, Date, console: { log() {}, warn() {} },
+    state, request: 1, lastAnalysisKey: 'existing-cached-analysis', Date, console: { log() {}, warn() {} },
     renderMTF: () => renders.push('mtf'),
     recomputeAllIndicatorsConsensus: () => renders.push('consensus'),
+    scheduleLiveRender: force => renders.push(force ? 'forced-render' : 'render'),
     timeframeTrend: () => ({ side: 1, state: 'BULLISH' }),
     market: { mtfHistory: (symbol, tf) => {
       const pending = deferred(); calls.push({ symbol, tf, ...pending }); return pending.promise;
@@ -126,6 +127,8 @@ test('supporting requests stay sequential, single-flight and limited to requeste
   assert.equal(f.state.mtf.overall, 'MTF BULLISH');
   assert.equal(f.state.mtf.loading, false);
   assert.equal(f.renders.filter(r => r === 'consensus').length, 1);
+  assert.equal(f.context.lastAnalysisKey, null, 'Fresh MTF invalidates cached Finalizer calculation');
+  assert.equal(f.renders.filter(r => r === 'forced-render').length, 1);
   const one = f.refresh(['15m']);
   f.calls.at(-1).resolve([]);
   await one;
@@ -143,6 +146,8 @@ test('stale MTF work stops remaining requests and cannot apply after context cha
     assert.equal(f.calls.length, 1, 'No obsolete timeframe requests');
     assert.equal(f.state.primeMtfData['5m'].length, 0);
     assert.equal(f.renders.includes('consensus'), false);
+    assert.equal(f.renders.includes('forced-render'), false);
+    assert.equal(f.context.lastAnalysisKey, 'existing-cached-analysis');
     assert.equal(f.state.mtf.loading, false);
   }
 });
