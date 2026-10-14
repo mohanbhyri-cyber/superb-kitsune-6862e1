@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { riskMapDisplay } from './risk-map-display.js';
+import { analyseAllIndicators } from './smrt-all-indicators.js';
 
 const time = Date.parse('2026-10-13T10:00:00+05:30') / 1000;
 function sample(side = 1) {
@@ -161,7 +162,7 @@ function panels(input) {
     section('    function updateMarketMapPanel()', '    function renderChartConsensus('), context);
   const render = () => vm.runInContext('renderChartIndicatorStatus(state.allIndicatorsConsensus); updateMarketMapPanel();', context);
   render();
-  return { state, nodes, render,
+  return { state, nodes, render, context,
     row: label => nodes.get('#chart-status-rows').children.find(row =>
       row.children[0]?.textContent === label)?.children[1]?.textContent };
 }
@@ -181,6 +182,76 @@ test('actual chart box and Market Map render the same confirmed BUY / SELL risk'
     assert.equal(p.nodes.get('#market-map-entry-stop').textContent,
       '₹100.00 / ₹' + input.finalizer.plan.stopLoss.toFixed(2));
   }
+});
+
+test('screenshot-like mixed votes show diagnostic agreement without approving a trade', () => {
+  const raw = analyseAllIndicators({ finalizer: { state: 'NO TRADE' },
+    mtf: { overall: 'BULLISH' }, technicalIndicators: {
+      ichimoku: 'BULLISH', coppock: 'BULLISH',
+      williamsR: 'BEARISH', fisher: 'BEARISH', ibs: 'BULLISH', qstick: 'BULLISH' } });
+  assert.equal(raw.alignment, 80);
+  assert.equal(raw.totalVotes, 4);
+  assert.equal(raw.minimumActiveGroups, 6);
+  const input = sample();
+  input.finalizer = { state: 'NO TRADE', side: 0, plan: null,
+    primeConfirmed: false, reasons: ['MACD histogram positive required'] };
+  input.prime.side = 0;
+  input.consensus = raw;
+  const p = panels(input);
+  vm.runInContext(section('    function primeGate(', '    function refreshPrimeConfirmation('), p.context);
+  vm.runInContext('state.allIndicatorsConsensus = primeGate(state.allIndicatorsConsensus, state.primeMarket, "signal");', p.context);
+  assert.equal(p.state.allIndicatorsConsensus.confidence, 0);
+  const before = JSON.stringify(p.state);
+  p.render();
+  assert.equal(p.row('Directional votes'), '3 bullish / 1 bearish');
+  assert.equal(p.row('Weighted alignment'), '80%');
+  assert.equal(p.row('Active groups'), '4 / 9 · need 6');
+  assert.equal(p.row('Trade approval'), 'WAIT · NOT APPROVED');
+  assert.equal(p.row('Trend Composite'), 'BULLISH');
+  assert.equal(p.row('Reversal Composite'), 'BEARISH');
+  assert.equal(p.row('Trade Finalizer'), 'WAIT');
+  assert.equal(p.row('Agreement'), undefined);
+  assert.equal(p.row('Entry'), '—');
+  assert.equal(p.nodes.get('#market-map-rr').textContent, '—');
+  assert.equal(JSON.stringify(p.state), before, 'Diagnostics cannot alter gated trading state');
+});
+
+test('missing or malformed directional votes show no invented agreement', () => {
+  for (const votes of [undefined, [], [{ name: 'Neutral', side: 0 }]]) {
+    const input = sample(); input.finalizer.plan = null;
+    input.consensus = { signal: 'NO TRADE', confidence: 0, alignment: 100, votes };
+    const p = panels(input);
+    assert.equal(p.row('Directional votes'), '—');
+    assert.equal(p.row('Weighted alignment'), '—');
+    assert.equal(p.row('Active groups'), '—');
+    assert.equal(p.row('Trade approval'), 'WAIT · NOT APPROVED');
+  }
+});
+
+test('high diagnostic alignment still cannot override session and risk vetoes', () => {
+  for (const change of [x => { x.sessionOpen = false; },
+    x => { x.risk = { ready: true, quality: 'BLOCK', reasons: ['Risk veto'] }; }]) {
+    const input = sample();
+    input.consensus = { ...input.consensus, confidence: 0, alignment: 100,
+      totalGroups: 9, minimumActiveGroups: 6, votes: [{ name: 'Trend Composite', side: 1, weight: 2 }] };
+    change(input);
+    const p = panels(input);
+    assert.equal(p.row('Weighted alignment'), '100%');
+    assert.equal(p.row('Active groups'), '1 / 9 · need 6');
+    assert.equal(p.row('Trade approval'), 'WAIT · NOT APPROVED');
+    assert.equal(p.row('Entry'), '—');
+  }
+});
+
+test('confirmed final plan remains approved and trigger scores are diagnostic, not accuracy', () => {
+  const p = panels(sample());
+  p.state.triggerSignal = { signal: 'BUY', side: 1, score: 73 };
+  p.render();
+  assert.equal(p.row('Trade approval'), 'CONFIRMED');
+  assert.equal(p.row('Trade Finalizer'), 'BUY');
+  assert.equal(p.row('SMRT Trigger'), 'BULLISH · 73/100');
+  assert.match(html, /Component directions and alignment are diagnostic/);
+  assert.match(html, /not trade approval, accuracy or win probability/);
 });
 
 test('actual panels withhold levels and agree for closed, stale, blocked and incomplete setups', () => {
