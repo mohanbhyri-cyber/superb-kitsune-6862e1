@@ -13623,7 +13623,9 @@
         const label = document.createElement('span');
         label.textContent = name;
         const badge = document.createElement('strong');
-        badge.textContent = side === 1 ? 'BUY' : side === -1 ? 'SELL' : 'WAIT';
+        badge.textContent = side === 0 ? 'WAIT' : name === 'Trade Finalizer'
+          ? side === 1 ? 'BUY' : 'SELL'
+          : side === 1 ? 'BULLISH' : 'BEARISH';
         badge.className = side === 1 ? 'up' : side === -1 ? 'down' : 'muted';
         row.append(label, badge);
         fragment.append(row);
@@ -13635,11 +13637,11 @@
       const triggerLabel = document.createElement('span');
       triggerLabel.textContent = 'SMRT Trigger';
       const triggerStatus = document.createElement('strong');
-      const triggerSignal = String(trigger?.signal || 'WAIT');
+      const triggerSignal = trigger?.side === 1 ? 'BULLISH' : trigger?.side === -1 ? 'BEARISH' : 'WAIT';
       const triggerScore = Number(trigger?.score);
       triggerStatus.textContent = triggerSignal +
         (trigger && Number.isFinite(triggerScore)
-          ? ' · ' + Math.round(Math.max(0, Math.min(100, triggerScore))) + '%'
+          ? ' · ' + Math.round(Math.max(0, Math.min(100, triggerScore))) + '/100'
           : '');
 
       triggerStatus.className = trigger?.side === 1 ? 'up' : trigger?.side === -1 ? 'down' : 'muted';
@@ -13676,9 +13678,27 @@
         consensus: result, risk: state.riskEngine, closedTime,
         atr: chartRiskPoints, sessionOpen: isNseCashMarketOpen(), replay: state.replay.active });
       const plan = riskDisplay.plan;
+      // Diagnostic participation/alignment survives Prime's trade veto.
+      // Gated confidence is NOT the same quantity as agreement among votes.
+      const directionalVotes = votes.filter(vote => vote.side === 1 || vote.side === -1);
+      const bullVotes = directionalVotes.filter(vote => vote.side === 1).length;
+      const bearVotes = directionalVotes.filter(vote => vote.side === -1).length;
+      const validGroupCount = value => Number.isInteger(value) && value > 0;
+      const groupCoverage = validGroupCount(result?.totalGroups) &&
+        directionalVotes.length <= result.totalGroups
+          ? directionalVotes.length + ' / ' + result.totalGroups +
+            (validGroupCount(result?.minimumActiveGroups)
+              ? ' · need ' + result.minimumActiveGroups : '')
+          : directionalVotes.length ? String(directionalVotes.length) : '—';
+      const weightedAlignment = directionalVotes.length && Number.isFinite(result?.alignment) &&
+        result.alignment >= 0 && result.alignment <= 100
+          ? Math.round(result.alignment) + '%' : '—';
       const confirmationRows = [
         ['Data feed', state.replay.active ? 'REPLAY' : state.feedStatus || 'UNAVAILABLE'],
-        ['Agreement', primeFinite(result?.confidence) ? result.confidence + '%' : 'WAIT'],
+        ['Directional votes', directionalVotes.length ? bullVotes + ' bullish / ' + bearVotes + ' bearish' : '—'],
+        ['Weighted alignment', weightedAlignment],
+        ['Active groups', groupCoverage],
+        ['Trade approval', plan ? 'CONFIRMED' : 'WAIT · NOT APPROVED'],
         ['Risk Engine', riskDisplay.status],
         ['Risk reason', riskDisplay.reason],
         ['Stop distance', riskDisplay.analysis ? fmt(riskDisplay.analysis.risk) + ' pts' : '—'],
@@ -13699,7 +13719,8 @@
           { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
       for (const [name, value] of confirmationRows) {
         const row = document.createElement('div');
-        row.className = 'chart-status-row' + (name === 'Risk Engine' || name === 'Risk reason'
+        row.className = 'chart-status-row' + (['Risk Engine', 'Risk reason', 'Directional votes',
+          'Active groups', 'Trade approval'].includes(name)
           ? ' chart-risk-row' : '');
         const label = document.createElement('span');
         label.textContent = name;
