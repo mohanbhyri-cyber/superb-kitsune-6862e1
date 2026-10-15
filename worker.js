@@ -7,6 +7,7 @@ import { summarizeBreadth } from './breadth-context.js';
 import { isNseIntradayTime, nseCandleBucket, nseSessionBounds, quoteCandleTime } from './nse-candle-time.js';
 import { buildClosedFuturesVwap, completedFuturesCandles } from './closed-vwap-confirmation.js';
 import { parse } from 'csv-parse/sync';
+import { coordinatedUpstoxRequest } from './upstox-coordinator-client.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -40,6 +41,13 @@ function json(data, status = 200) {
       "cache-control": "no-store, no-cache, must-revalidate",
     },
   });
+}
+
+function coordinatedFailure(error, extra = {}) {
+  if (!error?.coordinator || ![429, 503].includes(error.status)) return null;
+  return { live: false, available: false, ...extra, coordinatorFailure: true,
+    rateLimited: error.rateLimited === true, retryAfterMs: error.retryAfterMs || 0,
+    reason: error.message };
 }
 
 // Keep edge responses in the same candle/session epoch as the upstream cache.
@@ -523,7 +531,8 @@ async function writeSharedUpstoxCooldown(shared, until) {
   return until;
 }
 
-async function upstoxFetch(endpoint, token) {
+async function upstoxFetch(endpoint, token, coordinator) {
+  if (coordinator?.enabled) return coordinatedUpstoxRequest(endpoint, token, coordinator.namespace);
   const cacheKey = token + '|' + endpoint;
   const cached = upstoxResponseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cloneJson(cached.body);
@@ -536,7 +545,7 @@ async function upstoxFetch(endpoint, token) {
     if (pending.deadline > joinedAt) return cloneJson(body);
     // A post-close caller waits for the old flight, then shares one fresh
     // request. No overlapping retry or early bypass of a provider 429.
-    return upstoxFetch(endpoint, token);
+    return upstoxFetch(endpoint, token, coordinator);
   }
 
   // A snapshot fetched before the close must not survive into the next bar.
@@ -638,7 +647,7 @@ async function upstoxFetch(endpoint, token) {
 // LIVE QUOTE
 // ----------------------------------------------------
 
-async function liveQuote(url, token) {
+async function liveQuote(url, token, coordinator) {
   const symbol =
     (url.searchParams.get("symbol") || "NIFTY")
       .toUpperCase();
@@ -659,7 +668,7 @@ async function liveQuote(url, token) {
     encodeURIComponent(instrumentKey);
 
   try {
-    const body = await upstoxFetch(endpoint, token);
+    const body = await upstoxFetch(endpoint, token, coordinator);
 
     const quote =
       Object.values(body?.data ?? {})[0];
@@ -753,6 +762,8 @@ async function liveQuote(url, token) {
     }, 429);
   }
 
+  const unavailable = coordinatedFailure(error, { source: 'UPSTOX', symbol });
+  if (unavailable) return json(unavailable, error.status);
   console.warn(
     "Primary live quote failed, using intraday fallback",
     error?.message || error
@@ -767,7 +778,7 @@ async function liveQuote(url, token) {
       const fallbackBody =
         await upstoxFetch(
           fallbackEndpoint,
-          token
+          token, coordinator
         );
 
       const rows =
@@ -842,7 +853,8 @@ async function liveQuote(url, token) {
 async function previousTradingSession(
   instrumentKey,
   interval,
-  token
+  token,
+  coordinator
 ) {
   for (
     let daysBack = 1;
@@ -868,7 +880,7 @@ async function previousTradingSession(
       const body =
         await upstoxFetch(
           endpoint,
-          token
+          token, coordinator
         );
 
       const rows =
@@ -933,7 +945,7 @@ async function previousTradingSession(
 // INTRADAY HISTORY
 // ----------------------------------------------------
 
-async function intradayHistory(url, token) {
+async function intradayHistory(url, token, coordinator) {
   const symbol =
     (url.searchParams.get("symbol") || "NIFTY")
       .toUpperCase();
@@ -1004,7 +1016,7 @@ async function intradayHistory(url, token) {
       const intradayBody =
         await upstoxFetch(
           intradayEndpoint,
-          token
+          token, coordinator
         );
 
       if (
@@ -1036,7 +1048,7 @@ async function intradayHistory(url, token) {
         const historicalTodayBody =
           await upstoxFetch(
             historicalTodayEndpoint,
-            token
+            token, coordinator
           );
 
         if (
@@ -1071,7 +1083,7 @@ async function intradayHistory(url, token) {
         await previousTradingSession(
           instrumentKey,
           interval,
-          token
+          token, coordinator
         );
 
       if (!previousSession.candles.length) {
@@ -1102,7 +1114,7 @@ if (sessionCandles.length < 260) {
   try {
     const warmupBody = await upstoxFetch(
       historicalWarmupEndpoint,
-      token
+      token, coordinator
     );
 
     if (Array.isArray(warmupBody?.data?.candles)) {
@@ -1245,7 +1257,7 @@ let candles = [
 }
 }
 
-async function previousSessionHistory(url, token) {
+async function previousSessionHistory(url, token, coordinator) {
   const symbol =
     (url.searchParams.get("symbol") || "NIFTY")
       .toUpperCase();
@@ -1268,12 +1280,14 @@ async function previousSessionHistory(url, token) {
     });
   }
 
-  const previous =
-    await previousTradingSession(
-      instrumentKey,
-      interval,
-      token
-    );
+  let previous;
+  try {
+    previous = await previousTradingSession(instrumentKey, interval, token, coordinator);
+  } catch (error) {
+    const failed = coordinatedFailure(error, { source: 'UPSTOX', symbol, timeframe, candles: [] });
+    if (failed) return json(failed, error.status);
+    throw error;
+  }
 
   return json({
     live: previous.candles.length > 0,
@@ -1287,7 +1301,7 @@ async function previousSessionHistory(url, token) {
 }
 
 
-async function mtfHistory(url, token) {
+async function mtfHistory(url, token, coordinator) {
   const symbol =
     (url.searchParams.get("symbol") || "NIFTY")
       .toUpperCase();
@@ -1365,7 +1379,7 @@ try {
   // intraday candles so the latest MTF candle stays current.
   const historicalBody = await upstoxFetch(
     historicalEndpoint,
-    token
+    token, coordinator
   );
 
   results.push({
@@ -1376,7 +1390,7 @@ try {
   // Keep requests sequential to reduce Upstox 429 pressure.
   const intradayBody = await upstoxFetch(
     intradayEndpoint,
-    token
+    token, coordinator
   );
 
   results.push({
@@ -1403,7 +1417,7 @@ try {
     try {
       const intradayBody = await upstoxFetch(
         intradayEndpoint,
-        token
+        token, coordinator
       );
 
       results.push({
@@ -1626,7 +1640,7 @@ function findNearestNiftyFuture(instruments) {
     )[0] || null;
 }
 
-async function findNearestNiftyFutureViaSearch(token) {
+async function findNearestNiftyFutureViaSearch(token, coordinator) {
   const endpoint =
     "https://api.upstox.com/v2/instruments/search" +
     "?query=NIFTY" +
@@ -1640,7 +1654,7 @@ async function findNearestNiftyFutureViaSearch(token) {
   const body =
     await upstoxFetch(
       endpoint,
-      token
+      token, coordinator
     );
 
   const rows =
@@ -1751,7 +1765,7 @@ function calculateVWAP(candles) {
   };
 }
 
-async function futuresVWAP(url, token) {
+async function futuresVWAP(url, token, coordinator) {
   try {
     const requested =
       Number(
@@ -1768,7 +1782,7 @@ async function futuresVWAP(url, token) {
 
     const contract =
       await findNearestNiftyFutureViaSearch(
-        token
+        token, coordinator
       );
 
     if (!contract) {
@@ -1793,7 +1807,7 @@ async function futuresVWAP(url, token) {
     const body =
       await upstoxFetch(
         endpoint,
-        token
+        token, coordinator
       );
 
     const rows =
@@ -1964,6 +1978,8 @@ async function futuresVWAP(url, token) {
       error
     );
 
+    const failed = coordinatedFailure(error, { source: 'UPSTOX', type: 'FUTURES_VWAP' });
+    if (failed) return json(failed, error.status);
     return json({
       live: false,
       source: "UPSTOX",
@@ -2656,7 +2672,7 @@ async function globalMarketWatch() {
 }
 
 
-async function niftyDailyHistory(url, token) {
+async function niftyDailyHistory(url, token, coordinator) {
   const instrumentKey =
     SYMBOLS.NIFTY;
 
@@ -2691,7 +2707,7 @@ async function niftyDailyHistory(url, token) {
     const body =
       await upstoxFetch(
         endpoint,
-        token
+        token, coordinator
       );
 
     const rows =
@@ -2784,6 +2800,8 @@ async function niftyDailyHistory(url, token) {
     });
 
   } catch (error) {
+    const failed = coordinatedFailure(error, { source: 'UPSTOX', symbol: 'NIFTY 50', timeframe: '1d', candles: [] });
+    if (failed) return json(failed, error.status);
     return json({
       live: false,
       source:
@@ -2812,7 +2830,7 @@ let breadthCachedAt = 0;
 let constituentKeys = null;
 let constituentDate = null;
 
-async function niftyBreadth(token) {
+async function niftyBreadth(token, coordinator) {
   if (!regularNseHours()) return json({ live: false, reason: 'MARKET CLOSED' });
   if (breadthCached && Date.now() - breadthCachedAt < 60000) return json(breadthCached);
   if (!breadthPending) {
@@ -2832,18 +2850,22 @@ async function niftyBreadth(token) {
           constituentDate = todayIST();
         }
         const quotes = await upstoxFetch('https://api.upstox.com/v3/market-quote/quotes?instrument_key=' +
-          encodeURIComponent(constituentKeys.join(',')), token);
+          encodeURIComponent(constituentKeys.join(',')), token, coordinator);
         return summarizeBreadth(quotes.data, constituentKeys);
       } catch (error) {
-        return { live: false, reason: error.message };
+        const failed = coordinatedFailure(error);
+        return failed ? { ...failed, status: error.status } : { live: false, reason: error.message };
       }
     })().then(result => {
-      breadthCached = result;
-      breadthCachedAt = Date.now();
+      if (!result.coordinatorFailure) {
+        breadthCached = result;
+        breadthCachedAt = Date.now();
+      }
       return result;
     }).finally(() => { breadthPending = null; });
   }
-  return json(await breadthPending);
+  const result = await breadthPending;
+  return json(result, result.coordinatorFailure ? result.status : 200);
 }
 
 let optionsCached = null;
@@ -2851,7 +2873,7 @@ let optionsCachedAt = 0;
 let optionsExpiry = null;
 let optionsExpiryDate = null;
 
-async function niftyOptions(token) {
+async function niftyOptions(token, coordinator) {
   if (!regularNseHours()) return json({ available: false, live: false, reason: 'MARKET CLOSED' });
   if (optionsCached && Date.now() - optionsCachedAt < 60000) return json(optionsCached);
   if (!optionsPending) {
@@ -2860,26 +2882,35 @@ async function niftyOptions(token) {
         const today = todayIST();
         if (!optionsExpiry || optionsExpiryDate !== today) {
           const contracts = await upstoxFetch('https://api.upstox.com/v2/option/contract?instrument_key=' +
-            encodeURIComponent(SYMBOLS.NIFTY), token);
+            encodeURIComponent(SYMBOLS.NIFTY), token, coordinator);
           optionsExpiry = [...new Set((contracts.data || []).map(row => row.expiry))]
             .filter(expiry => /^\d{4}-\d{2}-\d{2}$/.test(expiry) && expiry >= today).sort()[0];
           optionsExpiryDate = today;
         }
         if (!optionsExpiry) throw new Error('No current NIFTY expiry available');
         const chain = await upstoxFetch('https://api.upstox.com/v2/option/chain?instrument_key=' +
-          encodeURIComponent(SYMBOLS.NIFTY) + '&expiry_date=' + optionsExpiry, token);
+          encodeURIComponent(SYMBOLS.NIFTY) + '&expiry_date=' + optionsExpiry, token, coordinator);
         return summarizeOptions(chain.data, optionsExpiry);
       } catch (error) {
-        return { available: false, live: false, reason: error.message };
+        const failed = coordinatedFailure(error);
+        return failed ? { ...failed, status: error.status } : { available: false, live: false, reason: error.message };
       }
     })().then(result => {
-      optionsCached = result;
-      optionsCachedAt = Date.now();
+      if (!result.coordinatorFailure) {
+        optionsCached = result;
+        optionsCachedAt = Date.now();
+      }
       return result;
     }).finally(() => { optionsPending = null; });
   }
-  return json(await optionsPending);
+  const result = await optionsPending;
+  return json(result, result.coordinatorFailure ? result.status : 200);
 }
+
+export const upstoxCoordinatorPolicies = {
+  ttl: upstoxCacheTtl, deadline: upstoxCandleCacheDeadline,
+  scope: endpoint => upstoxRateLimitKey(endpoint, ''), candles: genuineCandleResponse
+};
 
 export default {
   async fetch(request, env, context) {
@@ -2912,6 +2943,9 @@ export default {
       env.UPSTOX_ANALYTICS_TOKEN ||
       env.UPSTOX_ACCESS_TOKEN ||
       env.UPSTOX_TOKEN;
+    // Opt-in only. A missing/unavailable enabled binding fails closed.
+    const coordinator = env.UPSTOX_COORDINATOR_ENABLED === 'true'
+      ? { enabled: true, namespace: env.UPSTOX_COORDINATOR } : null;
 
     if (
       url.pathname === "/api/external-nifty"
@@ -2950,7 +2984,7 @@ export default {
         const body =
           await upstoxFetch(
             endpoint,
-            token
+            token, coordinator
           );
 
         const quote =
@@ -2978,6 +3012,11 @@ export default {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
+        if (error?.coordinator && (error.status === 429 || error.status === 503)) {
+          return json({ live: false, source: 'UPSTOX', tokenConfigured: true, tokenValid: null,
+            rateLimited: error.rateLimited === true, retryAfterMs: error.retryAfterMs || 0,
+            reason: error.message }, error.status);
+        }
         return json({
           live: false,
           source: "UPSTOX",
@@ -3001,11 +3040,11 @@ export default {
     }
 
     if (url.pathname === '/api/nifty-options') {
-      return cachedApiResponse(request, 60, () => niftyOptions(token), context);
+      return cachedApiResponse(request, 60, () => niftyOptions(token, coordinator), context);
     }
 
     if (url.pathname === '/api/nifty-breadth') {
-      return cachedApiResponse(request, 60, () => niftyBreadth(token), context);
+      return cachedApiResponse(request, 60, () => niftyBreadth(token, coordinator), context);
     }
 
     if (
@@ -3017,7 +3056,7 @@ export default {
       return cachedApiResponse(
         request,
         5,
-        () => liveQuote(url, token),
+        () => liveQuote(url, token, coordinator),
         context
       );
     }
@@ -3028,7 +3067,7 @@ export default {
       return cachedApiResponse(
         request,
         60,
-        () => intradayHistory(url, token),
+        () => intradayHistory(url, token, coordinator),
         context
       );
     }
@@ -3039,7 +3078,7 @@ export default {
       return cachedApiResponse(
         request,
         3600,
-        () => previousSessionHistory(url, token),
+        () => previousSessionHistory(url, token, coordinator),
         context
       );
     }
@@ -3050,7 +3089,7 @@ export default {
       return cachedApiResponse(
         request,
         300,
-        () => mtfHistory(url, token),
+        () => mtfHistory(url, token, coordinator),
         context
       );
     }
@@ -3061,7 +3100,7 @@ export default {
       return cachedApiResponse(
         request,
         300,
-        () => niftyDailyHistory(url, token),
+        () => niftyDailyHistory(url, token, coordinator),
         context
       );
     }
@@ -3072,7 +3111,7 @@ export default {
       return cachedApiResponse(
         request,
         30,
-        () => futuresVWAP(url, token),
+        () => futuresVWAP(url, token, coordinator),
         context
       );
     }

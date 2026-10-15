@@ -9,3 +9,9 @@ android
 android/**
 .github
 .github/**
+upstox-coordinator*.js
+worker.coordinator.js
+wrangler.coordinator.jsonc
+UPSTOX_COORDINATOR.md
+.coordinator-check-*
+.coordinator-check-*/**

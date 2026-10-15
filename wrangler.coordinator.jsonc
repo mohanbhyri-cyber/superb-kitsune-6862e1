@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smrt-upstox-coordinator-preview",
+  "main": "worker.coordinator.js",
+  "compatibility_date": "2026-09-16",
+  "keep_vars": true,
+  "vars": { "UPSTOX_COORDINATOR_ENABLED": "true" },
+  "durable_objects": {
+    "bindings": [{ "name": "UPSTOX_COORDINATOR", "class_name": "UpstoxRequestCoordinator" }]
+  },
+  "migrations": [{ "tag": "upstox-coordinator-v1", "new_sqlite_classes": ["UpstoxRequestCoordinator"] }],
+  "assets": { "directory": ".", "binding": "ASSETS", "run_worker_first": true }
+}
