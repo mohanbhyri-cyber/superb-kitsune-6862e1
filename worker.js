@@ -403,7 +403,7 @@ function upstoxCacheTtl(endpoint) {
     // Reuse the multi-day warm-up range. Current intraday candles still
     // refresh every 30s and override overlapping warm-up candles.
     const range = new URL(endpoint).pathname.match(
-      /\/minutes\/\d+\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/
+      /\/(?:minutes|hours)\/\d+\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/
     );
     return range && range[1] > range[2] ? 300000 : 30000;
   }
@@ -429,6 +429,60 @@ function upstoxCooldownError(until) {
   error.retryAfterMs = Math.max(1000, until - Date.now());
   return error;
 }
+
+function genuineCandleResponse(body) {
+  return (body?.status === undefined || body.status === 'success') &&
+    Array.isArray(body?.data?.candles) && body.data.candles.some(row =>
+      Array.isArray(row) && Number.isFinite(Date.parse(row[0])) &&
+      row.slice(1, 5).length === 4 && row.slice(1, 5).every(value =>
+        (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) &&
+        Number.isFinite(Number(value)) && Number(value) > 0));
+}
+
+// Optional, data-center-local reuse across Worker instances and API routes.
+// This is only for real successful candle payloads: not quotes, 429s or errors.
+// Credentials never appear in cache URLs/headers; their digest isolates accounts.
+async function sharedCandleCache(endpoint, token, deadline) {
+  try {
+    const url = new URL(endpoint);
+    if (!url.pathname.includes('/historical-candle/') || !token ||
+        typeof caches === 'undefined' || !caches.default ||
+        typeof crypto === 'undefined' || !crypto.subtle) return null;
+    const session = nseSessionBounds(Date.now() / 1000)?.open;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+      token + '|' + endpoint + '|' + session + '|' + deadline));
+    const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+    return { cache: caches.default,
+      key: new Request(url.origin + '/__smrt_candle_cache/v1/' + hash), deadline };
+  } catch { return null; }
+}
+
+async function readSharedCandles(shared) {
+  if (!shared) return null;
+  try {
+    const response = await shared.cache.match(shared.key);
+    const expiresAt = Number(response?.headers.get('x-smrt-candle-expires-at'));
+    if (!response?.ok || !Number.isFinite(expiresAt) || expiresAt <= Date.now() ||
+        expiresAt > shared.deadline) return null;
+    const body = await response.json();
+    // An async read may straddle a candle close. Never reuse it after expiry.
+    return genuineCandleResponse(body) && expiresAt > Date.now() ? { body, expiresAt } : null;
+  } catch { return null; }
+}
+
+async function writeSharedCandles(shared, body, expiresAt) {
+  if (!shared || !genuineCandleResponse(body)) return;
+  const seconds = Math.floor((expiresAt - Date.now()) / 1000);
+  if (seconds < 1 || expiresAt > shared.deadline) return;
+  try {
+    await shared.cache.put(shared.key, new Response(JSON.stringify(body), { headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=0, s-maxage=' + seconds,
+      'x-smrt-candle-expires-at': String(expiresAt)
+    } }));
+  } catch { /* Cache failure must not become a feed failure. */ }
+}
+
 async function upstoxFetch(endpoint, token) {
   const cacheKey = token + '|' + endpoint;
   const cached = upstoxResponseCache.get(cacheKey);
@@ -445,15 +499,28 @@ async function upstoxFetch(endpoint, token) {
     return upstoxFetch(endpoint, token);
   }
 
-  const cooldownKey = upstoxRateLimitKey(endpoint, token);
-  const until = upstoxCooldowns.get(cooldownKey) || 0;
-  if (until > Date.now()) throw upstoxCooldownError(until);
-  upstoxCooldowns.delete(cooldownKey);
   // A snapshot fetched before the close must not survive into the next bar.
   // Anchor this deadline at request start: a slow response cannot extend it.
   // The existing TTL, request deduplication and provider cooldown still apply.
   const candleDeadline = upstoxCandleCacheDeadline(endpoint, Date.now());
   const request = (async () => {
+    // Avoid changing the synchronous start of requests when optional cache
+    // primitives are absent (including local development/test environments).
+    const shared = typeof caches !== 'undefined' && typeof crypto !== 'undefined'
+      ? await sharedCandleCache(endpoint, token, candleDeadline) : null;
+    if (shared) {
+      const hit = await readSharedCandles(shared);
+      if (hit) {
+        upstoxResponseCache.set(cacheKey, hit); // retain original expiry; never extend on a hit
+        return hit.body;
+      }
+    }
+    // Fresh cached candles need no provider request. On a miss/expired entry,
+    // the original full credential/API cooldown still applies unchanged.
+    const cooldownKey = upstoxRateLimitKey(endpoint, token);
+    const until = upstoxCooldowns.get(cooldownKey) || 0;
+    if (until > Date.now()) throw upstoxCooldownError(until);
+    upstoxCooldowns.delete(cooldownKey);
     const response = await fetch(endpoint, {
       method: "GET",
       headers: {
@@ -502,10 +569,11 @@ async function upstoxFetch(endpoint, token) {
     }
 
     const body = await response.json();
+    const expiresAt = Math.min(Date.now() + upstoxCacheTtl(endpoint), candleDeadline);
     upstoxResponseCache.set(cacheKey, {
-      body,
-      expiresAt: Math.min(Date.now() + upstoxCacheTtl(endpoint), candleDeadline)
+      body, expiresAt
     });
+    await writeSharedCandles(shared, body, expiresAt);
     return body;
   })().finally(() => {
     upstoxInFlight.delete(cacheKey);
