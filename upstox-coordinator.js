@@ -174,7 +174,9 @@ export class UpstoxCoordinator {
     await this.storage.put(stateKey, { times, retryAt: 0, inProgress: true });
     let provider, body;
     try {
-      provider = await fetch(endpoint, { method: 'GET', redirect: 'error',
+      // workerd supports manual/follow, not the browser/Node redirect:error.
+      // Never follow a redirect with broker credentials attached.
+      provider = await fetch(endpoint, { method: 'GET', redirect: 'manual',
         signal: AbortSignal.timeout(20000), headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
       if (provider.ok) body = await provider.json();
       else await provider.body?.cancel();
@@ -191,6 +193,7 @@ export class UpstoxCoordinator {
       return failure(429, 'Upstox rate limit reached. Waiting before retry.', Math.max(1000, until - Date.now()));
     }
     await this.storage.put(stateKey, { times, retryAt: 0, inProgress: false });
+    if (provider.status >= 300 && provider.status < 400) return failure(502, 'Upstox returned an unexpected redirect.');
     if (!provider.ok) return failure(provider.status, 'Upstox returned HTTP ' + provider.status + '.');
     if (body?.status !== undefined && body.status !== 'success') return failure(502, 'Upstox returned an unsuccessful data response.');
     this.remember(key, endpoint, body, Math.min(Date.now() + this.policies.ttl(endpoint), deadline));

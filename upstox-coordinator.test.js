@@ -114,7 +114,26 @@ test('many independent binding clients share one provider request and independen
   assert.equal(f.records.get(f.key(intraday())).inProgress, false);
   assert.deepEqual([...new Set(f.names)], ['smrt-upstox-data-v1']);
   assert.equal(JSON.stringify([f.bindings, [...f.records], f.names]).includes(f.env.UPSTOX_EXTENDED_TOKEN), false);
-  assert.equal(f.calls[0].options.redirect, 'error');
+  assert.equal(f.calls[0].options.redirect, 'manual');
+});
+
+test('workerd-compatible manual redirects fail closed without following or caching a new location', async t => {
+  let redirectStatus = 301;
+  const f = fixture(t, () => new Response(null, { status: redirectStatus,
+    headers: { location: 'https://untrusted.test/credential-target' } }));
+  for (const status of [301, 302, 303, 307, 308]) {
+    redirectStatus = status;
+    await assert.rejects(f.request(quote('NIFTY')), e =>
+      e.status === 502 && e.message.includes('unexpected redirect') && !e.message.includes('untrusted'));
+    assert.equal(f.controller().cache.size, 0);
+    assert.equal(f.records.get(f.key(quote('NIFTY'))).inProgress, false);
+  }
+  assert.equal(f.calls.length, 5, 'Only the original allowlisted URL is requested once per attempt');
+  for (const call of f.calls) {
+    assert.equal(call.url, quote('NIFTY'));
+    assert.equal(call.options.method, 'GET');
+    assert.equal(call.options.redirect, 'manual');
+  }
 });
 
 test('same-API queue stops behind the first 429 while an unrelated quote API continues', async t => {

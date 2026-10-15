@@ -4,12 +4,25 @@ Status: review/isolated-preview preparation only. Not activated in production.
 The existing `wrangler.jsonc`, frontend, polling cadence, quote/candle freshness,
 session rules, trade confirmations and risk thresholds are unchanged.
 
-Validation: 248 Node tests pass, including 23 controller tests, and Wrangler
-compiles the opt-in entrypoint in dry-run mode. The local SQLite runtime smoke
-check could not complete: a minimal independent SQLite-backed control object
-also failed with an internal emulator error before any simulated broker call.
-This is NOT a passing Durable Object runtime/storage integration test. Keep the
-upgrade inactive until an approved isolated runtime/preview check succeeds.
+Validation: 249 Node tests pass, including 24 controller tests, and Wrangler
+compiles the opt-in entrypoint in dry-run mode. The local SQLite runtime check
+now passes: 20 simultaneous Worker health requests share one simulated broker
+request, and a 120-second provider cooldown survives a full local runtime
+restart without another broker request. An independent SQLite counter also
+retains its value after restart. No real broker or Cloudflare deployment was
+used. These are local integration results, not live latency measurements or
+validation of Cloudflare's deployed namespace, billing or migration lifecycle.
+Keep the upgrade inactive until the production rollout prerequisites below
+have been reviewed and an isolated Cloudflare preview has been approved.
+
+The initial emulator failure was narrowed to long Windows database paths:
+using short local fixture/Worker names lets SQLite objects start and persist.
+Do not change Windows security settings or the production object identity to
+work around a local test path. Once that fixture issue was removed, the runtime
+also exposed an actual compatibility bug: workerd rejects `redirect: 'error'`.
+The controller now uses `redirect: 'manual'` and explicitly rejects all 3xx
+responses as 502 without following or caching them. Node regressions cover
+301/302/303/307/308, and the clean compiled entrypoint passes the runtime check.
 
 ## What changes when enabled
 
