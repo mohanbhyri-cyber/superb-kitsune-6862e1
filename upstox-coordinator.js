@@ -61,6 +61,7 @@ export class UpstoxCoordinator {
     this.cacheBytes = 0;
     this.pending = new Map();
     this.tails = new Map();
+    this.startupFlight = null;
   }
 
   async fetch(request) {
@@ -80,11 +81,38 @@ export class UpstoxCoordinator {
       if (!token || input.credential !== await upstoxCredentialDigest(token)) {
         return response(failure(503, 'Coordinator credential configuration mismatch.'));
       }
+      const startupUntil = await this.startupDeadline();
+      if (startupUntil > Date.now()) return response(failure(429,
+        'One-time feed migration safety pause. Existing broker allowances are being preserved.',
+        Math.max(1000, startupUntil - Date.now())));
       return response(await this.dispatch(endpoint, token, input.credential));
     } catch {
       // No raw provider body, URL, credentials or storage details in failures.
       return response(failure(503, 'Upstox coordinator unavailable. No direct retry was made.'));
     }
+  }
+
+  startupDeadline() {
+    if (!this.startupFlight) this.startupFlight = this.readStartupDeadline().catch(error => {
+      this.startupFlight = null;
+      throw error;
+    });
+    return this.startupFlight;
+  }
+
+  async readStartupDeadline() {
+    const configured = this.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS;
+    if (configured !== undefined && (typeof configured !== 'string' || !/^\d+$/.test(configured) ||
+        Number(configured) < 1000 || Number(configured) > 1800000)) throw new Error('Invalid startup pause');
+    const stored = await this.storage.get('startup:v1');
+    if (stored !== undefined) {
+      if (!stored || !Number.isFinite(stored.until) || stored.until < 0) throw new Error('Invalid startup deadline');
+      return stored.until;
+    }
+    if (configured === undefined) return 0;
+    const until = Date.now() + Number(configured);
+    await this.storage.put('startup:v1', { until });
+    return until;
   }
 
   cached(key) {

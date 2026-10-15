@@ -136,6 +136,48 @@ test('workerd-compatible manual redirects fail closed without following or cachi
   }
 });
 
+test('one-time startup pause survives reads, restarts, changed configuration and credential rotation', async t => {
+  const f = fixture(t, () => ok(quoted()));
+  f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = '1800000';
+  await Promise.all(Array.from({ length: 20 }, () =>
+    assert.rejects(f.request(quote('NIFTY')), e => e.status === 429 && e.retryAfterMs === 1800000)));
+  const until = f.records.get('startup:v1').until;
+  assert.equal(until, f.now() + 1800000);
+  assert.equal(f.records.size, 1);
+  assert.equal(f.calls.length, 0);
+  f.advance(10000);
+  f.restart(); f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = '1000';
+  f.env.UPSTOX_EXTENDED_TOKEN = 'rotated-startup-fixture';
+  await assert.rejects(f.request(quote('NIFTY')), e => e.retryAfterMs === 1790000);
+  delete f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS;
+  f.restart();
+  await assert.rejects(f.request(quote('NIFTY')), e => e.retryAfterMs === 1790000);
+  assert.equal(f.records.get('startup:v1').until, until);
+  assert.equal(f.calls.length, 0);
+  f.advance(1790000); f.restart();
+  await f.request(quote('NIFTY'));
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.records.get('startup:v1').until, until);
+});
+
+test('invalid startup configuration, corrupt deadlines and failed initial storage all fail closed', async t => {
+  for (const invalid of ['0', '-1', 'true', '1800001', 'NaN']) {
+    const f = fixture(t);
+    f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = invalid;
+    await assert.rejects(f.request(intraday()), e => e.status === 503);
+    assert.equal(f.calls.length, 0);
+  }
+  const f = fixture(t);
+  f.records.set('startup:v1', { until: NaN });
+  await assert.rejects(f.request(intraday()), e => e.status === 503);
+  assert.equal(f.calls.length, 0);
+  f.records.delete('startup:v1');
+  f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = '1800000'; f.faults.write = true;
+  await assert.rejects(f.request(intraday()), e => e.status === 503);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.records.size, 0);
+});
+
 test('same-API queue stops behind the first 429 while an unrelated quote API continues', async t => {
   let complete, started;
   const began = new Promise(resolve => { started = resolve; });

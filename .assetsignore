@@ -15,3 +15,5 @@ wrangler.coordinator.jsonc
 UPSTOX_COORDINATOR.md
 .coordinator-check-*
 .coordinator-check-*/**
+.coordinator-build
+.coordinator-build/**
