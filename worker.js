@@ -483,6 +483,46 @@ async function writeSharedCandles(shared, body, expiresAt) {
   } catch { /* Cache failure must not become a feed failure. */ }
 }
 
+// Share only a provider's retry deadline, never an error response or market
+// data. This is best-effort data-center-local coordination, not a global lock.
+// Unlike candle keys this scope must survive timeframe/session boundaries.
+async function sharedUpstoxCooldown(endpoint, token) {
+  try {
+    if (!token || typeof caches === 'undefined' || !caches.default ||
+        typeof crypto === 'undefined' || !crypto.subtle) return null;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+      upstoxRateLimitKey(endpoint, token)));
+    const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+    return { cache: caches.default,
+      key: new Request(new URL(endpoint).origin + '/__smrt_upstox_cooldown/v1/' + hash) };
+  } catch { return null; }
+}
+
+async function readSharedUpstoxCooldown(shared) {
+  if (!shared) return 0;
+  try {
+    const response = await shared.cache.match(shared.key);
+    const until = Number(response?.headers.get('x-smrt-upstox-retry-at'));
+    return response?.ok && Number.isFinite(until) && until > Date.now() ? until : 0;
+  } catch { return 0; }
+}
+
+async function writeSharedUpstoxCooldown(shared, until) {
+  if (!shared) return until;
+  // Do not replace a longer deadline that is already visible. Cache API does
+  // not provide atomic compare-and-set, so simultaneous cold 429s can race.
+  until = Math.max(until, await readSharedUpstoxCooldown(shared));
+  const seconds = Math.ceil((until - Date.now()) / 1000);
+  if (seconds < 1) return until;
+  try {
+    await shared.cache.put(shared.key, new Response(null, { headers: {
+      'cache-control': 'public, max-age=0, s-maxage=' + seconds,
+      'x-smrt-upstox-retry-at': String(until)
+    } }));
+  } catch { /* Retain the local cooldown when optional coordination fails. */ }
+  return until;
+}
+
 async function upstoxFetch(endpoint, token) {
   const cacheKey = token + '|' + endpoint;
   const cached = upstoxResponseCache.get(cacheKey);
@@ -518,8 +558,14 @@ async function upstoxFetch(endpoint, token) {
     // Fresh cached candles need no provider request. On a miss/expired entry,
     // the original full credential/API cooldown still applies unchanged.
     const cooldownKey = upstoxRateLimitKey(endpoint, token);
-    const until = upstoxCooldowns.get(cooldownKey) || 0;
-    if (until > Date.now()) throw upstoxCooldownError(until);
+    const coordination = typeof caches !== 'undefined' && typeof crypto !== 'undefined'
+      ? await sharedUpstoxCooldown(endpoint, token) : null;
+    const sharedUntil = coordination ? await readSharedUpstoxCooldown(coordination) : 0;
+    const until = Math.max(upstoxCooldowns.get(cooldownKey) || 0, sharedUntil);
+    if (until > Date.now()) {
+      upstoxCooldowns.set(cooldownKey, until);
+      throw upstoxCooldownError(until);
+    }
     upstoxCooldowns.delete(cooldownKey);
     const response = await fetch(endpoint, {
       method: "GET",
@@ -557,10 +603,16 @@ async function upstoxFetch(endpoint, token) {
         ? (Number.isFinite(seconds) && seconds > 0
           ? Math.max(1000, seconds * 1000) : 60000) : 0;
       if (error.rateLimited) {
-        upstoxCooldowns.set(cooldownKey, Math.max(
+        const retryAt = Math.max(
           upstoxCooldowns.get(cooldownKey) || 0,
           Date.now() + error.retryAfterMs
-        ));
+        );
+        // Record immediately, before any asynchronous shared-cache operation.
+        upstoxCooldowns.set(cooldownKey, retryAt);
+        const sharedRetryAt = await writeSharedUpstoxCooldown(coordination, retryAt);
+        const effectiveRetryAt = Math.max(upstoxCooldowns.get(cooldownKey) || 0, sharedRetryAt);
+        upstoxCooldowns.set(cooldownKey, effectiveRetryAt);
+        error.retryAfterMs = Math.max(1000, effectiveRetryAt - Date.now());
       }
 
       error.details = details;
