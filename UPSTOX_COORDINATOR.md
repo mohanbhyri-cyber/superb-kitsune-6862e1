@@ -1,10 +1,12 @@
 # Opt-in shared Upstox request controller
 
-Status: review/isolated-preview preparation only. Not activated in production.
-The existing `wrangler.jsonc`, frontend, polling cadence, quote/candle freshness,
-session rules, trade confirmations and risk thresholds are unchanged.
+Status: production activation approved by the user on the existing Cloudflare
+Free plan after an isolated deployed preview check. The production configuration
+uses `worker.coordinator.js`, a SQLite binding and a one-time migration pause.
+Frontend polling, quote/candle freshness, session rules, trade confirmations and
+risk thresholds are unchanged. No plan upgrade or automatic order execution.
 
-Validation: 249 Node tests pass, including 24 controller tests, and Wrangler
+Validation: 251 Node tests pass, including 26 controller tests, and Wrangler
 compiles the opt-in entrypoint in dry-run mode. The local SQLite runtime check
 now passes: 20 simultaneous Worker health requests share one simulated broker
 request, and a 120-second provider cooldown survives a full local runtime
@@ -12,8 +14,26 @@ restart without another broker request. An independent SQLite counter also
 retains its value after restart. No real broker or Cloudflare deployment was
 used. These are local integration results, not live latency measurements or
 validation of Cloudflare's deployed namespace, billing or migration lifecycle.
-Keep the upgrade inactive until the production rollout prerequisites below
-have been reviewed and an isolated Cloudflare preview has been approved.
+An approved deployed Cloudflare simulation also verifies Worker-to-object
+request sharing and a stored provider deadline across a new Worker version.
+Its provider is a test-only lexical stub in a separate artifact, not a real
+Upstox credential or live chart. The production source contains no mock/stub.
+
+## One-time cutover pause
+
+Production sets `UPSTOX_COORDINATOR_STARTUP_PAUSE_MS` to `1800000` (30 minutes).
+The first authenticated market-data request stores one `startup:v1` absolute
+deadline before any provider dispatch. This conservatively drains the old
+regional feed's rolling 30-minute allowance instead of treating a new namespace
+as fresh broker capacity. During this app-owned pause, the existing feed UI can
+show its explicit migration reason and remaining wait; it is not a new trade
+signal or a claim that Upstox issued this pause.
+
+Reads, browser refreshes, credential rotation, configuration changes and new
+Worker deployments do not renew or remove an existing stored deadline. A failed
+startup write or invalid startup state/configuration fails closed with no broker
+call. After the deadline expires, normal broker limits and genuine provider
+Retry-After rules still apply. No public reset endpoint is provided.
 
 The initial emulator failure was narrowed to long Windows database paths:
 using short local fixture/Worker names lets SQLite objects start and persist.
@@ -92,12 +112,14 @@ is included. Drain in-flight requests before rollout/rollback where possible.
 
 ## Review and isolated preview
 
-Production continues to use `worker.js` without the new binding or flag.
+Production uses `worker.coordinator.js` with the new binding and flag; existing
+runtime variables are preserved via `keep_vars: true`. Tokens stay server-side.
 The separate `wrangler.coordinator.jsonc` targets
 `smrt-upstox-coordinator-preview`, uses `worker.coordinator.js`, enables the
 flag, and declares a SQLite-backed Durable Object via a tagged migration.
-The default Git-connected preview build still uses the unchanged production
-configuration: its success does NOT exercise the enabled controller.
+The separate simulated deployment is not the normal Git-connected preview and
+does not share a namespace or real token with production. A successful ordinary
+build alone is not evidence of storage or live-feed correctness.
 
 Run local tests with `node --test`. A local compile-only check is:
 
@@ -131,11 +153,18 @@ miss normally performs a storage read plus reservation/completion writes;
 cache hits reuse memory while the object is alive. Review expected traffic and
 the account's plan before activation. No paid plan change was made or assumed.
 
-Production activation needs an explicit entrypoint/binding/migration plan,
-capacity review, provider cooldown-aware cutover, monitoring and a rollback
-decision. Merely merging this PR does not enable the controller. Disabling it
-restores the old regional path and loses central coordination; that is not a
-safe cooldown bypass and must not happen while an active/unknown wait remains.
+The approved production configuration provisions the SQLite class with the
+`upstox-coordinator-v1` migration and preserves existing variables. The account
+was verified as Cloudflare Free; no subscription change is authorized. Free
+request, duration and SQLite row/storage quotas remain hard constraints shared
+with other account resources. Do not automatically upgrade the plan if a quota
+is reached.
+
+Keep the Durable Object class, binding, identity and stored deadlines intact
+during rollback. Restoring an old version that omits the class/migration is not
+a safe automatic rollback plan. Disabling coordination restores the old
+regional path and loses the shared wait; never use it to bypass an active or
+uncertain cooldown. Prefer a fail-closed outage to duplicate broker retries.
 
 ## Primary references
 

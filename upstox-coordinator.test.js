@@ -86,12 +86,16 @@ test('encoded path separators cannot escape the market-data allowlist', () => {
   assert.equal(allowedUpstoxEndpoint(intraday().replace('NIFTY', '%5c..%5corder')), null);
 });
 
-test('production configuration remains unchanged and coordinator activation requires the isolated preview entrypoint', () => {
+test('approved production configuration uses SQLite coordination, preserves variables and starts one durable safety pause', () => {
   const production = JSON.parse(readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
   const preview = JSON.parse(readFileSync(new URL('./wrangler.coordinator.jsonc', import.meta.url), 'utf8'));
-  assert.equal(production.main, 'worker.js');
-  assert.equal(production.durable_objects, undefined);
-  assert.equal(production.vars?.UPSTOX_COORDINATOR_ENABLED, undefined);
+  assert.equal(production.main, 'worker.coordinator.js');
+  assert.equal(production.keep_vars, true);
+  assert.deepEqual(production.durable_objects.bindings,
+    [{ name: 'UPSTOX_COORDINATOR', class_name: 'UpstoxRequestCoordinator' }]);
+  assert.equal(production.vars.UPSTOX_COORDINATOR_ENABLED, 'true');
+  assert.equal(production.vars.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS, '1800000');
+  assert.deepEqual(production.migrations[0].new_sqlite_classes, ['UpstoxRequestCoordinator']);
   assert.equal(preview.name, 'smrt-upstox-coordinator-preview');
   assert.equal(preview.main, 'worker.coordinator.js');
   assert.equal(preview.vars.UPSTOX_COORDINATOR_ENABLED, 'true');
