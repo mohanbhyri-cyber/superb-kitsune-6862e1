@@ -140,7 +140,7 @@ function section(from, to) {
 }
 function panels(input) {
   const nodes = new Map();
-  const node = () => ({ textContent: '', className: '', children: [],
+  const node = (tagName = 'fragment') => ({ tagName, textContent: '', className: '', children: [],
     append(...children) { this.children.push(...children); },
     replaceChildren(fragment) { this.children = fragment.children; } });
   const state = { tf: '3m', symbol: 'NIFTY', replay: { active: input.replay || false },
@@ -171,9 +171,10 @@ test('actual chart box and Market Map render the same confirmed BUY / SELL risk'
   for (const side of [1, -1]) {
     const input = sample(side), p = panels(input);
     assert.equal(p.row('Risk Engine'), p.nodes.get('#market-map-risk-engine').textContent);
-    assert.equal(p.row('Risk reason'), p.nodes.get('#market-map-risk-reason').textContent);
+    assert.equal(p.row('Risk reason'), undefined);
+    assert.match(p.nodes.get('#market-map-risk-reason').textContent, /Confirmed (BUY|SELL)/);
     assert.match(p.nodes.get('#chart-status-rows').children.find(row =>
-      row.children[0]?.textContent === 'Risk reason').className, /chart-risk-row/);
+      row.children[0]?.textContent === 'Risk Engine').className, /chart-risk-row/);
     assert.equal(p.row('Entry'), '100.00');
     assert.equal(p.row('Stop distance'), '10.00 pts');
     assert.equal(p.row('ATR (volatility)'), '10.00 pts');
@@ -250,8 +251,7 @@ test('confirmed final plan remains approved and trigger scores are diagnostic, n
   assert.equal(p.row('Trade approval'), 'CONFIRMED');
   assert.equal(p.row('Trade Finalizer'), 'BUY');
   assert.equal(p.row('SMRT Trigger'), 'BULLISH · 73/100');
-  assert.match(html, /Component directions and alignment are diagnostic/);
-  assert.match(html, /not trade approval, accuracy or win probability/);
+  assert.equal(p.row('Risk reason'), undefined);
 });
 
 test('actual panels withhold levels and agree for closed, stale, blocked and incomplete setups', () => {
@@ -265,7 +265,8 @@ test('actual panels withhold levels and agree for closed, stale, blocked and inc
     const input = sample(); change(input);
     const p = panels(input);
     assert.equal(p.row('Risk Engine'), p.nodes.get('#market-map-risk-engine').textContent);
-    assert.equal(p.row('Risk reason'), p.nodes.get('#market-map-risk-reason').textContent);
+    assert.equal(p.row('Risk reason'), undefined);
+    assert.ok(p.nodes.get('#market-map-risk-reason').textContent, 'Detailed Market Map reason remains available');
     for (const label of ['Entry', 'Stop-loss', 'Target 1 / 2', 'Stop distance', 'Target 1 R/R']) {
       assert.equal(p.row(label), '—', label);
     }
@@ -288,4 +289,35 @@ test('losing Market Map data clears a previous risk plan and all displayed level
   assert.ok(html.includes('<small>ATR (volatility)</small>'));
   assert.match(css, /\.chart-risk-row \{ flex-direction: column/);
   assert.match(css, /\.chart-risk-row strong \{ white-space: normal; overflow-wrap: anywhere/);
+});
+
+test('compact chart removes only the requested explanations and keeps session, risk and approval states', () => {
+  const chartHtml = html.slice(html.indexOf('<section id="chart-indicator-status"'),
+    html.indexOf('<div class="single-chart-oscillators"'));
+  assert.ok(chartHtml.includes('id="chart-status-context"'));
+  assert.ok(chartHtml.includes('id="chart-status-rows"'));
+  assert.doesNotMatch(chartHtml, /chart-status-note|Component directions and alignment/);
+  assert.match(html, /id="market-map-risk-reason"/);
+  assert.match(html, /id="trade-finalizer-panel"/);
+  assert.match(html, /app\.js\?v=118/);
+  for (const change of [() => {}, x => { x.sessionOpen = false; },
+    x => { x.prime.checks[0].ok = false; },
+    x => { x.risk = { ready: true, quality: 'BLOCK', reasons: ['Risk veto'] }; },
+    x => { x.replay = true; x.sessionOpen = false; }]) {
+    const input = sample(); change(input);
+    const expected = riskMapDisplay(input), p = panels(input);
+    const before = JSON.stringify(p.state);
+    p.render();
+    assert.equal(JSON.stringify(p.state), before, 'Presentation cannot change any trade/risk state');
+    assert.equal(p.row('Risk reason'), undefined);
+    assert.ok(p.nodes.get('#chart-status-rows').children.every(child => child.tagName === 'div'),
+      'No appended explanatory paragraph, including after another render');
+    assert.equal(p.row('Risk Engine'), expected.status);
+    assert.equal(p.row('Trade approval'), expected.plan ? 'CONFIRMED' : 'WAIT · NOT APPROVED');
+    assert.equal(p.row('Entry'), expected.plan ? '100.00' : '—');
+    assert.equal(p.nodes.get('#chart-status-context').textContent, input.replay
+      ? 'Replay · completed candle' : input.sessionOpen
+        ? 'Completed candle · 3m' : 'Market closed · last session · 3m');
+    assert.equal(p.nodes.get('#market-map-risk-reason').textContent, expected.reason);
+  }
 });

@@ -13698,7 +13698,6 @@
         ['Active groups', groupCoverage],
         ['Trade approval', plan ? 'CONFIRMED' : 'WAIT · NOT APPROVED'],
         ['Risk Engine', riskDisplay.status],
-        ['Risk reason', riskDisplay.reason],
         ['Stop distance', riskDisplay.analysis ? fmt(riskDisplay.analysis.risk) + ' pts' : '—'],
         ['Target 1 R/R', riskDisplay.analysis ? '1 : ' + riskDisplay.analysis.rr1.toFixed(2) : '—'],
         ['Entry', primeFinite(plan?.entry) ? fmt(plan.entry) : '—'],
@@ -13717,7 +13716,7 @@
           { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
       for (const [name, value] of confirmationRows) {
         const row = document.createElement('div');
-        row.className = 'chart-status-row' + (['Risk Engine', 'Risk reason', 'Directional votes',
+        row.className = 'chart-status-row' + (['Risk Engine', 'Directional votes',
           'Active groups', 'Trade approval'].includes(name)
           ? ' chart-risk-row' : '');
         const label = document.createElement('span');
@@ -13728,11 +13727,6 @@
         row.append(label, valueEl);
         fragment.append(row);
       }
-      const explanation = document.createElement('p');
-      explanation.textContent = finalizer?.reasons?.length
-        ? finalizer.reasons.slice(0, 2).join(' · ')
-        : result?.reason || 'Waiting for confirmed setup';
-      fragment.append(explanation);
       panel.replaceChildren(fragment);
     }
 
