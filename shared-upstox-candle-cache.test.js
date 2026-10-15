@@ -18,7 +18,7 @@ const limited = seconds => new Response('{}', { status: 429, headers: { 'retry-a
 
 function fixture(fetcher, options = {}) {
   let clock = Date.parse('2026-10-09T09:30:00+05:30');
-  const entries = new Map(), writes = [], calls = [];
+  const entries = new Map(), writes = [], cooldownWrites = [], calls = [];
   const cache = {
     async match(request) {
       if (options.readFails) throw new Error('Optional cache read failed');
@@ -28,7 +28,8 @@ function fixture(fetcher, options = {}) {
     async put(request, response) {
       if (options.writeFails) throw new Error('Optional cache write failed');
       const seconds = Number(response.headers.get('cache-control').match(/s-maxage=(\d+)/)[1]);
-      writes.push({ url: request.url, response: response.clone(), seconds });
+      const target = request.url.includes('/__smrt_upstox_cooldown/') ? cooldownWrites : writes;
+      target.push({ url: request.url, response: response.clone(), seconds });
       entries.set(request.url, { response: response.clone(), until: clock + seconds * 1000 });
     }
   };
@@ -42,7 +43,7 @@ function fixture(fetcher, options = {}) {
     vm.runInContext(source.slice(start, end) + '\nthis.get = upstoxFetch;', context);
     return context.get;
   };
-  return { instance, calls, entries, writes, cache, now: () => clock,
+  return { instance, calls, entries, writes, cooldownWrites, cache, now: () => clock,
     advance: ms => { clock += ms; } };
 }
 
@@ -154,6 +155,115 @@ test('minute and hourly multi-day warm-up ranges use the same bounded five-minut
     f.advance(1);
     assert.equal((await f.instance()(range(unit), 'credential')).data.candles[0][4], 22002);
   }
+});
+
+test('separate Workers honor one shared cooldown across instruments, timeframes and candle boundaries', async () => {
+  const f = fixture((_url, _request, call) => call === 1 ? limited(254) : ok(body(22002)));
+  await assert.rejects(f.instance()(intraday(), 'credential'), error => error.retryAfterMs === 254000);
+  assert.equal(f.cooldownWrites.length, 1);
+  assert.equal(f.writes.length, 0, 'A retry deadline is not market data');
+  const write = f.cooldownWrites[0];
+  assert.equal(write.url.includes('credential'), false);
+  assert.equal(write.response.headers.has('authorization'), false);
+  assert.equal(await write.response.clone().text(), '');
+  f.advance(180000);
+  await assert.rejects(f.instance()(intraday(15).replace('NIFTY', 'BANKNIFTY'), 'credential'),
+    error => error.status === 429 && error.rateLimited && error.retryAfterMs === 74000);
+  f.advance(73999);
+  await assert.rejects(f.instance()(intraday(5), 'credential'));
+  assert.equal(f.calls.length, 1, 'No second provider request before the original deadline');
+  f.advance(1);
+  assert.equal((await f.instance()(intraday(), 'credential')).data.candles[0][4], 22002);
+  assert.equal(f.calls.length, 2);
+});
+
+test('shared cooldowns isolate credentials and quote/history/intraday APIs', async () => {
+  const quote = key => 'https://api.upstox.com/v3/market-quote/quotes?instrument_key=' + key;
+  const f = fixture((_url, _request, call) => call === 1 ? limited(120) : ok(body(22000)));
+  await assert.rejects(f.instance()(quote('NIFTY'), 'credential-A'));
+  await assert.rejects(f.instance()(quote('BANKNIFTY'), 'credential-A'),
+    error => error.retryAfterMs === 120000);
+  await f.instance()(quote('NIFTY'), 'credential-B');
+  await f.instance()(intraday(), 'credential-A');
+  await f.instance()(range('minutes'), 'credential-A');
+  assert.equal(f.calls.length, 4);
+});
+
+test('shared cooldown reads do not renew the deadline or lose it when cache becomes unavailable', async () => {
+  const options = {};
+  const f = fixture((_url, _request, call) => call === 1 ? limited(120) : ok(body(22000)), options);
+  await assert.rejects(f.instance()(intraday(), 'credential'));
+  const second = f.instance();
+  f.advance(10000);
+  await assert.rejects(second(intraday(5), 'credential'), error => error.retryAfterMs === 110000);
+  assert.equal(f.cooldownWrites.length, 1, 'A read must never restart Retry-After');
+  options.readFails = true;
+  f.advance(10000);
+  await assert.rejects(second(intraday(15), 'credential'), error => error.retryAfterMs === 100000);
+  assert.equal(f.calls.length, 1, 'Keep the locally learned deadline if coordination fails');
+});
+
+test('an already visible longer shared deadline cannot be shortened by a late shorter 429', async () => {
+  let complete, started;
+  const began = new Promise(resolve => { started = resolve; });
+  const f = fixture(url => url === intraday(5)
+    ? new Promise(resolve => { complete = resolve; started(); }) : limited(300));
+  const slow = f.instance()(intraday(5), 'credential');
+  const slowCheck = assert.rejects(slow, error => error.retryAfterMs === 300000);
+  await began;
+  await assert.rejects(f.instance()(intraday(), 'credential'));
+  complete(limited(10));
+  await slowCheck;
+  await assert.rejects(f.instance()(intraday(15), 'credential'), error => error.retryAfterMs === 300000);
+  assert.equal(f.calls.length, 2);
+});
+
+test('fractional shared retry expiry uses the absolute deadline, not rounded cache TTL', async () => {
+  const f = fixture((_url, _request, call) => call === 1 ? limited(1.001) : ok(body(22000)));
+  await assert.rejects(f.instance()(intraday(), 'credential'));
+  assert.equal(f.cooldownWrites[0].seconds, 2);
+  f.advance(1000);
+  await assert.rejects(f.instance()(intraday(), 'credential'));
+  assert.equal(f.calls.length, 1);
+  f.advance(1);
+  await f.instance()(intraday(), 'credential');
+  assert.equal(f.calls.length, 2, 'Do not wait an extra second or fallback minute');
+});
+
+test('a session close cannot reset a shared provider cooldown', async () => {
+  const f = fixture(() => limited(120));
+  f.advance(6 * 3600000 - 1000); // 15:29:59 IST.
+  await assert.rejects(f.instance()(intraday(), 'credential'));
+  f.advance(60000);
+  await assert.rejects(f.instance()(intraday(5), 'credential'), error => error.retryAfterMs === 60000);
+  assert.equal(f.calls.length, 1);
+});
+
+test('only an unexpired genuine cache hit may be reused while its API is cooling down', async () => {
+  const f = fixture((_url, _request, call) => call === 1 ? ok(body(22000)) : limited(120));
+  await f.instance()(intraday(), 'credential');
+  await assert.rejects(f.instance()(intraday(5), 'credential'));
+  assert.equal((await f.instance()(intraday(), 'credential')).data.candles[0][4], 22000);
+  f.advance(30000);
+  await assert.rejects(f.instance()(intraday(), 'credential'), error => error.retryAfterMs === 90000);
+  assert.equal(f.calls.length, 2, 'Fresh reuse must not extend TTL or retry the provider');
+});
+
+test('optional coordination failures preserve local cooldown and non-429 failures publish no deadline', async () => {
+  for (const options of [{ disabled: true }, { readFails: true }, { writeFails: true }]) {
+    const f = fixture(() => limited(60), options);
+    const instance = f.instance();
+    await assert.rejects(instance(intraday(), 'credential'));
+    f.advance(10000);
+    await assert.rejects(instance(intraday(5), 'credential'), error => error.retryAfterMs === 50000);
+    assert.equal(f.calls.length, 1);
+  }
+  const f = fixture((_url, _request, call) => call === 1
+    ? new Response('{}', { status: 401 }) : ok(body(22000)));
+  await assert.rejects(f.instance()(intraday(), 'credential'), error => error.status === 401);
+  await f.instance()(intraday(), 'credential');
+  assert.equal(f.cooldownWrites.length, 0);
+  assert.equal(f.calls.length, 2);
 });
 
 test('real main-chart and MTF routes reuse one intraday fetch across separate Workers', async t => {

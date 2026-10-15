@@ -39,6 +39,7 @@ function installCache(t, getClock, enabled = true) {
   const prior = Object.getOwnPropertyDescriptor(globalThis, 'caches');
   const entries = new Map();
   const writes = [];
+  const cooldownWrites = [];
   const cache = {
     async match(request) {
       const entry = entries.get(request.url);
@@ -46,7 +47,8 @@ function installCache(t, getClock, enabled = true) {
     },
     async put(request, response) {
       const seconds = Number(response.headers.get('cache-control').match(/s-maxage=(\d+)/)[1]);
-      writes.push({ url: request.url, seconds });
+      const target = request.url.includes('/__smrt_upstox_cooldown/') ? cooldownWrites : writes;
+      target.push({ url: request.url, seconds });
       entries.set(request.url, { response: response.clone(),
         until: getClock() + seconds * 1000 });
     }
@@ -57,7 +59,7 @@ function installCache(t, getClock, enabled = true) {
     if (prior) Object.defineProperty(globalThis, 'caches', prior);
     else delete globalThis.caches;
   });
-  return { entries, writes };
+  return { entries, writes, cooldownWrites };
 }
 
 async function request(worker, url, withContext = false) {
@@ -132,12 +134,16 @@ test('primary intraday 429 still stops fallbacks, returns no candles, and honors
   assert.deepEqual(first.body.candles, []);
   assert.equal(first.body.retryAfterMs, 120000);
   clock += 119999;
-  const next = await request(worker, historyURL);
+  const next = await request(await freshWorker(), historyURL);
   assert.equal(next.response.status, 429);
+  assert.equal(next.body.retryAfterMs, 1000);
+  assert.equal(next.body.live, false);
+  assert.deepEqual(next.body.candles, []);
   assert.equal(calls, 1, 'No historical/date/timeframe fallback after primary 429');
   assert.equal(cache.writes.length, 0);
+  assert.equal(cache.cooldownWrites.length, 1, 'Only retry metadata is shared, not an error or candles');
   clock += 1;
-  await request(worker, historyURL);
+  await request(await freshWorker(), historyURL);
   assert.equal(calls, 2);
 });
 
@@ -185,7 +191,13 @@ test('edge expiry followed by provider 429 never resurrects the expired quote', 
   assert.equal(result.body.price, undefined);
   assert.equal(result.body.retryAfterMs, 120000);
   assert.equal(cache.writes.length, 1);
-  await request(worker, quoteURL);
+  assert.equal(cache.cooldownWrites.length, 1);
+  clock += 10000;
+  const blocked = await request(await freshWorker(), quoteURL);
+  assert.equal(blocked.response.status, 429);
+  assert.equal(blocked.body.live, false);
+  assert.equal(blocked.body.price, undefined);
+  assert.equal(blocked.body.retryAfterMs, 110000);
   assert.equal(calls, 2, 'No fallback or early retry after quote 429');
 });
 
