@@ -13,7 +13,7 @@
 // ============================================================
 
 const finite = value =>
-  Number.isFinite(Number(value));
+  value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 
 const num = value =>
   finite(value) ? Number(value) : NaN;
@@ -48,12 +48,14 @@ const neutral = (value = null, reason = '') => ({
 
 const validCandles = candles =>
   Array.isArray(candles)
-    ? candles.filter(c =>
+    ? (candles.every(c =>
         finite(c?.open) &&
         finite(c?.high) &&
         finite(c?.low) &&
-        finite(c?.close)
-      )
+        finite(c?.close) &&
+        Number(c.high) >= Math.max(Number(c.open), Number(c.close)) &&
+        Number(c.low) <= Math.min(Number(c.open), Number(c.close))
+      ) ? candles : [])
     : [];
 
 const closes = candles =>

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { riskMapDisplay } from './risk-map-display.js';
 import { analyseAllIndicators } from './smrt-all-indicators.js';
+import { extendedIndicators, sessionPivots, completeSessionWindow } from './extended-indicators.js';
 
 const time = Date.parse('2026-10-13T10:00:00+05:30') / 1000;
 function sample(side = 1) {
@@ -149,7 +150,7 @@ function panels(input) {
     tradeFinalizer: input.finalizer, liveTradeFinalizer: input.finalizer,
     primeMarket: input.prime, allIndicatorsConsensus: input.consensus,
     riskEngine: input.risk, feedStatus: 'LIVE' };
-  const context = vm.createContext({ state, intervals: { '3m': 180 },
+  const context = vm.createContext({ state, extendedIndicators, sessionPivots, completeSessionWindow, intervals: { '3m': 180 },
     Date: class extends Date { static now() { return (time + 180) * 1000; } },
     $: selector => { if (!nodes.has(selector)) nodes.set(selector, node()); return nodes.get(selector); },
     document: { createElement: node, createDocumentFragment: node },
@@ -166,6 +167,22 @@ function panels(input) {
     row: label => nodes.get('#chart-status-rows').children.find(row =>
       row.children[0]?.textContent === label)?.children[1]?.textContent };
 }
+
+test('extended Market Map readouts ignore a forming spike and clear when data disappears', () => {
+  const f = panels(sample());
+  f.state.data = Array.from({ length: 30 }, (_, i) => ({
+    time: time - (29 - i) * 180, open: 100, high: 102, low: 98, close: 100
+  }));
+  f.state.data.push({ time: time + 180, open: 100, high: 10000, low: 1, close: 9999 });
+  f.render();
+  assert.equal(f.nodes.get('#market-map-keltner').textContent, '92.00 / 100.00 / 108.00');
+  assert.equal(f.nodes.get('#market-map-cci').textContent, '0.0');
+  assert.equal(f.nodes.get('#market-map-mfi').textContent, 'VOLUME UNAVAILABLE');
+  f.state.marketMap = null;
+  f.render();
+  assert.equal(f.nodes.get('#market-map-keltner').textContent, 'WARMING UP');
+  assert.equal(f.nodes.get('#market-map-pivots').textContent, 'WARMING UP');
+});
 
 test('actual chart box and Market Map render the same confirmed BUY / SELL risk', () => {
   for (const side of [1, -1]) {
