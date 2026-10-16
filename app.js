@@ -61,7 +61,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=8';
+    } from './market.js?v=9';
 
 
     const advancedIndicatorCache = createClosedIndicatorCache(analyseAdvancedIndicators);
@@ -2885,8 +2885,19 @@
 
     function setFeedStatus(
       status,
-      message = ''
+      message = '',
+      retry = null
     ) {
+
+      // Display-only absolute deadline: never renew a broker wait or make a
+      // request from the countdown. A fresh feed status clears old retry text.
+      state.feedRetry = retry;
+      if (retry) {
+        const remaining = Math.max(0, retry.until - Date.now());
+        message = retry.reason + (remaining > 0
+          ? ' · retrying in ' + Math.ceil(remaining / 1000) + 's'
+          : ' · retry pending') + (retry.suffix || '');
+      }
 
       state.feedStatus =
         status;
@@ -2993,6 +3004,13 @@
 
       el.textContent =
         message || status;
+    }
+
+    function refreshFeedRetryCountdown() {
+      if (document.hidden || state.replay?.active ||
+          state.feedStatus !== 'RECONNECTING' || !state.feedRetry) return;
+      // Do not update LIVE/FALLBACK timestamps: only real data updates do that.
+      setFeedStatus(state.feedStatus, '', state.feedRetry);
     }
 
 
@@ -9117,7 +9135,7 @@
     }
 
 
-    function scheduleReconnect(retryAfterMs = 0) {
+    function scheduleReconnect(retryAfterMs = 0, reason = 'Connection retry pending') {
 
       if (
         state.replay.active
@@ -9142,12 +9160,8 @@
 
       setFeedStatus(
         'RECONNECTING',
-        'Upstox cooling down · retrying in ' +
-        Math.ceil(
-          delay /
-          1000
-        ) +
-        's'
+        '',
+        { until: Date.now() + delay, reason }
       );
 
 
@@ -9273,7 +9287,12 @@
             ? 'Candle history cooldown · retrying in ' +
               Math.ceil((remaining || error.retryAfterMs || 0) / 1000) +
               's · quote feed preserved'
-            : 'Candle history retry pending · quote feed preserved');
+            : 'Candle history retry pending · quote feed preserved',
+          isUpstoxRateLimit(error) ? {
+            until: Date.now() + (remaining || error.retryAfterMs || 0),
+            reason: error.message || 'Candle history cooldown',
+            suffix: ' · quote feed preserved'
+          } : null);
         // Keep real candles and the existing quote subscription. The adapter
         // enforces history Retry-After; the normal timer retries only when due.
         // Existing session, freshness, AI and risk checks remain unchanged.
@@ -9976,7 +9995,12 @@
                       Math.ceil((error.retryAfterMs || 0) / 1000) +
                       's · chart preserved'
                     : 'Live quote retrying · chart preserved'
-                  : ''
+                  : '',
+                isUpstoxRateLimit(error) ? {
+                  until: Date.now() + (error.retryAfterMs || 0),
+                  reason: error.message || 'Upstox quote cooldown',
+                  suffix: ' · chart preserved'
+                } : null
               );
             }
           );
@@ -10017,7 +10041,7 @@
         );
 
 
-        scheduleReconnect(error?.retryAfterMs);
+        scheduleReconnect(error?.retryAfterMs, error?.message || 'Connection retry pending');
       } finally {
         if (fullHistoryRequest === id) fullHistoryRequest = null;
       }
@@ -10223,11 +10247,13 @@
     // Check the clock, not the broker, each second. Fetch once just after
     // candle close instead of repeatedly fetching the same bar every 30s.
     historyRefreshTimer = setInterval(() => {
+      refreshFeedRetryCountdown();
       runScheduledCandleRefresh().catch(error => {
         console.warn('Periodic candle history refresh failed:', error);
       });
     }, 1000);
     document.addEventListener('visibilitychange', () => {
+      refreshFeedRetryCountdown();
       if (!document.hidden) runScheduledCandleRefresh().catch(error => {
         console.warn('Resumed candle history refresh failed:', error);
       });

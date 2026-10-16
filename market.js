@@ -3,6 +3,7 @@ import { isNseIntradayTime } from './nse-candle-time.js';
 // Upstox endpoints are throttled independently so a quote 429 does not
 // freeze history/profile flows, and a history 429 does not stop live quotes.
 const upstoxRetryAtByScope = new Map();
+const upstoxRetryReasonByScope = new Map();
 const UPSTOX_RETRY_FLOORS = {
   quote: 15000,
   history: 30000,
@@ -32,17 +33,19 @@ export function upstoxCooldownRemaining(scope) {
   return Math.max(0, retryAt - Date.now());
 }
 
-export function noteUpstoxRateLimit(retryAfterMs, scope = 'default') {
+export function noteUpstoxRateLimit(retryAfterMs, scope = 'default', reason = '') {
   const key = upstoxScope(scope);
   const providedDelay = Number(retryAfterMs);
   // The server may return the last few seconds of an existing cooldown.
   // Only use the scope fallback when no usable retry duration is supplied.
   const delay = Number.isFinite(providedDelay) && providedDelay > 0
     ? Math.max(1000, providedDelay) : upstoxRetryFloor(key);
-  const retryAt = Math.max(
-    upstoxRetryAtByScope.get(key) || 0,
-    Date.now() + delay
-  );
+  const existing = upstoxRetryAtByScope.get(key) || 0;
+  const proposed = Date.now() + delay;
+  const retryAt = Math.max(existing, proposed);
+  if (proposed >= existing) {
+    upstoxRetryReasonByScope.set(key, typeof reason === 'string' ? reason : '');
+  }
   upstoxRetryAtByScope.set(key, retryAt);
   return Math.max(0, retryAt - Date.now());
 }
@@ -64,7 +67,8 @@ function parseRetryAfterMs(response, body = {}) {
 }
 
 function marketRateLimitError(scope = 'default') {
-  const error = new Error('Upstox rate limit reached. Waiting before retry.');
+  const error = new Error(upstoxRetryReasonByScope.get(upstoxScope(scope)) ||
+    'Upstox rate limit reached. Waiting before retry.');
   error.status = 429;
   error.rateLimited = true;
   error.scope = upstoxScope(scope);
@@ -77,7 +81,7 @@ export async function upstoxRequest(url, options = {}, scope = 'default') {
   if (response.status === 429) {
     const body = await response.clone().json().catch(() => ({}));
     const delay = parseRetryAfterMs(response, body);
-    noteUpstoxRateLimit(delay, scope);
+    noteUpstoxRateLimit(delay, scope, body.reason);
     throw marketRateLimitError(scope);
   }
   return response;

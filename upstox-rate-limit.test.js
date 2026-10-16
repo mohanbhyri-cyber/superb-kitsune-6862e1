@@ -396,6 +396,7 @@ test('periodic history refresh skips cooldown, reconnect, hidden and in-flight s
     Date: { now: () => Date.parse('2026-10-09T12:06:02+05:30') },
     document: { hidden: false, addEventListener() {} },
     historyRefreshInFlight: false, reconnectTimer: null,
+    refreshFeedRetryCountdown() {},
     isNseCashMarketOpen: () => true,
     upstoxCooldownRemaining: scope => { assert.equal(scope, 'history'); return remaining; },
     setInterval: (callback, ms) => { assert.equal(ms, 1000); tick = callback; return 1; },
@@ -416,6 +417,62 @@ test('periodic history refresh skips cooldown, reconnect, hidden and in-flight s
 });
 
 let fullWorkerFixtureId = 0;
+
+test('client preserves the real app-owned pause reason during locally blocked retries', async () => {
+  const reason = 'One-time feed migration safety pause. Existing broker allowances are being preserved.';
+  const f = marketFixture(() => new Response(JSON.stringify({ retryAfterMs: 5000, reason }), { status: 429 }));
+  await assert.rejects(f.upstoxRequest('/api/fixture', {}, 'history'), error =>
+    error.message === reason && error.retryAfterMs === 5000);
+  f.advance(3000);
+  await assert.rejects(f.upstoxRequest('/api/fixture', {}, 'history'), error =>
+    error.message === reason && error.retryAfterMs === 2000);
+  assert.equal(f.calls.length, 1, 'Showing the reason must not retry early');
+  assert.equal(f.upstoxCooldownRemaining('quote'), 0);
+});
+
+test('a shorter concurrent cooldown cannot replace the controlling deadline or its reason', async () => {
+  const f = marketFixture(() => ok({}));
+  f.noteUpstoxRateLimit(10000, 'history', 'Long provider cooldown');
+  f.advance(1000);
+  f.noteUpstoxRateLimit(1000, 'history', 'Shorter wait');
+  await assert.rejects(f.upstoxRequest('/api/fixture', {}, 'history'), error =>
+    error.message === 'Long provider cooldown' && error.retryAfterMs === 9000);
+  f.advance(9000);
+  f.noteUpstoxRateLimit(1000, 'history');
+  await assert.rejects(f.upstoxRequest('/api/fixture', {}, 'history'), error =>
+    /Upstox rate limit reached/.test(error.message) && error.retryAfterMs === 1000);
+  assert.equal(f.calls.length, 0);
+});
+
+test('reconnect display counts down without triggering or rescheduling the actual retry', async () => {
+  let clock = now;
+  let loads = 0;
+  const timers = [];
+  const statuses = [];
+  const context = vm.createContext({
+    state: { replay: { active: false } }, reconnectTimer: null, reconnectAttempts: 0,
+    Date: { now: () => clock }, clearTimeout() {},
+    setTimeout: (callback, delay) => { timers.push({ callback, delay }); return timers.length; },
+    setFeedStatus: (...args) => statuses.push(args),
+    loadData: async () => { loads++; }
+  });
+  const start = appSource.indexOf('    function scheduleReconnect(');
+  const end = appSource.indexOf('    /*', start);
+  assert.ok(start >= 0 && end > start);
+  vm.runInContext(appSource.slice(start, end), context);
+  vm.runInContext("scheduleReconnect(60000, 'One-time feed migration safety pause.')", context);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 60000);
+  assert.equal(statuses[0][2].until, now + 60000);
+  assert.equal(statuses[0][2].reason, 'One-time feed migration safety pause.');
+  assert.equal(loads, 0);
+  clock += 60000;
+  timers[0].callback();
+  assert.equal(loads, 1);
+  context.state.replay.active = true;
+  vm.runInContext('scheduleReconnect(1000)', context);
+  assert.equal(timers.length, 1);
+});
 
 test('actual Worker reuses warm-up data while fresh intraday candles override cached overlaps', async t => {
   let clock = now;

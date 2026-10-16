@@ -30,18 +30,20 @@ function controls() {
 }
 
 function status(includeFooter = true) {
+  let clock = 100000;
   const state = {};
   const el = { textContent: '' };
   const header = { textContent: '', title: '', dataset: {} };
-  const context = { state, $: selector => {
+  const context = { state, Date: { now: () => clock }, document: { hidden: false }, $: selector => {
     if (selector === '#header-feed-status') return header;
     assert.equal(selector, '#updated'); return includeFooter ? el : null;
   },
     formatISTTime: () => '12:00:00' };
   const start = app.indexOf('    function setFeedStatus(');
   const end = app.indexOf('    function renderWatch()', start);
-  vm.runInNewContext(app.slice(start, end) + '\nthis.set = setFeedStatus;', context);
-  return { state, el, header, set: context.set };
+  vm.runInNewContext(app.slice(start, end) + '\nthis.set = setFeedStatus; this.tick = refreshFeedRetryCountdown;', context);
+  return { state, el, header, set: context.set, tick: context.tick, document: context.document,
+    advance: ms => { clock += ms; } };
 }
 
 function watchDisplay(price) {
@@ -193,6 +195,63 @@ test('app imports the diagnostic helper with a fresh cache key and uses the same
   assert.ok(app.includes('liveCandleBucket(tick, seconds, quoteNow)'));
   assert.ok(app.includes('liveCandleRejectionReason(tick, seconds, quoteNow)'));
   const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  assert.ok(index.includes('app.js?v=118'));
-  assert.ok(app.includes("'./market.js?v=8'"));
+  assert.ok(index.includes('app.js?v=119'));
+  assert.ok(app.includes("'./market.js?v=9'"));
+});
+
+test('retry countdown decreases locally without renewing the original deadline', () => {
+  const f = status();
+  const retry = { until: 105000, reason: 'One-time feed migration safety pause.', suffix: ' · chart preserved' };
+  f.set('RECONNECTING', '', retry);
+  assert.match(f.el.textContent, /migration safety pause.*retrying in 5s.*chart preserved/);
+  f.advance(2200); f.tick();
+  assert.match(f.el.textContent, /retrying in 3s/);
+  assert.equal(f.state.feedRetry.until, 105000);
+  assert.match(f.header.title, /migration safety pause.*3s/);
+  f.advance(2800); f.tick();
+  assert.match(f.el.textContent, /retry pending/);
+  assert.doesNotMatch(f.el.textContent, /0s|LIVE|cooling down/);
+});
+
+test('hidden countdown catches up on visibility without replay mutations', () => {
+  const f = status();
+  f.set('RECONNECTING', '', { until: 110000, reason: 'Provider rate limit' });
+  f.document.hidden = true;
+  f.advance(6000); f.tick();
+  assert.match(f.el.textContent, /10s/);
+  f.document.hidden = false; f.tick();
+  assert.match(f.el.textContent, /4s/);
+  f.state.replay = { active: true };
+  f.advance(3000); f.tick();
+  assert.match(f.el.textContent, /4s/);
+});
+
+test('recovered, closed and replay states clear old retry details', () => {
+  for (const next of ['LIVE', 'FALLBACK', 'CLOSED', 'REPLAY', 'LOADING']) {
+    const f = status();
+    f.set('RECONNECTING', '', { until: 110000, reason: 'Provider rate limit' });
+    f.set(next);
+    const text = f.el.textContent;
+    f.advance(10000); f.tick();
+    assert.equal(f.el.textContent, text);
+    assert.equal(f.state.feedRetry, null);
+    assert.equal(f.header.title, '');
+  }
+});
+
+test('countdown cannot advance the LIVE or FALLBACK last-update clock', () => {
+  for (const next of ['LIVE', 'FALLBACK']) {
+    const f = status();
+    f.set(next, 'Quotes updating · history retry pending');
+    const text = f.el.textContent;
+    f.advance(20000); f.tick();
+    assert.equal(f.el.textContent, text);
+  }
+});
+
+test('header countdown still updates without the footer', () => {
+  const f = status(false);
+  f.set('RECONNECTING', '', { until: 110000, reason: 'Provider rate limit' });
+  f.advance(4000); f.tick();
+  assert.match(f.header.title, /6s/);
 });

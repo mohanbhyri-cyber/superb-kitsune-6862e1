@@ -36,7 +36,7 @@ function fixture(fetchHistory) {
   const context = vm.createContext({
     state, request: 7, loadedHistoryKey: 'NIFTY:3m', fullHistoryRequest: null,
     historyRefreshInFlight: false, liveQuoteVersion: 0, historyRefreshWarning: '',
-    reconnectTimer: null,
+    reconnectTimer: null, refreshFeedRetryCountdown() {},
     historyRefreshSchedule,
     intervals: { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600 },
     document: { hidden: false }, Date: { now: () => clock * 1000 },
