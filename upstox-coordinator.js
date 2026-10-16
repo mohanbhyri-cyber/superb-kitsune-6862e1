@@ -1,4 +1,4 @@
-import { upstoxCredentialDigest } from './upstox-coordinator-client.js';
+import { upstoxCredentialDigest, UpstoxCoordinatorError, coordinatorDiagnosticReason } from './upstox-coordinator-client.js';
 
 // Conservative app-owned budgets, below the documented Standard API ceilings
 // of 50/s, 500/min and 2000/30min. Other apps using the same account are NOT
@@ -45,7 +45,7 @@ function validBudgetState(value) {
       !Number.isFinite(value.retryAt) || value.retryAt < 0 ||
       typeof value.inProgress !== 'boolean' ||
       value.times.some((time, i) => !Number.isFinite(time) || time < 0 || (i > 0 && time < value.times[i - 1]))) {
-    throw new Error('Invalid coordinator state');
+    throw new UpstoxCoordinatorError('COORDINATOR_STATE_INVALID');
   }
   return value;
 }
@@ -86,10 +86,20 @@ export class UpstoxCoordinator {
         'One-time feed migration safety pause. Existing broker allowances are being preserved.',
         Math.max(1000, startupUntil - Date.now())));
       return response(await this.dispatch(endpoint, token, input.credential));
-    } catch {
+    } catch (error) {
       // No raw provider body, URL, credentials or storage details in failures.
-      return response(failure(503, 'Upstox coordinator unavailable. No direct retry was made.'));
+      return response(failure(503, coordinatorDiagnosticReason(error)));
     }
+  }
+
+  async readSafetyState(key) {
+    try { return await this.storage.get(key); }
+    catch { throw new UpstoxCoordinatorError('COORDINATOR_STORAGE_READ_FAILED'); }
+  }
+
+  async writeSafetyState(key, value) {
+    try { await this.storage.put(key, value); }
+    catch { throw new UpstoxCoordinatorError('COORDINATOR_STORAGE_WRITE_FAILED'); }
   }
 
   startupDeadline() {
@@ -103,15 +113,15 @@ export class UpstoxCoordinator {
   async readStartupDeadline() {
     const configured = this.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS;
     if (configured !== undefined && (typeof configured !== 'string' || !/^\d+$/.test(configured) ||
-        Number(configured) < 1000 || Number(configured) > 1800000)) throw new Error('Invalid startup pause');
-    const stored = await this.storage.get('startup:v1');
+        Number(configured) < 1000 || Number(configured) > 1800000)) throw new UpstoxCoordinatorError('COORDINATOR_STARTUP_CONFIG_INVALID');
+    const stored = await this.readSafetyState('startup:v1');
     if (stored !== undefined) {
-      if (!stored || !Number.isFinite(stored.until) || stored.until < 0) throw new Error('Invalid startup deadline');
+      if (!stored || !Number.isFinite(stored.until) || stored.until < 0) throw new UpstoxCoordinatorError('COORDINATOR_STARTUP_STATE_INVALID');
       return stored.until;
     }
     if (configured === undefined) return 0;
     const until = Date.now() + Number(configured);
-    await this.storage.put('startup:v1', { until });
+    await this.writeSafetyState('startup:v1', { until });
     return until;
   }
 
@@ -179,14 +189,14 @@ export class UpstoxCoordinator {
     const cached = this.cached(key);
     if (cached) return cached;
     const stateKey = 'budget:v1:' + scope;
-    const state = validBudgetState(await this.storage.get(stateKey));
+    const state = validBudgetState(await this.readSafetyState(stateKey));
     const now = Date.now();
     // If the object stopped after dispatch but before its result was saved,
     // the broker's actual outcome/deadline is unknown. Fail closed for operator
     // investigation instead of treating a restart as permission to retry.
-    if (state.inProgress) throw new Error('Uncertain prior provider attempt');
+    if (state.inProgress) throw new UpstoxCoordinatorError('COORDINATOR_PRIOR_OUTCOME_UNKNOWN');
     // A server-clock rollback must not erase an already reserved request.
-    if (state.times.some(time => time > now)) throw new Error('Clock moved backwards');
+    if (state.times.some(time => time > now)) throw new UpstoxCoordinatorError('COORDINATOR_CLOCK_ROLLBACK');
     const times = state.times.filter(time => time > now - 1800000);
     let retryAt = state.retryAt;
     for (const budget of UPSTOX_APP_BUDGETS) {
@@ -199,7 +209,7 @@ export class UpstoxCoordinator {
     // Persist the reservation BEFORE dispatch, including failed/timed-out
     // attempts. A restart cannot reset the rolling budget or Retry-After.
     times.push(now);
-    await this.storage.put(stateKey, { times, retryAt: 0, inProgress: true });
+    await this.writeSafetyState(stateKey, { times, retryAt: 0, inProgress: true });
     let provider, body;
     try {
       // workerd supports manual/follow, not the browser/Node redirect:error.
@@ -209,7 +219,7 @@ export class UpstoxCoordinator {
       if (provider.ok) body = await provider.json();
       else await provider.body?.cancel();
     } catch {
-      await this.storage.put(stateKey, { times, retryAt: Date.now() + 60000, inProgress: false });
+      await this.writeSafetyState(stateKey, { times, retryAt: Date.now() + 60000, inProgress: false });
       return failure(503, 'Upstox request failed or timed out. Retry paused.');
     }
     if (provider.status === 429) {
@@ -217,10 +227,10 @@ export class UpstoxCoordinator {
       const delay = header && Number.isFinite(Number(header)) ? Number(header) * 1000
         : header ? Date.parse(header) - Date.now() : 0;
       const until = Date.now() + (Number.isFinite(delay) && delay > 0 ? Math.max(1000, delay) : 60000);
-      await this.storage.put(stateKey, { times, retryAt: Math.max(state.retryAt, until), inProgress: false });
+      await this.writeSafetyState(stateKey, { times, retryAt: Math.max(state.retryAt, until), inProgress: false });
       return failure(429, 'Upstox rate limit reached. Waiting before retry.', Math.max(1000, until - Date.now()));
     }
-    await this.storage.put(stateKey, { times, retryAt: 0, inProgress: false });
+    await this.writeSafetyState(stateKey, { times, retryAt: 0, inProgress: false });
     if (provider.status >= 300 && provider.status < 400) return failure(502, 'Upstox returned an unexpected redirect.');
     if (!provider.ok) return failure(provider.status, 'Upstox returned HTTP ' + provider.status + '.');
     if (body?.status !== undefined && body.status !== 'success') return failure(502, 'Upstox returned an unsuccessful data response.');
