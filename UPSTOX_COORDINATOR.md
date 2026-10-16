@@ -110,6 +110,21 @@ Recovery requires confirming the broker outcome/wait and obtaining operator
 approval before any state repair. No automatic reset or public reset endpoint
 is included. Drain in-flight requests before rollout/rollback where possible.
 
+## Fixed failure categories
+
+Unavailable responses now include a fixed diagnostic category for missing or
+broken bindings, unreadable binding responses, storage read/write failures,
+invalid startup/budget state, clock rollback, and an unknown prior broker
+outcome. Categories come from an allowlist, never raw exception messages,
+tokens, endpoint URLs, stored budget contents or provider response bodies.
+No persistent logging setting or new public inspection/reset route is added.
+
+`COORDINATOR_PRIOR_OUTCOME_UNKNOWN` is a stop condition requiring operator
+investigation, not a new timeout that may be expired or cleared automatically.
+Its stored marker and request reservations remain unchanged through reads,
+restarts and elapsed time. Diagnostic deployment is not permission to reset
+that marker or bypass a possible provider Retry-After.
+
 ## Review and isolated preview
 
 Production uses `worker.coordinator.js` with the new binding and flag; existing

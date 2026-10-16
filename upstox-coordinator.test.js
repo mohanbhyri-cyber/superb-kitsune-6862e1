@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { UpstoxCoordinator, allowedUpstoxEndpoint, UPSTOX_APP_BUDGETS } from './upstox-coordinator.js';
-import { coordinatedUpstoxRequest, upstoxCredentialDigest } from './upstox-coordinator-client.js';
+import { coordinatedUpstoxRequest, upstoxCredentialDigest, UpstoxCoordinatorError,
+  coordinatorDiagnosticReason } from './upstox-coordinator-client.js';
 
 const workerURL = new URL('./worker.js', import.meta.url);
 const workerSource = readFileSync(workerURL, 'utf8');
@@ -454,4 +455,121 @@ test('a binding alone does not enable coordination or change the existing produc
   assert.equal((await response.json()).live, true);
   assert.equal(f.bindings.length, 0);
   assert.equal(f.calls.length, 1);
+});
+
+test('diagnostic distinguishes an unknown outcome without repairing or expiring its marker', async t => {
+  const f = fixture(t);
+  const saved = { times: [f.now() - 1000], retryAt: f.now() + 600000, inProgress: true };
+  f.records.set(f.key(intraday()), saved);
+  for (const advance of [0, 1800001, 86400000]) {
+    f.advance(advance); f.restart();
+    await assert.rejects(f.request(intraday()), e => e.status === 503 &&
+      e.message.includes('[COORDINATOR_PRIOR_OUTCOME_UNKNOWN]'));
+    assert.deepEqual(f.records.get(f.key(intraday())), saved);
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('invalid budget and backwards clock have distinct fixed diagnoses and no state mutation', async t => {
+  const f = fixture(t);
+  for (const [saved, code] of [
+    [{ times: ['not-a-time'], retryAt: 0, inProgress: false }, 'COORDINATOR_STATE_INVALID'],
+    [{ times: [f.now() + 1000], retryAt: 0, inProgress: false }, 'COORDINATOR_CLOCK_ROLLBACK']
+  ]) {
+    f.records.set(f.key(intraday()), saved); f.restart();
+    await assert.rejects(f.request(intraday()), e => e.status === 503 && e.message.includes('[' + code + ']'));
+    assert.deepEqual(f.records.get(f.key(intraday())), saved);
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('startup diagnoses do not replace an existing pause or initialize invalid configuration', async t => {
+  const f = fixture(t);
+  f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = 'invalid';
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STARTUP_CONFIG_INVALID]'));
+  assert.equal(f.records.size, 0);
+  f.env.UPSTOX_COORDINATOR_STARTUP_PAUSE_MS = '1800000';
+  const saved = { until: 'invalid' }; f.records.set('startup:v1', saved); f.restart();
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STARTUP_STATE_INVALID]'));
+  assert.deepEqual(f.records.get('startup:v1'), saved);
+  assert.equal(f.calls.length, 0);
+});
+
+test('storage read and reservation failures report fixed categories with zero provider calls', async t => {
+  const f = fixture(t);
+  f.faults.read = true;
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STORAGE_READ_FAILED]'));
+  f.faults.read = false; f.faults.write = true; f.restart();
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STORAGE_WRITE_FAILED]'));
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.records.size, 0);
+});
+
+test('completion-write diagnostic retains the unknown-outcome marker across restart', async t => {
+  const f = fixture(t, () => limited(3600)); f.faults.failPut = 2;
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STORAGE_WRITE_FAILED]'));
+  const saved = structuredClone(f.records.get(f.key(intraday())));
+  assert.equal(saved.inProgress, true);
+  f.faults.failPut = 0; f.advance(1800001); f.restart();
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_PRIOR_OUTCOME_UNKNOWN]'));
+  assert.deepEqual(f.records.get(f.key(intraday())), saved);
+  assert.equal(f.calls.length, 1, 'No reset, provider probe or shortened unknown cooldown');
+});
+
+test('raw errors and forged diagnostic properties never expose secrets or invent a known diagnosis', async t => {
+  const f = fixture(t);
+  const raw = new Error('private token ' + f.env.UPSTOX_EXTENDED_TOKEN + ' https://private.test/');
+  raw.code = 'COORDINATOR_PRIOR_OUTCOME_UNKNOWN';
+  const safe = coordinatorDiagnosticReason(raw);
+  assert.match(safe, /\[COORDINATOR_UNAVAILABLE\]/);
+  assert.doesNotMatch(safe, /private|fixture-coordinator-secret|PRIOR_OUTCOME_UNKNOWN/);
+  const unknown = new UpstoxCoordinatorError(f.env.UPSTOX_EXTENDED_TOKEN);
+  assert.equal(unknown.code, 'COORDINATOR_UNAVAILABLE');
+  f.storage.get = async () => { throw raw; };
+  await assert.rejects(f.request(intraday()), e => e.message.includes('[COORDINATOR_STORAGE_READ_FAILED]') &&
+    !e.message.includes(f.env.UPSTOX_EXTENDED_TOKEN) && !e.message.includes('private.test'));
+  assert.equal(f.calls.length, 0);
+});
+
+test('binding missing, lookup, request and invalid response are separately diagnosed without raw errors', async t => {
+  const f = fixture(t);
+  const raw = () => { throw new Error('private ' + f.env.UPSTOX_EXTENDED_TOKEN); };
+  for (const [namespace, code] of [
+    [null, 'COORDINATOR_BINDING_MISSING'],
+    [{ idFromName: raw }, 'COORDINATOR_LOOKUP_FAILED'],
+    [{ idFromName: name => name, get: () => ({ fetch: raw }) }, 'COORDINATOR_REQUEST_FAILED'],
+    [{ idFromName: name => name, get: () => ({ fetch: async () => new Response('not-json') }) }, 'COORDINATOR_RESPONSE_INVALID']
+  ]) {
+    await assert.rejects(coordinatedUpstoxRequest(intraday(), f.env.UPSTOX_EXTENDED_TOKEN, namespace),
+      e => e.status === 503 && e.message.includes('[' + code + ']') && !e.message.includes('private'));
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('digest failure stays distinct without exposing the rejected credential value', async t => {
+  const f = fixture(t);
+  const bad = { toString() { throw new Error('private credential details'); } };
+  await assert.rejects(coordinatedUpstoxRequest(intraday(), bad, f.namespace),
+    e => e.status === 503 && e.message.includes('[COORDINATOR_CLIENT_DIGEST_FAILED]') &&
+      !e.message.includes('private credential'));
+  assert.equal(f.bindings.length, 0);
+  assert.equal(f.calls.length, 0);
+});
+
+test('health reports the unknown-outcome diagnosis while token validity remains unknown and no state is reset', async t => {
+  const f = fixture(t);
+  const endpoint = quote('NIFTY');
+  const saved = { times: [f.now() - 1000], retryAt: 0, inProgress: true };
+  f.records.set(f.key(endpoint), saved);
+  const worker = (await loadWorker()).default;
+  const response = await worker.fetch(new Request('https://example.test/api/health'), f.env);
+  const result = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(result.tokenConfigured, true);
+  assert.equal(result.tokenValid, null);
+  assert.equal(result.rateLimited, false);
+  assert.match(result.reason, /\[COORDINATOR_PRIOR_OUTCOME_UNKNOWN\]/);
+  assert.equal(JSON.stringify(result).includes(f.env.UPSTOX_EXTENDED_TOKEN), false);
+  assert.deepEqual(f.records.get(f.key(endpoint)), saved);
+  assert.equal(f.calls.length, 0);
 });
