@@ -1,3 +1,4 @@
+import { extendedIndicators, sessionPivots, completeSessionWindow } from './extended-indicators.js';
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { createClosedIndicatorCache } from './closed-indicator-cache.js?v=1';
@@ -15861,6 +15862,10 @@
       );
 
       if (!map) {
+        for (const name of ['keltner', 'cpr', 'pivots', 'cci', 'aroon', 'choppiness', 'opening-range', 'prev-day']) {
+          set('#market-map-' + name, 'WARMING UP', 'muted');
+        }
+        for (const name of ['mfi', 'cmf', 'obv']) set('#market-map-' + name, 'VOLUME UNAVAILABLE', 'muted');
 
         const unavailableRisk = riskMapDisplay({ sessionOpen: isNseCashMarketOpen(),
           replay: state.replay.active });
@@ -16102,22 +16107,11 @@
 
     // Premium NIFTY filters: informational/risk gates only.
     // They never manufacture a BUY or SELL signal.
-    const closedForPremium =
-      state.data
-        .filter(
-          candle =>
-            candle &&
-            Number.isFinite(Number(candle.time)) &&
-            Number.isFinite(Number(candle.high)) &&
-            Number.isFinite(Number(candle.low)) &&
-            Number.isFinite(Number(candle.close))
-        );
-
-    const latestClosed =
-      closedForPremium.at(-2) ||
-      closedForPremium.at(-1) ||
-      null;
-
+    const premiumSeconds = Number(intervals[state.tf]);
+    const premiumNow = state.replay.active
+      ? Number(state.data.at(-1)?.time) + premiumSeconds : Date.now() / 1000;
+    const closedForPremium = primeClosed(state.data, premiumSeconds, premiumNow).candles;
+    const latestClosed = closedForPremium.at(-1) || null;
     const atrValue =
       primeFinite(map.atr) && Number(map.atr) > 0 ? Number(map.atr) : NaN;
 
@@ -16224,7 +16218,10 @@
           row.minutes < 9 * 60 + 30
       );
 
-    if (openingRows.length) {
+    const openingSeconds = Number(intervals[state.tf]);
+    const openingSupported = openingSeconds > 0 && openingSeconds <= 900 && 900 % openingSeconds === 0;
+    const openingComplete = openingSupported && completeSessionWindow(openingRows, 555, 570, openingSeconds);
+    if (openingComplete) {
       const openingHigh =
         Math.max(
           ...openingRows.map(row => Number(row.candle.high))
@@ -16243,7 +16240,7 @@
     } else {
       set(
         '#market-map-opening-range',
-        '—'
+        openingSupported ? 'WARMING UP' : 'USE 1m / 3m / 5m / 15m'
       );
     }
 
@@ -16277,37 +16274,14 @@
     }
 
     // Extended indicator suite: calculated from confirmed closed candles only.
-    const ext = (() => {
-      const rows = closedForPremium;
-      const n = rows.length;
-      const finite = v => Number.isFinite(Number(v));
-      const sma = (vals, p) => vals.length >= p ? vals.slice(-p).reduce((a,b)=>a+Number(b),0)/p : null;
-      const emaLast = (vals, p) => {
-        if (vals.length < p) return null;
-        const k=2/(p+1); let e=vals.slice(0,p).reduce((a,b)=>a+Number(b),0)/p;
-        for(let i=p;i<vals.length;i++) e=Number(vals[i])*k+e*(1-k);
-        return e;
-      };
-      const tr=[]; for(let i=0;i<n;i++){const c=rows[i],pc=rows[i-1]?.close; tr.push(i?Math.max(c.high-c.low,Math.abs(c.high-pc),Math.abs(c.low-pc)):c.high-c.low);}
-      const atr10=sma(tr,10), atr14=sma(tr,14), closes=rows.map(x=>Number(x.close));
-      const ema20=emaLast(closes,20);
-      const keltner=finite(ema20)&&finite(atr10)?{mid:ema20,upper:ema20+2*atr10,lower:ema20-2*atr10}:null;
-      let cci=null; if(n>=20){const tp=rows.map(x=>(Number(x.high)+Number(x.low)+Number(x.close))/3), m=sma(tp,20); const last20=tp.slice(-20); const md=last20.reduce((s,v)=>s+Math.abs(v-m),0)/20; if(md>0) cci=(tp.at(-1)-m)/(0.015*md);}
-      // NIFTY is a cash index, so its candle volume must not be treated as
-      // exchange-traded volume. Volume indicators fail closed unless this
-      // chart is explicitly backed by a trusted traded-volume instrument.
-      const trustedChartVolume = state.symbol !== 'NIFTY' && rows.length > 0 &&
-        rows.slice(-20).every(x => Number.isFinite(Number(x.volume)) && Number(x.volume) > 0);
-      let mfi=null; if(trustedChartVolume&&n>=15){let pos=0,neg=0; for(let i=n-14;i<n;i++){const t=(rows[i].high+rows[i].low+rows[i].close)/3,p=(rows[i-1].high+rows[i-1].low+rows[i-1].close)/3,flow=t*Number(rows[i].volume); if(t>p)pos+=flow; else if(t<p)neg+=flow;} if(pos+neg>0)mfi=neg===0?100:100-(100/(1+pos/neg));}
-      let cmf=null; if(trustedChartVolume&&n>=20){let mfv=0,vol=0; for(const x of rows.slice(-20)){const v=Number(x.volume),range=Number(x.high)-Number(x.low); if(range>0&&v>0){mfv+=(((x.close-x.low)-(x.high-x.close))/range)*v;vol+=v;}} if(vol>0)cmf=mfv/vol;}
-      let obv=null; if(trustedChartVolume&&n>=2){let v=0; for(let i=1;i<n;i++){const q=Number(rows[i].volume);v+=rows[i].close>rows[i-1].close?q:rows[i].close<rows[i-1].close?-q:0;} obv=v;}
-      let aroonUp=null,aroonDown=null; if(n>=25){const w=rows.slice(-25); let hi=0,lo=0; for(let i=1;i<w.length;i++){if(w[i].high>=w[hi].high)hi=i;if(w[i].low<=w[lo].low)lo=i;} aroonUp=100*(24-(24-hi))/24; aroonDown=100*(24-(24-lo))/24;}
-      let chop=null; if(n>=14&&finite(atr14)){const w=rows.slice(-14),hh=Math.max(...w.map(x=>x.high)),ll=Math.min(...w.map(x=>x.low)),sumtr=tr.slice(-14).reduce((a,b)=>a+b,0); if(hh>ll&&sumtr>0)chop=100*Math.log10(sumtr/(hh-ll))/Math.log10(14);}
-      let cpr=null; if(previousRows.length){const ph=Math.max(...previousRows.map(r=>Number(r.candle.high))),pl=Math.min(...previousRows.map(r=>Number(r.candle.low))),pc=Number(previousRows.at(-1).candle.close); const pivot=(ph+pl+pc)/3,bc=(ph+pl)/2,tc=2*pivot-bc;cpr={pivot,bc:Math.min(bc,tc),tc:Math.max(bc,tc)};}
-      return {keltner,cci,mfi,cmf,obv,aroonUp,aroonDown,chop,cpr};
-    })();
+    const ext = extendedIndicators(closedForPremium, {
+      trustedVolume: state.symbol !== 'NIFTY'
+    });
+    ext.cpr = completeSessionWindow(previousRows, 555, 930, Number(intervals[state.tf]))
+      ? sessionPivots(previousRows.map(row => row.candle)) : null;
     set('#market-map-keltner', ext.keltner ? fmt(ext.keltner.lower)+' / '+fmt(ext.keltner.mid)+' / '+fmt(ext.keltner.upper) : 'WARMING UP','muted');
     set('#market-map-cpr', ext.cpr ? 'BC '+fmt(ext.cpr.bc)+' · P '+fmt(ext.cpr.pivot)+' · TC '+fmt(ext.cpr.tc) : 'WARMING UP','muted');
+    set('#market-map-pivots', ext.cpr ? 'S1 '+fmt(ext.cpr.s1)+' · S2 '+fmt(ext.cpr.s2)+' · S3 '+fmt(ext.cpr.s3)+' / R1 '+fmt(ext.cpr.r1)+' · R2 '+fmt(ext.cpr.r2)+' · R3 '+fmt(ext.cpr.r3) : 'WARMING UP','muted');
     set('#market-map-cci', Number.isFinite(ext.cci) ? ext.cci.toFixed(1) : 'WARMING UP','muted');
     set('#market-map-mfi', Number.isFinite(ext.mfi) ? ext.mfi.toFixed(1) : 'VOLUME UNAVAILABLE','muted');
     set('#market-map-cmf', Number.isFinite(ext.cmf) ? ext.cmf.toFixed(3) : 'VOLUME UNAVAILABLE','muted');
@@ -17241,6 +17215,9 @@
           .at(-1);
 
 
+      const sessionOpen = isNseCashMarketOpen();
+      const replay = state.replay.active;
+
       const setup =
         state.scalps
           ?.filter(
@@ -17279,6 +17256,8 @@
               ? 'Paused · choose 1m, 3m or 5m'
               : !last
                 ? 'Warming up'
+                : !replay && !sessionOpen
+                  ? 'MARKET CLOSED · historical conditions only'
                 : last.direction === 1
                   ? 'BUY conditions aligned'
                   : last.direction === -1
@@ -17287,10 +17266,10 @@
 
 
         $('#scalp-state').className =
-          enabled &&
+          enabled && (replay || sessionOpen) &&
           last?.direction === 1
             ? 'up'
-            : enabled &&
+            : enabled && (replay || sessionOpen) &&
               last?.direction === -1
               ? 'down'
               : 'muted';
@@ -17349,7 +17328,7 @@
       ) {
 
         $('#scalp-setup').textContent =
-          enabled &&
+          enabled && (replay || sessionOpen) &&
           setup
             ? 'Latest ' +
               setup.signal.toUpperCase() +
@@ -17379,8 +17358,8 @@
                     false
                 }
               ) +
-              ' IST · live-session levels'
-            : 'No setup displayed';
+              (replay ? ' IST · REPLAY · historical levels' : ' IST · live-session levels')
+            : !replay && !sessionOpen ? 'MARKET CLOSED · no live setup displayed' : 'No setup displayed';
       }
 
 
@@ -17397,7 +17376,7 @@
         ) {
 
           $('#scalp-' + key).textContent =
-            enabled &&
+            enabled && (replay || sessionOpen) &&
             setup
               ? fmt(
                   setup[key]
