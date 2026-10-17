@@ -57,3 +57,10 @@ Primary references checked:
 ## Release status
 
 Changes are prepared for review only. Production deployment has not been authorized for this concrete patch and no deployment has been performed. The repository contains Netlify publication settings and Cloudflare Worker/static asset settings; their existence does not verify active hosting or production revision. Do not merge or deploy solely because unit tests pass. Review the patch and check the intended hosting target and production configuration before release.
+
+## Follow-up verification — 17 October 2026
+
+- GitHub reports the Cloudflare preview build and preview deployment succeeded for f578fd8. This was automatic branch preview deployment; PR #105 remains unmerged. The earlier statement that no deployment existed did not account for the automatic preview.
+- Browser inspection confirmed populated Keltner, floor pivots, CPR, CCI, Aroon and Choppiness readouts, with NIFTY cash MFI/CMF/OBV unavailable. No captured browser errors. Final confirmation and risk panels correctly showed MARKET CLOSED / NO TRADE.
+- Found and fixed an additional Pro Scalper display inconsistency: old entry/stop/target levels were labelled live-session levels while NSE was closed. Closed sessions now hide those levels and show an explicit historical-context label; Replay levels are labelled historical. Historical chart markers are retained.
+- Full regression suite after this fix: 237/237 passed, including three scalper session-display tests. Live market-hours feed and execution validation remain outstanding; no order was placed.

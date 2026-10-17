@@ -17189,6 +17189,9 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
           .at(-1);
 
 
+      const sessionOpen = isNseCashMarketOpen();
+      const replay = state.replay.active;
+
       const setup =
         state.scalps
           ?.filter(
@@ -17227,6 +17230,8 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
               ? 'Paused · choose 1m, 3m or 5m'
               : !last
                 ? 'Warming up'
+                : !replay && !sessionOpen
+                  ? 'MARKET CLOSED · historical conditions only'
                 : last.direction === 1
                   ? 'BUY conditions aligned'
                   : last.direction === -1
@@ -17235,10 +17240,10 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
 
 
         $('#scalp-state').className =
-          enabled &&
+          enabled && (replay || sessionOpen) &&
           last?.direction === 1
             ? 'up'
-            : enabled &&
+            : enabled && (replay || sessionOpen) &&
               last?.direction === -1
               ? 'down'
               : 'muted';
@@ -17297,7 +17302,7 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
       ) {
 
         $('#scalp-setup').textContent =
-          enabled &&
+          enabled && (replay || sessionOpen) &&
           setup
             ? 'Latest ' +
               setup.signal.toUpperCase() +
@@ -17327,8 +17332,8 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
                     false
                 }
               ) +
-              ' IST · live-session levels'
-            : 'No setup displayed';
+              (replay ? ' IST · REPLAY · historical levels' : ' IST · live-session levels')
+            : !replay && !sessionOpen ? 'MARKET CLOSED · no live setup displayed' : 'No setup displayed';
       }
 
 
@@ -17345,7 +17350,7 @@ import { extendedIndicators, sessionPivots, completeSessionWindow } from './exte
         ) {
 
           $('#scalp-' + key).textContent =
-            enabled &&
+            enabled && (replay || sessionOpen) &&
             setup
               ? fmt(
                   setup[key]
