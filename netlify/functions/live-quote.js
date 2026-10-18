@@ -96,15 +96,28 @@ export default async (request) => {
       });
     }
 
+    // Only provider-sourced timestamps may establish quote freshness.
+    // Upstox timestamps can be seconds, milliseconds or ISO date strings.
+    const rawTimestamp = quote?.timestamp ?? quote?.last_trade_time;
+    const numericTimestamp = Number(rawTimestamp);
+    const parsedTimestamp = rawTimestamp == null ? NaN
+      : Number.isFinite(numericTimestamp) && numericTimestamp > 0
+        ? (numericTimestamp > 1e11 ? numericTimestamp / 1000 : numericTimestamp)
+        : Date.parse(String(rawTimestamp)) / 1000;
+    const quoteTime = Math.floor(parsedTimestamp);
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(quoteTime) || quoteTime <= 0 || quoteTime > now + 60) {
+      return sendJSON({ live: false, source: 'UPSTOX', reason: 'Quote timestamp missing or invalid.' });
+    }
+
     return sendJSON({
       live: true,
       source: 'UPSTOX',
       symbol,
       instrumentKey,
       price,
-      time: Math.floor(Date.now() / 1000),
-      timestamp:
-        quote?.timestamp ?? Date.now(),
+      time: quoteTime,
+      timestamp: quoteTime,
     });
 
   } catch (error) {
