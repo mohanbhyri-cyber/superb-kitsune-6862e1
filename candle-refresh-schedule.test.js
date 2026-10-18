@@ -50,15 +50,15 @@ test('a startup response missing the last closed candle remains due', () => {
     seconds('12:03:00'));
 });
 
-test('late history retries once after 60s, then waits for another boundary', () => {
+test('late history retries once after 15s, then waits for another boundary', () => {
   const schedule = createCandleRefreshSchedule();
   const first = schedule.take('NIFTY:3m', 180, ms('12:06:02'));
   schedule.finish(first, false, ms('12:06:04'));
-  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:07:03')), null);
-  const retry = schedule.take('NIFTY:3m', 180, ms('12:07:04'));
+  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:06:18')), null);
+  const retry = schedule.take('NIFTY:3m', 180, ms('12:06:19'));
   assert.ok(retry);
-  schedule.finish(retry, false, ms('12:07:05'));
-  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:08:05')), null);
+  schedule.finish(retry, false, ms('12:06:20'));
+  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:06:35')), null);
   assert.ok(schedule.take('NIFTY:3m', 180, ms('12:09:02')));
 });
 
@@ -70,7 +70,7 @@ test('a skipped request consumes no attempt and does not leave a flight stuck', 
   const retry = schedule.take('NIFTY:3m', 180, ms('12:06:04'));
   assert.ok(retry);
   schedule.finish(retry, false, ms('12:06:05'));
-  assert.ok(schedule.take('NIFTY:3m', 180, ms('12:07:05')));
+  assert.ok(schedule.take('NIFTY:3m', 180, ms('12:06:20')));
 });
 
 test('resuming a tab reconciles the current bucket once, not every missed bucket', () => {
@@ -95,7 +95,7 @@ test('late jobs cannot mark a reset, another timeframe, symbol or bucket complet
     assert.ok(current);
     schedule.finish(old, true, now);
     schedule.finish(current, false, now);
-    assert.ok(schedule.take(key, interval, now + 60000), change);
+    assert.ok(schedule.take(key, interval, now + 15000), change);
   }
 });
 
