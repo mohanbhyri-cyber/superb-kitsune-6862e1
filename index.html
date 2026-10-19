@@ -19,7 +19,7 @@
 
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css?v=80">
+  <link rel="stylesheet" href="style.css?v=81">
 </head>
 
 <body>
@@ -134,6 +134,7 @@
 
           </div>
 
+          <div id="price-context" class="muted" role="status">Price provenance unavailable</div>
         </div>
 
 
@@ -233,9 +234,9 @@
 
             <span
               id="replay-status"
-              class="replay-status live"
+              class="replay-status"
             >
-              LIVE
+              LOADING
             </span>
 
           </div>
@@ -263,6 +264,15 @@
 
       </div>
 
+
+      <section class="historical-controls" aria-label="Historical session replay">
+        <label for="historical-date">Historical Date (IST)</label>
+        <input id="historical-date" type="date" min="2022-01-01"
+          aria-describedby="historical-help historical-message">
+        <button id="historical-load" type="button" class="outline">Load History</button>
+        <span id="historical-help" class="muted">Past sessions only · replay is not live trading</span>
+        <p id="historical-message" role="status" aria-live="polite" hidden></p>
+      </section>
 
       <section
         id="mtf-confirmation"
@@ -335,7 +345,7 @@
           <strong>
             Stride Signals
             <span class="tag">
-              LIVE ANALYSIS
+              CLOSED-CANDLE ANALYSIS
             </span>
           </strong>
 
@@ -400,7 +410,7 @@
           <h2>
             Stride Momentum
             <span class="tag">
-              LIVE ANALYSIS
+              CLOSED-CANDLE ANALYSIS
             </span>
           </h2>
 
@@ -455,7 +465,7 @@
           <h2>
             Pro Scalper
             <span class="tag">
-              LIVE
+              CLOSED-CANDLE CONDITIONS
             </span>
           </h2>
 
@@ -590,7 +600,7 @@
           Price action concepts
 
           <span class="tag">
-            LIVE ANALYSIS
+            CLOSED-CANDLE ANALYSIS
           </span>
 
         </summary>
@@ -2468,7 +2478,7 @@
 
 <script
   type="module"
-  src="app.js?v=121"
+  src="app.js?v=122"
 ></script>
 
 </body>

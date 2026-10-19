@@ -431,6 +431,55 @@ test('short quote retry resumes at the deadline without fabricated ticks', async
   assert.equal(f.timers.size, 0);
 });
 
+test('historical adapter uses the existing history cooldown scope and never updates live quote state', async () => {
+  const result = { available: true, historical: true, live: false,
+    symbol: 'NIFTY', timeframe: '1m', date: '2026-10-08', candles: [] };
+  const f = marketFixture(() => ok(result));
+  const adapter = new f.UpstoxMarketAdapter();
+  const status = adapter.status, lastUpdate = adapter.lastUpdate;
+  await adapter.historicalSession('NIFTY', '1m', '2026-10-08');
+  assert.ok(f.calls[0].includes('/api/upstox-historical-session?'));
+  assert.ok(f.calls[0].includes('date=2026-10-08'));
+  assert.equal(adapter.status, status);
+  assert.equal(adapter.lastUpdate, lastUpdate);
+  assert.equal(Object.keys(adapter.quotes).length, 0);
+  assert.equal(f.timers.size, 0, 'Historical request timeout is removed');
+  f.noteUpstoxRateLimit(253527, 'history');
+  await assert.rejects(adapter.historicalSession('NIFTY', '1m', '2026-10-08'),
+    error => error.status === 429 && error.retryAfterMs === 253527);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.timers.size, 0);
+});
+
+test('historical adapter rejects a live response and preserves safe controller errors', async () => {
+  for (const [body, status] of [[{ live: true }, 200],
+    [{ coordinatorFailure: true, reason: 'private [COORDINATOR_PRIOR_OUTCOME_UNKNOWN]' }, 503]]) {
+    const f = marketFixture(() => new Response(JSON.stringify(body), { status }));
+    await assert.rejects(new f.UpstoxMarketAdapter().historicalSession('NIFTY', '1m', '2026-10-08'),
+      error => status === 503 ? error.code === 'COORDINATOR_PRIOR_OUTCOME_UNKNOWN' &&
+        !error.message.includes('private') : /does not match/.test(error.message));
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('unsubscribing for historical replay suppresses late live ticks and late errors', async () => {
+  for (const failure of [false, true]) {
+    let complete;
+    const f = marketFixture(() => new Promise(resolve => { complete = resolve; }));
+    const ticks = [], errors = [];
+    const stop = new f.UpstoxMarketAdapter().subscribe('NIFTY', '1m', x => ticks.push(x), e => errors.push(e));
+    stop();
+    complete(failure
+      ? new Response(JSON.stringify({ coordinatorFailure: true, reason: '[COORDINATOR_STATE_INVALID]' }), { status: 503 })
+      : ok({ live: true, price: 22000, time: now / 1000 }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ticks.length, 0);
+    assert.equal(errors.length, 0);
+    assert.equal(f.timers.size, 0);
+  }
+});
+
 test('client honors body Retry-After, suppresses repeated context calls and keeps quotes independent', async () => {
   const f = marketFixture(url => url.includes('options')
     ? new Response(JSON.stringify({ retryAfterMs: 253527 }), { status: 429 })

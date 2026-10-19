@@ -648,6 +648,34 @@ export class UpstoxMarketAdapter {
   }
 
 
+  async historicalSession(symbol, timeframe, date) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+    try {
+      const response = await upstoxRequest(API_BASE + '/api/upstox-historical-session?symbol=' +
+        encodeURIComponent(symbol) + '&timeframe=' + encodeURIComponent(timeframe) +
+        '&date=' + encodeURIComponent(date), { cache: 'no-store', signal: controller.signal }, 'history');
+      if (!response.ok) {
+        if (response.status === 503) {
+          const error = await liveQuoteResponseError(response);
+          if (error.coordinator) throw error;
+        }
+        throw new Error(response.status === 404
+          ? 'No regular-session candles for this date. It may be a holiday or data may be unavailable.'
+          : 'Historical session unavailable. Check broker history access and try later.');
+      }
+      const data = await response.json();
+      if (data?.historical !== true || data.live !== false || data.available !== true ||
+          data.date !== date || data.symbol !== symbol || data.timeframe !== timeframe) {
+        throw new Error('The historical response does not match the selected session.');
+      }
+      // Historical data must never update live quotes, adapter timestamps or caches.
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async mtfHistory(symbol, timeframe) {
 
     if (
@@ -834,6 +862,10 @@ export class UpstoxMarketAdapter {
         const q =
           await response.json();
 
+        // An unsubscribe may happen while a request is in flight, for example
+        // when entering historical replay. Do not deliver its late live quote.
+        if (!alive) return;
+
 
         if (
           !q ||
@@ -925,6 +957,8 @@ export class UpstoxMarketAdapter {
 
 
       } catch (error) {
+
+        if (!alive) return;
 
         consecutiveFailures +=
           1;

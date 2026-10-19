@@ -25,6 +25,27 @@
   flex-wrap: wrap;
 }
 
+.historical-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.historical-controls label { margin: 0; font-size: 12px; }
+.historical-controls input { width: 155px; min-height: 36px; padding: 6px 8px; margin: 0; }
+.historical-controls button { min-height: 36px; }
+#historical-message { flex-basis: 100%; margin: 0; color: var(--gold); overflow-wrap: anywhere; }
+#price-context { margin-top: 5px; font-size: 11px; max-width: 100%; overflow-wrap: anywhere; }
+.historical-empty .chart-wrap, .historical-empty .lower-chart { visibility: hidden; }
+.chart-controls #replay-status { max-width: 100%; white-space: normal; }
+@media (max-width: 600px) {
+  .historical-controls { padding: 12px; gap: 8px; }
+  #historical-help { flex-basis: 100%; }
+}
+
 .replay-controls button,
 .replay-controls select {
   min-height: 32px;
@@ -752,7 +773,7 @@ body.light .tv-shell-mode .chart-footer{
   .chart-controls #replay-speed { flex:0 0 auto; height:34px; min-height:34px; max-height:34px; margin:0; padding:4px 8px; white-space:nowrap; }
   .chart-controls .timeframes button { width:auto; min-width:39px; }
   .chart-controls #replay-speed { width:72px; min-width:72px; }
-  .chart-controls #replay-status { align-self:center; white-space:nowrap; }
+  .chart-controls #replay-status { align-self:center; white-space:normal; }
 }
 
 /* Full-width chart workspace; supporting panels follow the chart. */
