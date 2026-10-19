@@ -75,6 +75,40 @@ function marketRateLimitError(scope = 'default') {
   error.retryAfterMs = Math.max(1000, upstoxCooldownRemaining(scope));
   return error;
 }
+// Only fixed, public diagnostic labels may reach the page. Never display raw
+// provider/platform messages, HTML, URLs, credentials or stored controller data.
+const FEED_CONTROLLER_REASONS = Object.freeze({
+  COORDINATOR_UNAVAILABLE: 'Feed controller unavailable. No direct broker retry was made.',
+  COORDINATOR_BINDING_MISSING: 'Feed controller binding is unavailable.',
+  COORDINATOR_CLIENT_DIGEST_FAILED: 'Feed controller credential check could not start.',
+  COORDINATOR_LOOKUP_FAILED: 'Feed controller instance lookup failed.',
+  COORDINATOR_REQUEST_FAILED: 'Feed controller request failed or timed out.',
+  COORDINATOR_RESPONSE_INVALID: 'Feed controller returned an unreadable response.',
+  COORDINATOR_STATE_INVALID: 'Feed controller safety state is invalid. Operator review required.',
+  COORDINATOR_STARTUP_CONFIG_INVALID: 'Feed controller safety-pause configuration is invalid.',
+  COORDINATOR_STARTUP_STATE_INVALID: 'Feed controller safety-pause state is invalid.',
+  COORDINATOR_PRIOR_OUTCOME_UNKNOWN: 'Previous broker outcome unknown. Operator review required.',
+  COORDINATOR_CLOCK_ROLLBACK: 'Feed controller clock check failed. No direct broker retry was made.',
+  COORDINATOR_STORAGE_READ_FAILED: 'Feed controller could not read its safety state.',
+  COORDINATOR_STORAGE_WRITE_FAILED: 'Feed controller could not save its safety state. Operator review required.'
+});
+
+async function liveQuoteResponseError(response) {
+  const error = new Error('Live quote request failed');
+  error.status = response.status;
+  // A controller 503 is not a rate limit and has no known retry deadline.
+  if (response.status !== 503) return error;
+  const body = await response.json().catch(() => null);
+  if (body?.coordinatorFailure !== true) return error;
+  const code = typeof body.reason === 'string'
+    ? body.reason.match(/\[(COORDINATOR_[A-Z_]+)\]$/)?.[1] : null;
+  error.code = Object.hasOwn(FEED_CONTROLLER_REASONS, code)
+    ? code : 'COORDINATOR_UNAVAILABLE';
+  error.coordinator = true;
+  error.message = FEED_CONTROLLER_REASONS[error.code] + ' [' + error.code + ']';
+  return error;
+}
+
 export async function upstoxRequest(url, options = {}, scope = 'default') {
   if (upstoxCooldownRemaining(scope) > 0) throw marketRateLimitError(scope);
   const response = await fetch(url, options);
@@ -793,10 +827,7 @@ export class UpstoxMarketAdapter {
 
 
         if (!response.ok) {
-
-          throw new Error(
-            'Live quote request failed'
-          );
+          throw await liveQuoteResponseError(response);
         }
 
 
@@ -903,6 +934,11 @@ export class UpstoxMarketAdapter {
           this.status =
             'RATE LIMITED';
 
+          onError?.(error);
+
+        } else if (error?.coordinator === true) {
+
+          this.status = 'DATA UNAVAILABLE';
           onError?.(error);
 
         } else if (
