@@ -3093,7 +3093,9 @@ export default {
     ) {
       return cachedApiResponse(
         request,
-        60,
+        // Match the 30s upstream intraday TTL so a successful-but-late
+        // response does not defeat the bounded missing-candle retry.
+        30,
         () => intradayHistory(url, token, coordinator),
         context
       );

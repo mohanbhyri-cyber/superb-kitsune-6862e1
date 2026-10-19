@@ -315,6 +315,45 @@ test('scheduled boundary refresh honors provider cooldown and resumes when it ex
   assert.equal(f.stats.fullLoads, 0);
 });
 
+test('late 1m provider history is recovered after 30s without waiting another candle', async () => {
+  let replies = 0;
+  const f = fixture(() => ++replies === 1
+    ? [candle('12:04:00')]
+    : [candle('12:04:00'), candle('12:05:00', 22012)]);
+  f.state.tf = '1m';
+  f.context.loadedHistoryKey = 'NIFTY:1m';
+  f.state.data = [candle('12:04:00')];
+  const tick = f.timer();
+  f.clock('12:06:02'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 1);
+  f.clock('12:06:31'); tick();
+  assert.equal(f.stats.histories.length, 1);
+  f.clock('12:06:32'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 2);
+  assert.equal(f.state.data.at(-1).time, epoch('12:05:00'));
+  assert.equal(f.state.data.at(-1).close, 22012);
+  f.clock('12:06:59'); tick();
+  assert.equal(f.stats.histories.length, 2);
+  assert.equal(f.stats.unsubscribes, 0);
+  assert.equal(f.stats.fullLoads, 0);
+});
+
+test('a cooldown still vetoes the faster missing-candle retry', async () => {
+  const f = fixture(() => [candle('12:00:00')]);
+  const tick = f.timer();
+  f.clock('12:06:02'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  f.cooldown(75000);
+  f.clock('12:06:32'); tick();
+  f.clock('12:07:16'); tick();
+  assert.equal(f.stats.histories.length, 1);
+  f.clock('12:07:17'); tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.stats.histories.length, 2);
+});
+
 test('quote-derived bars cannot falsely complete a scheduled provider reconciliation', async () => {
   const f = fixture(() => [candle('11:57:00'), candle('12:00:00')]);
   const tick = f.timer();
@@ -323,9 +362,9 @@ test('quote-derived bars cannot falsely complete a scheduled provider reconcilia
   tick();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.stats.histories.length, 1);
-  f.clock('12:07:01'); tick();
+  f.clock('12:06:31'); tick();
   assert.equal(f.stats.histories.length, 1);
-  f.clock('12:07:02'); tick();
+  f.clock('12:06:32'); tick();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.stats.histories.length, 2);
   f.clock('12:08:02'); tick();

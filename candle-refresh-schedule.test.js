@@ -62,6 +62,28 @@ test('late history retries once after 60s, then waits for another boundary', () 
   assert.ok(schedule.take('NIFTY:3m', 180, ms('12:09:02')));
 });
 
+test('a missing 1m closed candle gets one 30s retry inside the same minute', () => {
+  const schedule = createCandleRefreshSchedule();
+  const first = schedule.take('NIFTY:1m', 60, ms('12:06:02'));
+  schedule.finish(first, 'pending', ms('12:06:04'));
+  assert.equal(schedule.take('NIFTY:1m', 60, ms('12:06:33')), null);
+  const retry = schedule.take('NIFTY:1m', 60, ms('12:06:34'));
+  assert.ok(retry);
+  assert.equal(retry.target, first.target);
+  schedule.finish(retry, 'pending', ms('12:06:35'));
+  assert.equal(schedule.take('NIFTY:1m', 60, ms('12:06:59')), null);
+  assert.ok(schedule.take('NIFTY:1m', 60, ms('12:07:02')));
+});
+
+test('the shorter missing-candle retry does not shorten error backoff', () => {
+  const schedule = createCandleRefreshSchedule();
+  const first = schedule.take('NIFTY:3m', 180, ms('12:06:02'));
+  schedule.finish(first, false, ms('12:06:04'));
+  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:06:34')), null);
+  assert.equal(schedule.take('NIFTY:3m', 180, ms('12:07:03')), null);
+  assert.ok(schedule.take('NIFTY:3m', 180, ms('12:07:04')));
+});
+
 test('a skipped request consumes no attempt and does not leave a flight stuck', () => {
   const schedule = createCandleRefreshSchedule();
   const first = schedule.take('NIFTY:3m', 180, ms('12:06:02'));
