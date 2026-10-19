@@ -2,7 +2,7 @@
     import { renderIndicatorReadout } from './indicator-readout.js';
     import { createClosedIndicatorCache } from './closed-indicator-cache.js?v=1';
     import { regularNseHours } from './options-context.js';
-    import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=1';
+    import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=2';
     import { quoteDisplay } from './quote-display.js?v=1';
     import { HISTORICAL_MIN_DATE, historicalDateLimit, validateHistoricalDate,
       historicalReplayData } from './historical-session.js?v=1';
@@ -9433,7 +9433,7 @@
         // Only the provider's returned history can complete this schedule;
         // a quote-derived forming bar is not proof of reconciled closed OHLC.
         const target = nseCandleBucket(startedAt, seconds) - seconds;
-        return history.some(candle => Number(candle.time) === target);
+        return history.some(candle => Number(candle.time) === target) ? true : 'pending';
       } catch (error) {
         if (!stillCurrent()) return null;
         console.warn('Candle history refresh failed:', error);

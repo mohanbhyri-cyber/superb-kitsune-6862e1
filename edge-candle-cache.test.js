@@ -11,6 +11,20 @@ const ok = body => new Response(JSON.stringify(body), { status: 200 });
 const candleRequest = (route = 'upstox-history', tf = '3m') => new Request(
   'https://example.test/api/' + route + '?symbol=NIFTY&timeframe=' + tf);
 
+test('the main history route edge TTL permits a 30s missing-candle retry', async () => {
+  const normalized = source.replace(/\r\n/g, '\n');
+  const start = normalized.indexOf('    if (\n      url.pathname === "/api/upstox-history"');
+  const end = normalized.indexOf('    if (', start + 8);
+  assert.ok(start >= 0 && end > start);
+  let ttl;
+  await vm.runInNewContext('(async () => {\n' + normalized.slice(start, end) + '\n})()', {
+    url: new URL('https://example.test/api/upstox-history'),
+    request: candleRequest(), token: 'test-only', coordinator: null, context: {},
+    cachedApiResponse: async (_request, seconds) => { ttl = seconds; }
+  });
+  assert.equal(ttl, 30, 'A 60s edge cache would serve the same incomplete response on the faster retry');
+});
+
 function edgeFixture(time = '09:17:59', shared = new Map()) {
   let clock = epoch(time);
   const writes = [];

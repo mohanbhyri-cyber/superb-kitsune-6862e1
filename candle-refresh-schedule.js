@@ -7,6 +7,7 @@ import { nseCandleBucket, nseSessionBounds } from './nse-candle-time.js?v=2';
 export function createCandleRefreshSchedule() {
   const graceMs = 2000;
   const retryMs = 60000;
+  const pendingRetryMs = 30000;
   let current = null;
 
   function windowFor(key, seconds, nowMs) {
@@ -54,10 +55,12 @@ export function createCandleRefreshSchedule() {
       current.pending = null;
       if (confirmed === true) current.completed = true;
       else {
-        // A skipped request consumes no broker budget. Errors/late history
-        // wait for the existing 60s edge TTL as well as the caller's cooldown.
+        // A successful response missing the target may retry once after the
+        // 30s main-history edge/upstream TTL. Errors keep the 60s backoff;
+        // callers still enforce every provider cooldown before requesting.
         if (confirmed === null) current.attempts--;
-        current.nextAttemptAt = nowMs + (confirmed === null ? 1000 : retryMs);
+        current.nextAttemptAt = nowMs + (confirmed === null ? 1000 :
+          confirmed === 'pending' ? pendingRetryMs : retryMs);
       }
     }
   };
