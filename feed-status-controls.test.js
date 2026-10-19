@@ -103,6 +103,15 @@ test('both timeframe toolbars show the initial selected timeframe', () => {
   assert.deepEqual(controls().selected(), ['main:5m', 'chart:5m']);
 });
 
+test('new page loads default to the requested 1m chart without changing MTF confirmation frames', () => {
+  assert.match(app, /\btf:\s*'1m'/);
+  assert.doesNotMatch(app, /\btf:\s*'5m'/);
+  const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  assert.equal((index.match(/data-tf="1m"\s+class="active"/g) || []).length, 2);
+  assert.doesNotMatch(index, /data-tf="5m"\s+class="active"/);
+  assert.ok(app.includes("refreshMTF(requestedFrames = ['5m', '15m', '1h'])"));
+});
+
 test('clicking either toolbar synchronizes both and loads the new timeframe once', () => {
   for (const toolbar of ['main', 'chart']) {
     const f = controls();

@@ -2199,7 +2199,7 @@
 
       symbol: 'NIFTY',
 
-      tf: '5m',
+      tf: '1m',
 
       tvChartMode: 'tradingview',
 
