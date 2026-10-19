@@ -9922,19 +9922,22 @@
                 isNewCandle
               ) {
 
+                // draw() computes the completed-candle signal arrays. Consume
+                // them only AFTER that calculation, not on the next candle.
+                // Replace the queued paint so this boundary is not drawn twice.
+                cancelScheduledRender();
+                lastAnalysisKey = null;
+                draw();
+                summary();
+
                 processSignalAlerts();
 
                 processScalpAlerts();
 
                 processMomentumAlerts();
 
-                // Recalculate the map immediately from the newly closed local
-                // candle. Refresh only MTF frames whose boundary has actually
-                // closed; keep cached confirmed higher-timeframe values between
-                // boundaries. This avoids three sequential network calls on
-                // every chart candle without changing any indicator rule.
-                lastAnalysisKey = null;
-                scheduleLiveRender(true);
+                // Refresh only supporting frames whose boundary has actually
+                // closed. Preserve all confirmation and risk rules.
 
                 // Futures VWAP/volume are candle-based confirmations. Refresh
                 // them only after a new chart candle closes so the next Prime

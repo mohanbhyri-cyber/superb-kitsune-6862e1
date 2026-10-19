@@ -7,6 +7,7 @@ import { isNseIntradayTime, nseCandleBucket, liveCandleBucket, liveCandleRejecti
 import { regularNseHours } from './options-context.js';
 import { createCandleRefreshSchedule } from './candle-refresh-schedule.js';
 import { analyseSmrtAiIndicator as analyse } from './smrt-ai-indicator.js';
+import { SignalAlertTracker } from './signal-alerts.js';
 
 const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 const helperStart = app.indexOf('    function crossedMtfFrames(');
@@ -62,7 +63,7 @@ function fixture(fetchHistory) {
     loadData: async () => { stats.fullLoads++; },
     lastAnalysisKey: 'previous-analysis',
     refreshLiveTradeFinalizer() {}, recomputeAiNifty() {}, updateTradingDate() {},
-    draw: () => { stats.draws++; }, summary() {}, scheduleLiveRender() {},
+    draw: () => { stats.draws++; }, summary() {}, scheduleLiveRender() {}, cancelScheduledRender() {},
     processSignalAlerts() {}, processScalpAlerts() {}, processMomentumAlerts() {}, checkAlerts() {},
     setFeedStatus: (status, detail) => { stats.status.push({ status, detail }); },
     console: { warn: (...args) => { stats.warnings.push(args[0]); } }
@@ -85,6 +86,75 @@ function fixture(fetchHistory) {
     }
   };
 }
+
+function alertFixture(tf, side = 'Buy') {
+  const f = fixture();
+  f.state.tf = tf;
+  f.context.loadedHistoryKey = 'NIFTY:' + tf;
+  if (tf === '1m') f.state.data = [candle('12:03:00'), candle('12:04:00'), candle('12:05:00')];
+  const events = [], order = [], trackers = {};
+  let enabled = true;
+  for (const key of ['signals', 'scalps', 'momentum']) {
+    f.state[key] = [{ time: f.state.data.at(-2).time, signal: 'Sell' }];
+    trackers[key] = new SignalAlertTracker();
+    trackers[key].baseline(f.state[key]);
+  }
+  f.context.cancelScheduledRender = () => order.push('cancel');
+  f.context.draw = () => {
+    order.push('draw');
+    // These arrays are assigned by production draw(), not by the quote handler.
+    for (const key of ['signals', 'scalps', 'momentum']) {
+      f.state[key] = [{ time: f.state.data.at(-2).time, signal: side }];
+    }
+  };
+  f.context.summary = () => order.push('summary');
+  for (const [method, key] of [['processSignalAlerts', 'signals'],
+    ['processScalpAlerts', 'scalps'], ['processMomentumAlerts', 'momentum']]) {
+    f.context[method] = () => {
+      order.push(key);
+      events.push(...trackers[key].collect(f.state[key], enabled).map(event => ({ ...event, key })));
+    };
+  }
+  return { ...f, events, order, enable: value => { enabled = value; } };
+}
+
+test('fresh BUY and SELL notifications use the candle just closed on both 1m and 3m charts', () => {
+  for (const tf of ['1m', '3m']) for (const side of ['Buy', 'Sell']) {
+    const f = alertFixture(tf, side);
+    const expectedTime = f.state.data.at(-1).time;
+    f.clock('12:06:02');
+    f.tick({ time: f.now(), price: 22035 });
+    assert.equal(f.events.length, 3, tf + ': do not wait one more candle for notifications');
+    assert.ok(f.events.every(event => event.time === expectedTime && event.signal === side));
+    assert.deepEqual(f.order, ['cancel', 'draw', 'summary', 'signals', 'scalps', 'momentum']);
+    assert.equal(f.stats.histories.length, 0);
+    assert.equal(f.stats.fullLoads, 0);
+    assert.equal(f.stats.unsubscribes, 0);
+  }
+});
+
+test('forming and repeated quote ticks do not generate extra BUY/SELL notifications', () => {
+  const f = alertFixture('1m');
+  f.clock('12:05:30'); f.tick({ time: f.now(), price: 22020 });
+  assert.equal(f.events.length, 0, 'A forming candle cannot produce a completed-candle alert');
+  f.clock('12:06:02'); f.tick({ time: f.now(), price: 22035 });
+  assert.equal(f.events.length, 3);
+  f.clock('12:06:05'); f.tick({ time: f.now(), price: 22036 });
+  f.tick({ time: f.now(), price: 22036 });
+  assert.equal(f.events.length, 3, 'The same closed candle is announced once');
+});
+
+test('disabled BUY/SELL notifications stay disabled and are not backfilled when enabled', () => {
+  const f = alertFixture('1m'); f.enable(false);
+  f.clock('12:06:02'); f.tick({ time: f.now(), price: 22035 });
+  assert.equal(f.events.length, 0);
+  f.enable(true);
+  f.clock('12:06:10'); f.tick({ time: f.now(), price: 22036 });
+  assert.equal(f.events.length, 0);
+  f.clock('12:07:02'); f.tick({ time: f.now(), price: 22037 });
+  assert.equal(f.events.length, 3);
+  assert.ok(f.events.every(event => event.time === epoch('12:06:00')));
+});
 
 test('periodic refresh reconciles closed bars without resetting quotes, chart, or supporting histories', async () => {
   const f = fixture(() => [candle('11:57:00', 21995), candle('12:00:00', 22005),
