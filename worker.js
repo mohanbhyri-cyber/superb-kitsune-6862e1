@@ -8,6 +8,7 @@ import { isNseIntradayTime, nseCandleBucket, nseSessionBounds, quoteCandleTime }
 import { buildClosedFuturesVwap, completedFuturesCandles } from './closed-vwap-confirmation.js';
 import { parse } from 'csv-parse/sync';
 import { coordinatedUpstoxRequest } from './upstox-coordinator-client.js';
+import { loadHistoricalSession, validateHistoricalDate } from './historical-session.js';
 
 const SYMBOLS = {
   NIFTY: "NSE_INDEX|Nifty 50",
@@ -1255,6 +1256,32 @@ let candles = [
     candles: [],
   });
 }
+}
+
+async function historicalSessionResponse(url, token, coordinator) {
+  const symbol = (url.searchParams.get('symbol') || 'NIFTY').toUpperCase();
+  const timeframe = url.searchParams.get('timeframe') || '1m';
+  const date = url.searchParams.get('date');
+  try {
+    validateHistoricalDate(date);
+    if (symbol !== 'NIFTY' || !TIMEFRAMES[timeframe]) throw new Error('Unsupported historical instrument or timeframe.');
+  } catch (error) {
+    return json({ available: false, live: false, historical: true, candles: [], reason: error.message }, 400);
+  }
+  try {
+    const result = await loadHistoricalSession({ symbol, timeframe, date,
+      instrumentKey: SYMBOLS[symbol], fetchCandles: endpoint => upstoxFetch(endpoint, token, coordinator) });
+    return json(result, result.available ? 200 : 404);
+  } catch (error) {
+    const failure = coordinatedFailure(error, { historical: true, candles: [] });
+    if (failure) return json(failure, error.status);
+    if (error?.status === 429 || error?.rateLimited === true) {
+      return json({ available: false, live: false, historical: true, candles: [], rateLimited: true,
+        retryAfterMs: error.retryAfterMs || 60000, reason: 'Upstox historical data rate limit. Wait for the broker retry deadline.' }, 429);
+    }
+    return json({ available: false, live: false, historical: true, candles: [],
+      reason: 'Historical session unavailable. Check broker history access and try later.' }, 502);
+  }
 }
 
 async function previousSessionHistory(url, token, coordinator) {
@@ -3070,6 +3097,12 @@ export default {
         () => intradayHistory(url, token, coordinator),
         context
       );
+    }
+
+    if (url.pathname === '/api/upstox-historical-session') {
+      if (request.method !== 'GET') return json({ reason: 'Method not allowed.' }, 405);
+      return cachedApiResponse(request, 3600,
+        () => historicalSessionResponse(url, token, coordinator), context);
     }
 
     if (

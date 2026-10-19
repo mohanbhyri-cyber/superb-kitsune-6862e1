@@ -299,7 +299,7 @@ test('compact chart removes only the requested explanations and keeps session, r
   assert.doesNotMatch(chartHtml, /chart-status-note|Component directions and alignment/);
   assert.match(html, /id="market-map-risk-reason"/);
   assert.match(html, /id="trade-finalizer-panel"/);
-  assert.match(html, /app\.js\?v=121/);
+  assert.match(html, /app\.js\?v=122/);
   for (const change of [() => {}, x => { x.sessionOpen = false; },
     x => { x.prime.checks[0].ok = false; },
     x => { x.risk = { ready: true, quality: 'BLOCK', reasons: ['Risk veto'] }; },

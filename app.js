@@ -3,6 +3,9 @@
     import { createClosedIndicatorCache } from './closed-indicator-cache.js?v=1';
     import { regularNseHours } from './options-context.js';
     import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=1';
+    import { quoteDisplay } from './quote-display.js?v=1';
+    import { HISTORICAL_MIN_DATE, historicalDateLimit, validateHistoricalDate,
+      historicalReplayData } from './historical-session.js?v=1';
     import { liveCandleBucket, liveCandleRejectionReason, isNseIntradayTime, nseCandleBucket } from './nse-candle-time.js?v=2';
     import { trendIndicators } from './trend-indicators.js';
     import { analyseEfficiencyEngine } from './smrt-efficiency-engine.js';
@@ -61,7 +64,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=10';
+    } from './market.js?v=11';
 
 
     const advancedIndicatorCache = createClosedIndicatorCache(analyseAdvancedIndicators);
@@ -2198,6 +2201,7 @@
       ),
 
       symbol: 'NIFTY',
+      quoteTimes: {},
 
       tf: '1m',
 
@@ -2342,6 +2346,10 @@
 
       replay: {
         active: false,
+        loading: false,
+        date: null,
+        firstSessionIndex: 0,
+        message: '',
         playing: false,
         source: [],
         mtfSource: null,
@@ -2521,29 +2529,39 @@
     }
 
 
+    function quoteDisplayForState() {
+      return quoteDisplay({ candles: state.data, quote: state.quotes[state.symbol],
+        quoteTime: state.quoteTimes?.[state.symbol], seconds: Number(intervals[state.tf]),
+        now: Date.now() / 1000, replay: state.replay.active, sessionOpen: isNseCashMarketOpen() });
+    }
+
     function quote() {
+      return quoteDisplayForState().price;
+    }
 
-      const live =
-        state.quotes[
-          state.symbol
-        ];
-
-      if (
-        Number.isFinite(live)
-      ) {
-        return live;
+    function renderQuoteDisplay() {
+      const display = quoteDisplayForState();
+      const context = $('#price-context');
+      if (context) context.textContent = display.description;
+      const price = $('#price');
+      if (price) price.textContent = Number.isFinite(display.price) ? fmt(display.price) : '—';
+      const percent = $('#change');
+      if (percent) {
+        const value = change(current());
+        percent.textContent = formatChange(value);
+        percent.className = Number.isFinite(value) ? value >= 0 ? 'up' : 'down' : 'muted';
       }
-
-      const last =
-        state.data.at(-1)?.close;
-
-      return Number.isFinite(last)
-        ? last
-        : null;
+      renderWatch();
     }
 
 
     function change(i) {
+
+      if (i.id === state.symbol && quoteDisplayForState().kind !== 'quote') {
+        const price = quote(), previous = state.previousClose[i.id];
+        return Number.isFinite(price) && Number.isFinite(previous) && previous > 0
+          ? (price / previous - 1) * 100 : null;
+      }
 
       const official =
         state.officialChange[
@@ -2754,6 +2772,8 @@
       const requestedTf = state.tf;
       const requestedReplay = state.replay.active;
 
+      if (requestedReplay) return;
+
       if (
         requestedSymbol !== 'NIFTY'
       ) {
@@ -2901,6 +2921,9 @@
 
       state.feedStatus =
         status;
+
+      if (typeof renderQuoteDisplay === 'function') renderQuoteDisplay();
+      if (typeof updateReplayControls === 'function') updateReplayControls();
 
       // The header describes the observed feed, not a permanent LIVE claim.
       const header = $('#header-feed-status');
@@ -5129,7 +5152,7 @@
     ) {
 
       state.tvChartMode =
-        mode === 'classic'
+        state.replay.date || mode === 'classic'
           ? 'classic'
           : 'tradingview';
 
@@ -7611,6 +7634,8 @@
 
     function summary() {
 
+      renderQuoteDisplay();
+
       /*
         DISPLAY ACTUAL UPSTOX
         SESSION DATE
@@ -8133,6 +8158,21 @@
       const r =
         state.replay;
 
+      const chartCard = $('.chart-card');
+      chartCard?.classList.toggle('historical-empty', r.active && !r.source.length);
+      const dateInput = $('#historical-date');
+      if (dateInput) {
+        dateInput.min = HISTORICAL_MIN_DATE;
+        dateInput.max = historicalDateLimit();
+      }
+      const loadButton = $('#historical-load');
+      if (loadButton) loadButton.disabled = !!r.loading;
+      const message = $('#historical-message');
+      if (message) {
+        message.textContent = r.message || '';
+        message.hidden = !r.message;
+      }
+
 
       if (
         $('#replay-toggle')
@@ -8162,7 +8202,7 @@
 
 
         $('#replay-play').disabled =
-          !r.active;
+          !r.active || r.loading || !r.source.length;
       }
 
 
@@ -8171,7 +8211,7 @@
       ) {
 
         $('#replay-step').disabled =
-          !r.active;
+          !r.active || r.loading || !r.source.length;
       }
 
 
@@ -8191,10 +8231,10 @@
         if (!r.active) {
 
           $('#replay-status').textContent =
-            'LIVE';
+            state.feedStatus === 'CLOSED' ? 'MARKET CLOSED' : state.feedStatus || 'LOADING';
 
           $('#replay-status').className =
-            'replay-status live';
+            state.feedStatus === 'LIVE' ? 'replay-status live' : 'replay-status';
 
         } else {
 
@@ -8207,11 +8247,12 @@
               r.index + 1
             );
 
-          $('#replay-status').textContent =
-            'REPLAY ' +
-            shown +
-            ' / ' +
-            total;
+          $('#replay-status').textContent = r.loading
+            ? 'HISTORICAL · LOADING · NOT LIVE'
+            : r.date
+              ? 'HISTORICAL ' + r.date + ' · ' + Math.max(0, shown - r.firstSessionIndex) +
+                ' / ' + Math.max(0, total - r.firstSessionIndex) + ' · NOT LIVE'
+              : 'REPLAY ' + shown + ' / ' + total + ' · NOT LIVE';
 
           $('#replay-status').className =
             'replay-status replay';
@@ -8237,6 +8278,110 @@
 
       state.replay.playing =
         false;
+    }
+
+    async function loadHistoricalDate(selectedDate = $('#historical-date')?.value) {
+      try {
+        validateHistoricalDate(selectedDate);
+      } catch (error) {
+        state.replay.message = error.message;
+        updateReplayControls();
+        return;
+      }
+      if (state.replay.loading) return;
+      const symbol = state.symbol, timeframe = state.tf;
+      const id = ++request;
+      unsubscribe?.();
+      unsubscribe = null;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      clearReplayTimer();
+      cancelScheduledRender();
+      loadedHistoryKey = null;
+      fullHistoryRequest = null;
+      historyRefreshSchedule.reset();
+      state.replay.active = true;
+      state.replay.loading = true;
+      state.replay.date = selectedDate;
+      state.replay.source = [];
+      state.replay.mtfSource = null;
+      state.replay.index = 0;
+      state.replay.firstSessionIndex = 0;
+      state.replay.message = 'Loading ' + selectedDate + ' · HISTORICAL — NOT LIVE. Broker cooldowns still apply.';
+      state.data = [];
+      state.quotes[symbol] = null;
+      state.previousClose[symbol] = null;
+      state.sessionOpen[symbol] = null;
+      state.primeMtfData = { '5m': [], '15m': [], '1h': [] };
+      state.primeMtfSymbol = null;
+      state.mtf.activeRequest = null;
+      state.mtf.loading = false;
+      state.mtf.overall = 'MTF WARMING UP';
+      for (const frame of ['5m', '15m', '1h']) state.mtf[frame] = null;
+      // Do not let live/current auxiliary data participate in a past session.
+      for (const field of ['calc', 'trend', 'primeMarket', 'rawTradeFinalizer', 'tradeFinalizer',
+        'liveTradeFinalizer', 'allIndicatorsConsensus', 'aiIndicator', 'aiIndicatorCandles',
+        'futuresVWAP', 'futuresVolumeConfirmation', 'futuresClosedVwapConfirmation',
+        'futuresVWAPCandleTime', 'externalNifty', 'globalWatch', 'aiNifty',
+        'optionsContext', 'breadthContext', 'gainzSSL', 'candleScanner', 'candleSetup',
+        'marketMap', 'niftyEdge', 'niftyEdgeBacktest', 'proSuite', 'proBacktest',
+        'smartSignal', 'smartPlan', 'smartStructure', 'efficiencyEngine', 'liquidityTrap',
+        'sessionQuality', 'riskEngine', 'triggerSignal', 'chartConsensus']) state[field] = null;
+      for (const field of ['signals', 'scalps', 'momentum']) state[field] = [];
+      state.smartMarketState = 'WAIT';
+      state.futuresVWAPUpdated = 0;
+      state.externalNiftyUpdated = 0;
+      state.globalWatchUpdated = 0;
+      state.futuresVWAPReason = 'Historical futures VWAP is unavailable; no live value is substituted.';
+      lastAnalysisKey = null;
+      for (const selector of ['#price', '#change']) {
+        const node = $(selector);
+        if (node) node.textContent = '—';
+      }
+      renderPrimeMarket();
+      renderSmartMoneyTools();
+      renderTradeFinalizer();
+      renderAllIndicatorsConsensus();
+      renderProSuiteSummary();
+      renderWatch();
+      renderIndicatorReadout([], null);
+      setFeedStatus('REPLAY', '● HISTORICAL ' + selectedDate + ' · LOADING · NOT LIVE');
+      setChartView('classic');
+      updateTradingDate();
+      updateReplayControls();
+      draw();
+      summary();
+      const current = () => id === request && state.replay.active &&
+        state.replay.date === selectedDate && state.symbol === symbol && state.tf === timeframe;
+      try {
+        const payload = await market.historicalSession(symbol, timeframe, selectedDate);
+        if (!current()) return;
+        const data = historicalReplayData(payload, selectedDate, timeframe);
+        state.replay.source = data.candles;
+        state.replay.mtfSource = data.mtf;
+        state.replay.index = data.firstSessionIndex;
+        state.replay.firstSessionIndex = data.firstSessionIndex;
+        state.replay.loading = false;
+        state.replay.message = 'HISTORICAL ' + selectedDate + ' — NOT LIVE. ' +
+          data.sessionCount + ' session candles; ' + data.warmupCount + '/220 earlier warm-up candles. ' +
+          'Signals use visible candles only. Missing historical confirmations remain WAIT; not a performance backtest.';
+        state.sessionOpen[symbol] = data.candles[data.firstSessionIndex].open;
+        state.previousClose[symbol] = data.candles[data.firstSessionIndex - 1]?.close ?? null;
+        setFeedStatus('REPLAY', '● HISTORICAL ' + selectedDate + ' · NOT LIVE');
+        renderReplayFrame();
+      } catch (error) {
+        if (!current()) return;
+        state.replay.message = error?.status === 429
+          ? 'Historical data is rate limited. Wait ' + Math.ceil((error.retryAfterMs || 0) / 1000) +
+            's before loading again. No candles were substituted.'
+          : error?.message || 'Historical session unavailable. No candles were substituted.';
+        setFeedStatus('REPLAY', '● HISTORICAL · DATA UNAVAILABLE · NOT LIVE · ' + state.replay.message);
+      } finally {
+        if (current()) {
+          state.replay.loading = false;
+          updateReplayControls();
+        }
+      }
     }
 
 
@@ -8319,6 +8464,8 @@
         state.data.at(-1)
           ?.close ??
         null;
+
+      updateTradingDate();
 
       // Replay analysis is evaluated at the close of the visible
       // main-chart candle. Include only MTF candles that have also closed by
@@ -8447,6 +8594,8 @@
       const r =
         state.replay;
 
+      if (r.loading || (r.active && !r.source.length)) return;
+
 
       if (
         !r.active
@@ -8478,6 +8627,8 @@
 
       const r =
         state.replay;
+
+      if (r.loading || (r.active && !r.source.length)) return;
 
 
       if (
@@ -8551,6 +8702,12 @@
     ) {
 
       clearReplayTimer();
+
+      ++request;
+      state.replay.loading = false;
+      state.replay.date = null;
+      state.replay.message = '';
+      state.replay.firstSessionIndex = 0;
 
 
       state.replay.active =
@@ -9331,6 +9488,7 @@
     }
 
     async function loadData() {
+      (state.quoteTimes ||= {})[state.symbol] = null;
       loadedHistoryKey = null;
       historyRefreshSchedule.reset();
       historyRefreshWarning = '';
@@ -9786,6 +9944,10 @@
 
               state.lastUpdate =
                 Date.now();
+
+              (state.quoteTimes ||= {})[state.symbol] =
+                typeof tick.time === 'number' && Number.isFinite(tick.time) && tick.time > 0
+                  ? tick.time : null;
 
 
               const seconds = intervals[state.tf];
@@ -10661,14 +10823,8 @@
                 return;
               }
 
-              if (
-                state.replay.active
-              ) {
-
-                exitReplay(
-                  false
-                );
-              }
+              const historicalDate = state.replay.date;
+              if (state.replay.active) exitReplay(false);
 
 
               state.tf =
@@ -10682,7 +10838,8 @@
               syncTimeframeButtons();
 
 
-              loadData();
+              if (historicalDate) loadHistoricalDate(historicalDate);
+              else loadData();
             };
         }
       );
@@ -10692,6 +10849,10 @@
        REPLAY CONTROLS
     ====================================================== */
 
+
+    if ($('#historical-load')) {
+      $('#historical-load').onclick = () => loadHistoricalDate();
+    }
 
     if (
       $('#replay-toggle')
@@ -17287,9 +17448,9 @@
               : !last
                 ? 'Warming up'
                 : last.direction === 1
-                  ? 'BUY conditions aligned'
+                  ? 'BUY conditions aligned · not trade approval'
                   : last.direction === -1
-                    ? 'SELL conditions aligned'
+                    ? 'SELL conditions aligned · not trade approval'
                     : 'WAIT · mixed conditions';
 
 
@@ -17386,7 +17547,7 @@
                     false
                 }
               ) +
-              ' IST · live-session levels'
+              ' IST · reference levels only · not trade approval'
             : 'No setup displayed';
       }
 
