@@ -559,12 +559,20 @@ export class UpstoxMarketAdapter {
 
 
     if (!response.ok) {
-
+      // A shared history failure leaves every candle-based indicator waiting.
+      // Preserve only the fixed controller category, never a raw server body.
+      if (response.status === 503) {
+        const error = await liveQuoteResponseError(response);
+        if (error.coordinator === true) {
+          this.status = 'DATA UNAVAILABLE';
+          throw error;
+        }
+      }
       this.status = 'OFFLINE';
-
-      throw new Error(
-        'Upstox history request failed'
-      );
+      const error = new Error('Upstox history request failed (HTTP ' + response.status + ').' +
+        ([401, 403].includes(response.status) ? ' Check broker history authorization.' : ''));
+      error.status = response.status;
+      throw error;
     }
 
 

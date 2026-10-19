@@ -451,6 +451,34 @@ test('historical adapter uses the existing history cooldown scope and never upda
   assert.equal(f.timers.size, 0);
 });
 
+test('main history failures preserve safe controller categories instead of hiding the shared indicator data failure', async () => {
+  for (const code of ['COORDINATOR_PRIOR_OUTCOME_UNKNOWN', 'COORDINATOR_STORAGE_READ_FAILED',
+    'COORDINATOR_BINDING_MISSING', 'COORDINATOR_STATE_INVALID']) {
+    const f = marketFixture(() => new Response(JSON.stringify({ coordinatorFailure: true,
+      reason: 'private server detail [' + code + ']' }), { status: 503 }));
+    const adapter = new f.UpstoxMarketAdapter();
+    await assert.rejects(adapter.history('NIFTY', '1m'), error =>
+      error.status === 503 && error.coordinator === true && error.code === code &&
+      error.message.includes(code) && !error.message.includes('private'));
+    assert.equal(adapter.status, 'DATA UNAVAILABLE');
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.upstoxCooldownRemaining('history'), 0, 'A controller failure is not a provider 429');
+    assert.equal(Object.keys(adapter.quotes).length, 0);
+  }
+});
+
+test('main history generic HTTP failures expose only the status, never raw platform response details', async () => {
+  for (const status of [401, 403, 404, 502, 503]) {
+    const f = marketFixture(() => new Response('private server error page', { status }));
+    const adapter = new f.UpstoxMarketAdapter();
+    await assert.rejects(adapter.history('NIFTY', '1m'), error =>
+      error.status === status && error.message.includes('HTTP ' + status) &&
+      !error.message.includes('private') && error.coordinator !== true);
+    assert.equal(adapter.status, 'OFFLINE');
+    assert.equal(f.calls.length, 1);
+  }
+});
+
 test('historical adapter rejects a live response and preserves safe controller errors', async () => {
   for (const [body, status] of [[{ live: true }, 200],
     [{ coordinatorFailure: true, reason: 'private [COORDINATOR_PRIOR_OUTCOME_UNKNOWN]' }, 503]]) {
