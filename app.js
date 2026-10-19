@@ -61,7 +61,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=9';
+    } from './market.js?v=10';
 
 
     const advancedIndicatorCache = createClosedIndicatorCache(analyseAdvancedIndicators);
@@ -9990,14 +9990,18 @@
 
               setFeedStatus(
                 isNseCashMarketOpen()
-                  ? 'RECONNECTING'
+                  ? error?.coordinator === true
+                    ? 'DATA UNAVAILABLE'
+                    : 'RECONNECTING'
                   : 'CLOSED',
                 isNseCashMarketOpen()
                   ? isUpstoxRateLimit(error)
                     ? 'Upstox quote cooldown · retrying in ' +
                       Math.ceil((error.retryAfterMs || 0) / 1000) +
                       's · chart preserved'
-                    : 'Live quote retrying · chart preserved'
+                    : error?.coordinator === true
+                      ? error.message + ' · chart preserved'
+                      : 'Live quote retrying · chart preserved'
                   : '',
                 isUpstoxRateLimit(error) ? {
                   until: Date.now() + (error.retryAfterMs || 0),

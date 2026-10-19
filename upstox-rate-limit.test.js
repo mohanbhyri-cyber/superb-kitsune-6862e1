@@ -259,6 +259,104 @@ function marketFixture(fetcher) {
     advance: ms => { clock += ms; } };
 }
 
+test('quote failures retain fixed controller diagnostics without exposing raw server details', async () => {
+  const codes = ['COORDINATOR_UNAVAILABLE', 'COORDINATOR_BINDING_MISSING',
+    'COORDINATOR_CLIENT_DIGEST_FAILED', 'COORDINATOR_LOOKUP_FAILED',
+    'COORDINATOR_REQUEST_FAILED', 'COORDINATOR_RESPONSE_INVALID',
+    'COORDINATOR_STATE_INVALID', 'COORDINATOR_STARTUP_CONFIG_INVALID',
+    'COORDINATOR_STARTUP_STATE_INVALID', 'COORDINATOR_PRIOR_OUTCOME_UNKNOWN',
+    'COORDINATOR_CLOCK_ROLLBACK', 'COORDINATOR_STORAGE_READ_FAILED',
+    'COORDINATOR_STORAGE_WRITE_FAILED'];
+  for (const code of codes) {
+    const f = marketFixture(() => new Response(JSON.stringify({
+      coordinatorFailure: true, reason: 'sensitive upstream details [' + code + ']'
+    }), { status: 503 }));
+    const ticks = [], errors = [];
+    const adapter = new f.UpstoxMarketAdapter();
+    const stop = adapter.subscribe('NIFTY', '1m', x => ticks.push(x), e => errors.push(e));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(errors.length, 1, 'Show a controller failure on its first response');
+    assert.equal(errors[0].code, code);
+    assert.equal(errors[0].status, 503);
+    assert.equal(errors[0].coordinator, true);
+    assert.ok(errors[0].message.includes(code));
+    assert.ok(!errors[0].message.includes('sensitive'));
+    assert.equal(adapter.status, 'DATA UNAVAILABLE');
+    assert.equal(ticks.length, 0);
+    assert.equal(f.upstoxCooldownRemaining('quote'), 0, 'Do not invent a 429 deadline');
+    stop();
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('unrecognized controller details use a fixed message; ordinary failed responses remain generic', async () => {
+  for (const [status, body, coordinator] of [
+    [503, { coordinatorFailure: true, reason: 'sensitive [COORDINATOR_NEW_SECRET]' }, true],
+    [503, { coordinatorFailure: true, reason: 'sensitive' }, true],
+    [503, { reason: 'sensitive [COORDINATOR_PRIOR_OUTCOME_UNKNOWN]' }, false],
+    [401, { coordinatorFailure: true, reason: 'sensitive' }, false],
+    [502, '<html>sensitive proxy error</html>', false]
+  ]) {
+    const f = marketFixture(() => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }));
+    const errors = [], ticks = [];
+    const stop = new f.UpstoxMarketAdapter().subscribe('NIFTY', '1m', x => ticks.push(x), e => errors.push(e));
+    await new Promise(resolve => setImmediate(resolve));
+    for (let i = 0; i < 2; i++) {
+      const [id, timer] = [...f.timers][0]; f.timers.delete(id); await timer.callback();
+    }
+    assert.ok(errors.length > 0);
+    assert.equal(errors.at(-1).coordinator === true, coordinator);
+    assert.ok(!errors.at(-1).message.includes('sensitive'));
+    assert.ok(!errors.at(-1).message.includes('NEW_SECRET'));
+    assert.equal(ticks.length, 0);
+    stop();
+  }
+});
+
+test('controller error reaches visible feed status without a fake retry countdown or live claim', () => {
+  const start = appSource.indexOf('            error => {', appSource.indexOf('        unsubscribe ='));
+  const end = appSource.indexOf('\n          );', start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [];
+  let open = true;
+  const callback = vm.runInNewContext('(' + appSource.slice(start, end).trim() + ')', {
+    console: { error() {} }, isNseCashMarketOpen: () => open,
+    isUpstoxRateLimit: e => e.status === 429,
+    setFeedStatus: (...args) => calls.push(args), Date, Math
+  });
+  const message = 'Previous broker outcome unknown. Operator review required. [COORDINATOR_PRIOR_OUTCOME_UNKNOWN]';
+  callback({ status: 503, coordinator: true, message });
+  assert.equal(calls[0][0], 'DATA UNAVAILABLE');
+  assert.ok(calls[0][1].includes(message));
+  assert.ok(calls[0][1].includes('chart preserved'));
+  assert.equal(calls[0][2], null);
+  assert.ok(!calls[0][1].includes('retrying'));
+  open = false; callback({ status: 503, coordinator: true, message });
+  assert.equal(calls[1][0], 'CLOSED');
+});
+
+test('a later genuine quote recovers normally without changing retry pacing or emitting a failure tick', async () => {
+  let attempts = 0;
+  const f = marketFixture(() => ++attempts === 1
+    ? new Response(JSON.stringify({ coordinatorFailure: true,
+      reason: '[COORDINATOR_REQUEST_FAILED]', live: true, price: 99999 }), { status: 503 })
+    : ok({ live: true, price: 22000, time: now / 1000, candleEligible: true }));
+  const errors = [], ticks = [];
+  const adapter = new f.UpstoxMarketAdapter();
+  const stop = adapter.subscribe('NIFTY', '1m', x => ticks.push(x), e => errors.push(e));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(errors.length, 1);
+  assert.equal(ticks.length, 0, 'Never treat a failed HTTP response as market data');
+  const [id, timer] = [...f.timers][0];
+  assert.equal(timer.ms, 10000, 'Retain existing first-failure backoff');
+  f.timers.delete(id); f.advance(timer.ms); await timer.callback();
+  assert.equal(ticks.length, 1);
+  assert.equal(ticks[0].price, 22000);
+  assert.equal(adapter.status, 'LIVE');
+  assert.equal([...f.timers.values()][0].ms, 3000, 'Retain existing successful quote cadence');
+  stop();
+});
+
 test('client short remaining deadlines do not restart endpoint fallback waits', async () => {
   for (const scope of ['quote', 'history', 'mtfHistory', 'previousHistory', 'auth', 'default']) {
     const f = marketFixture(() => new Response(JSON.stringify({ retryAfterMs: 1000 }), { status: 429 }));
