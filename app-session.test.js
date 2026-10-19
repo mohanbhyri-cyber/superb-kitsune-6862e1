@@ -26,6 +26,7 @@ function runTick(now, initialTime, tick) {
     isNseCashMarketOpen: () => regularNseHours(now * 1000),
     nseSessionMinutesFromEpoch: time => (time - nseSessionBounds(time).open) / 60,
     refreshLiveTradeFinalizer() {}, recomputeAiNifty() {}, scheduleLiveRender() {},
+    cancelScheduledRender() {}, draw() {}, summary() {},
     setFeedStatus: (status, message) => { state.feedStatus = status; state.feedMessage = message; }, updateTradingDate() {},
     processSignalAlerts() {}, processScalpAlerts() {}, processMomentumAlerts() {}, checkAlerts() {},
     refreshFuturesVWAP: async () => {}, refreshMTF: async () => {}
