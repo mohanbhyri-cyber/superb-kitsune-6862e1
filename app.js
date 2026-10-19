@@ -2472,6 +2472,12 @@
     ====================================================== */
 
 
+    function setMarkupIfChanged(element, markup) {
+      if (!element || element.innerHTML === markup) return false;
+      element.innerHTML = markup;
+      return true;
+    }
+
     function toast(message) {
 
       const el = $('#toast');
@@ -3071,7 +3077,7 @@
 
       if (watchRows) {
 
-        watchRows.innerHTML =
+        setMarkupIfChanged(watchRows,
           list.map(
             i => {
 
@@ -3132,7 +3138,7 @@
                 </button>
               `;
             }
-          ).join('');
+          ).join(''));
       }
 
 
@@ -3142,7 +3148,7 @@
 
       if (ticker) {
 
-        ticker.innerHTML =
+        setMarkupIfChanged(ticker,
           instruments.map(
             i => {
 
@@ -3180,7 +3186,7 @@
                 </div>
               `;
             }
-          ).join('');
+          ).join(''));
       }
     }
 
@@ -5354,104 +5360,45 @@
     let lastAnalysisKey = null;
     let lastTradingViewSyncKey = null;
 
-    let liveRenderTimer =
-      null;
+    let liveRenderTimer = null;
+    let liveRenderFrame = null;
+    let liveRenderQueued = false;
+    let liveRenderGeneration = 0;
+    let lastLiveRender = 0;
 
-    let liveRenderQueued =
-      false;
+    function scheduleLiveRender(force = false) {
+      if (liveRenderQueued && !force) return;
+      if (force) cancelScheduledRender();
 
-    let lastLiveRender =
-      0;
-
-
-    function scheduleLiveRender(
-      force = false
-    ) {
-
-      if (
-        liveRenderQueued &&
-        !force
-      ) {
-        return;
-      }
-
-
-      const now =
-        performance.now();
-
-      const elapsed =
-        now -
-        lastLiveRender;
-
-      const delay =
-        force
-          ? 0
-          : Math.max(
-              0,
-              250 - elapsed
-            );
-
-
-      liveRenderQueued =
-        true;
-
-
-      if (
-        liveRenderTimer
-      ) {
-
-        clearTimeout(
-          liveRenderTimer
-        );
-      }
-
-
-      liveRenderTimer =
-        setTimeout(
-          () => {
-
-            liveRenderQueued =
-              false;
-
-            liveRenderTimer =
-              null;
-
-            lastLiveRender =
-              performance.now();
-
-
-            requestAnimationFrame(
-              () => {
-
-                draw();
-
-                summary();
-              }
-            );
-
-          },
-          delay
-        );
+      const generation = ++liveRenderGeneration;
+      const delay = force ? 0 : Math.max(0, 250 - (performance.now() - lastLiveRender));
+      liveRenderQueued = true;
+      liveRenderTimer = setTimeout(() => {
+        if (generation !== liveRenderGeneration) return;
+        liveRenderTimer = null;
+        liveRenderFrame = requestAnimationFrame(() => {
+          // Cancellation may race a callback that the browser already dispatched.
+          if (generation !== liveRenderGeneration) return;
+          liveRenderFrame = null;
+          liveRenderQueued = false;
+          lastLiveRender = performance.now();
+          draw();
+          summary();
+        });
+      }, delay);
     }
 
-
     function cancelScheduledRender() {
-
-      if (
-        liveRenderTimer
-      ) {
-
-        clearTimeout(
-          liveRenderTimer
-        );
-
-        liveRenderTimer =
-          null;
+      liveRenderGeneration++;
+      if (liveRenderTimer !== null) {
+        clearTimeout(liveRenderTimer);
+        liveRenderTimer = null;
       }
-
-
-      liveRenderQueued =
-        false;
+      if (liveRenderFrame !== null) {
+        cancelAnimationFrame(liveRenderFrame);
+        liveRenderFrame = null;
+      }
+      liveRenderQueued = false;
     }
 
     function draw() {
@@ -7331,7 +7278,7 @@
                 : 'VWAP · unavailable';
 
 
-        $('#levels').innerHTML = `
+        setMarkupIfChanged($('#levels'), `
           <div>
 
             <small>
@@ -7377,7 +7324,7 @@
             </strong>
 
           </div>
-        `;
+        `);
       }
     }
 
@@ -8026,7 +7973,7 @@
         $('#signal-reasons')
       ) {
 
-        $('#signal-reasons').innerHTML = `
+        setMarkupIfChanged($('#signal-reasons'), `
 
           <div class="reason">
 
@@ -8095,7 +8042,7 @@
                 ' / -DI ' + minusValue.toFixed(1)
               : 'Warming up'}</b>
           </div>
-        `;
+        `);
       }
 
 
@@ -14126,9 +14073,7 @@
             )
             .join('');
 
-        list.innerHTML =
-          activeHtml +
-          inactiveHtml;
+        setMarkupIfChanged(list, activeHtml + inactiveHtml);
       }
 
 

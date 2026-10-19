@@ -57,6 +57,10 @@ function watchDisplay(price) {
   const start = app.indexOf('    const fmt = n => {');
   const end = app.indexOf('    const read =', start);
   vm.runInContext(app.slice(start, end), context);
+  const markupStart = app.indexOf('    function setMarkupIfChanged(');
+  const markupEnd = app.indexOf('    function toast(', markupStart);
+  assert.ok(markupStart >= 0 && markupEnd > markupStart);
+  vm.runInContext(app.slice(markupStart, markupEnd), context);
   const renderStart = app.indexOf('    function renderWatch()');
   const renderEnd = app.indexOf('    function refreshProSuite()', renderStart);
   vm.runInContext(app.slice(renderStart, renderEnd) + '\nrenderWatch();', context);
@@ -204,7 +208,7 @@ test('app imports the diagnostic helper with a fresh cache key and uses the same
   assert.ok(app.includes('liveCandleBucket(tick, seconds, quoteNow)'));
   assert.ok(app.includes('liveCandleRejectionReason(tick, seconds, quoteNow)'));
   const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  assert.ok(index.includes('app.js?v=124'));
+  assert.ok(index.includes('app.js?v=125'));
   assert.ok(app.includes("'./candle-refresh-schedule.js?v=2'"));
   assert.ok(app.includes("'./market.js?v=12'"));
 });
