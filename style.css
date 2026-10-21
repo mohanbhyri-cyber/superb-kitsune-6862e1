@@ -906,3 +906,102 @@ body.light .tv-shell-mode .chart-footer{
 #terminal .chart-wrap { --chart-height: max(720px, calc(100dvh - 160px)); }
 
 #terminal .chart-wrap { --chart-height: max(940px, calc(100dvh - 160px)); }
+
+/* Chart-only workspace: keep engine dependencies, remove dashboard layout/paint. */
+body.chart-only { overflow: hidden; }
+body.chart-only > header,
+body.chart-only > #ticker,
+body.chart-only > .page-footer,
+body.chart-only #terminal > :not(.workspace),
+body.chart-only #terminal .workspace > aside,
+body.chart-only #terminal .chart-card > .instrument {
+  display: none !important;
+}
+body.chart-only #terminal {
+  width: 100%; max-width: none; height: 100dvh;
+  margin: 0; padding: 0;
+}
+body.chart-only #terminal .workspace { display: block; height: 100%; }
+body.chart-only #terminal .chart-card {
+  position: relative; display: flex; flex-direction: column;
+  height: 100%; min-height: 0; border: 0; border-radius: 0;
+}
+body.chart-only #terminal .tv-pro-toolbar,
+body.chart-only #terminal .tv-range-bar,
+body.chart-only #terminal .chart-footer { flex: 0 0 auto; }
+body.chart-only #terminal .tv-pro-toolbar { margin: 0; }
+body.chart-only #terminal .chart-wrap {
+  --chart-height: 100%;
+  flex: 1 1 auto; min-height: 280px; height: auto !important; padding-right: 0;
+}
+body.chart-only #terminal .canvas-area { height: 100% !important; min-height: 0; }
+body.chart-only #terminal #chart,
+body.chart-only #terminal .tv-lightweight-chart,
+body.chart-only #terminal .tv-advanced-chart { height: calc(100% - 180px) !important; }
+body.chart-only #terminal .chart-indicator-status {
+  width: min(320px, calc(100% - 24px));
+  max-height: calc(100% - 68px); overflow: auto; overscroll-behavior: contain;
+}
+body.chart-only #terminal .chart-tip { bottom: 190px; }
+body.chart-only #terminal .chart-footer {
+  flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 12px;
+}
+body.chart-only #terminal .chart-footer > span:first-child {
+  flex: 1 1 300px; overflow-wrap: anywhere;
+}
+body.chart-only #terminal .chart-footer > span:last-child { flex: 0 1 auto; }
+
+/* Settings remain available from the single Indicators button, closed by default. */
+body.chart-only #terminal .chart-options {
+  position: fixed; z-index: 80; top: 58px; right: 12px;
+  width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 76px);
+  overflow: auto; overscroll-behavior: contain;
+  padding: 0 12px 12px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px #0007;
+}
+body.chart-only #terminal .chart-options[hidden] { display: none !important; }
+body.chart-only #terminal .chart-options-heading {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: 12px 0;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+body.chart-only #terminal .chart-options .chart-controls { padding: 10px 0; }
+body.chart-only #terminal .chart-options .control-right {
+  flex: 1; justify-content: flex-start; flex-wrap: wrap;
+}
+body.chart-only #terminal .chart-options .replay-controls { flex-wrap: wrap; }
+body.chart-only #terminal .chart-options #timeframes,
+body.chart-only #terminal .chart-options #indicators-toggle,
+body.chart-only #terminal .chart-options #reset-view,
+body.chart-only #terminal .chart-options #mtf-confirmation,
+body.chart-only #terminal .chart-options .stride-readout,
+body.chart-only #terminal .chart-options .stride-note,
+body.chart-only #terminal .chart-options .scalp-panel > :not(.panel-heading):not(.scalp-toolbar),
+body.chart-only #terminal .chart-options .pa-note,
+body.chart-only #terminal .chart-options .pa-guide,
+body.chart-only #terminal .chart-options #pa-last { display: none !important; }
+body.chart-only #terminal .chart-options .indicator-list { padding: 10px 0; }
+body.chart-only #terminal .chart-options .scalp-panel,
+body.chart-only #terminal .chart-options .stride-settings {
+  padding: 10px 0; margin: 0; border: 0; border-radius: 0;
+}
+body.chart-only #terminal .chart-options .panel-heading { margin-bottom: 6px; }
+body.chart-only #terminal .chart-options .historical-controls { padding-inline: 0; }
+
+@media (max-width: 760px) {
+  body.chart-only #terminal .tv-pro-toolbar { padding: 6px; gap: 4px; }
+  body.chart-only #terminal .tv-pro-left { flex-wrap: wrap; gap: 4px; }
+  body.chart-only #terminal .tv-pro-right { gap: 6px; }
+  body.chart-only #terminal .chart-options { top: 84px; max-height: calc(100dvh - 100px); }
+  body.chart-only #terminal .chart-indicator-status { width: min(260px, calc(100% - 16px)); left: 8px; }
+}
+@media (max-height: 520px) {
+  body.chart-only #terminal .chart-wrap { min-height: 160px; }
+  body.chart-only #terminal #chart,
+  body.chart-only #terminal .tv-lightweight-chart,
+  body.chart-only #terminal .tv-advanced-chart { height: calc(100% - 120px) !important; }
+  body.chart-only #terminal .single-chart-oscillators { height: 120px; }
+  body.chart-only #terminal .single-chart-oscillators .lower-chart { height: 60px; }
+  body.chart-only #terminal .single-chart-oscillators canvas { height: 35px; }
+  body.chart-only #terminal .chart-tip { bottom: 130px; }
+}

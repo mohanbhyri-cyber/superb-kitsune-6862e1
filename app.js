@@ -1218,6 +1218,7 @@
     }
 
     function renderSmartMoneyTools() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
       const samplePreview =
         new URLSearchParams(window.location.search).get('sample') === '1';
 
@@ -1905,6 +1906,7 @@
 
 
     function renderPrimeMarket() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
       let panel = document.getElementById('prime-market-panel');
       if (!panel) {
         const anchor = document.getElementById('trade-finalizer-panel');
@@ -3049,6 +3051,7 @@
 
 
     function renderWatch() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const list =
         instruments.filter(
@@ -3477,6 +3480,7 @@
 
 
     function renderProSuiteSummary() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
       const edgeLatest = state.niftyEdge?.latest || null;
       const consensus = state.allIndicatorsConsensus || null;
       const finalizer = state.tradeFinalizer || null;
@@ -10378,6 +10382,15 @@
     setupAllIndicatorsChat();
 
 
+    function setChartOptions(open) {
+      const panel = $('#chart-options');
+      if (!panel) return;
+      panel.hidden = !open;
+      $('#tv-indicators-btn')?.setAttribute('aria-expanded', String(!!open));
+      if (open) $('#chart-options-close')?.focus?.();
+      else $('#tv-indicators-btn')?.focus?.();
+    }
+
     // TradingView-style chart controls.
     if (
       $('#chart-view-tv')
@@ -10402,14 +10415,23 @@
     if (
       $('#tv-indicators-btn')
     ) {
-      $('#tv-indicators-btn').onclick =
-        () => {
-          $('#indicators')
-            ?.classList.toggle(
-              'hidden'
-            );
-        };
+      $('#tv-indicators-btn').onclick = () => {
+        const panel = $('#chart-options');
+        if (panel) setChartOptions(panel.hidden);
+        else $('#indicators')?.classList.toggle('hidden');
+      };
     }
+
+    if ($('#chart-options-close')) {
+      $('#chart-options-close').onclick = () => setChartOptions(false);
+    }
+    document.addEventListener('keydown', event => {
+      const panel = $('#chart-options');
+      if (event.key === 'Escape' && panel && !panel.hidden) {
+        event.preventDefault();
+        setChartOptions(false);
+      }
+    });
 
     if (
       $('#tv-reset-btn')
@@ -13486,6 +13508,7 @@
 
 
     function renderGainzSSLPanel() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const combo =
         state.gainzSSL;
@@ -13873,6 +13896,7 @@
 
     function renderAllIndicatorsConsensus() {
       renderChartIndicatorStatus(state.allIndicatorsConsensus);
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
 
       const result =
@@ -14141,6 +14165,7 @@
 
     function renderGlobalWatch() {
       renderChartGlobalMarkets();
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const watch =
         state.globalWatch;
@@ -14374,6 +14399,7 @@
 
 
     function renderAiIndicator() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const ai =
         state.aiIndicator;
@@ -14510,6 +14536,7 @@
 
 
     function renderAiNifty() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const ai =
         state.aiNifty;
@@ -15311,6 +15338,7 @@
 
 
     function renderBestBuySetup() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
       const seconds = Number(intervals[state.tf]);
       const now = state.replay.active
         ? Number(state.data.at(-1)?.time) + seconds
@@ -15386,6 +15414,7 @@
     }
 
     function renderTradeFinalizer() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
       renderBestBuySetup();
       const samplePreview =
         new URLSearchParams(window.location.search).get('sample') === '1';
@@ -15642,6 +15671,7 @@
 
 
     function renderCandleScanner() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const scanner =
         state.candleScanner;
@@ -15915,6 +15945,7 @@
 
 
     function updateMarketMapPanel() {
+      if (typeof document !== 'undefined' && document.body?.classList?.contains('chart-only')) return;
 
       const map =
         state.marketMap;
