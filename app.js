@@ -64,7 +64,7 @@
       upstoxRequest,
       validCandle,
       strideSignals
-    } from './market.js?v=12';
+    } from './market.js?v=13';
 
 
     const advancedIndicatorCache = createClosedIndicatorCache(analyseAdvancedIndicators);

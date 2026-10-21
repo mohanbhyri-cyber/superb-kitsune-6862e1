@@ -208,10 +208,10 @@ test('app imports the diagnostic helper with a fresh cache key and uses the same
   assert.ok(app.includes('liveCandleBucket(tick, seconds, quoteNow)'));
   assert.ok(app.includes('liveCandleRejectionReason(tick, seconds, quoteNow)'));
   const index = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  assert.ok(index.includes('app.js?v=126'));
+  assert.ok(index.includes('app.js?v=127'));
   assert.ok(index.includes('style.css?v=82'));
   assert.ok(app.includes("'./candle-refresh-schedule.js?v=2'"));
-  assert.ok(app.includes("'./market.js?v=12'"));
+  assert.ok(app.includes("'./market.js?v=13'"));
 });
 
 test('retry countdown decreases locally without renewing the original deadline', () => {
