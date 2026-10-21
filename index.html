@@ -19,10 +19,10 @@
 
   <link rel="icon" href="icon.svg">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css?v=81">
+  <link rel="stylesheet" href="style.css?v=82">
 </head>
 
-<body>
+<body class="chart-only">
 
 <header>
   <a class="brand" href="./">
@@ -147,6 +147,12 @@
 
       </div>
 
+
+      <div id="chart-options" class="chart-options" role="region" aria-label="Chart settings" hidden>
+        <div class="chart-options-heading">
+          <h2>Chart settings</h2>
+          <button id="chart-options-close" type="button" aria-label="Close chart settings">Close ×</button>
+        </div>
 
       <div class="chart-controls">
 
@@ -656,6 +662,85 @@
       </details>
 
 
+    <section
+      class="panel"
+      id="alerts"
+    >
+
+      <div class="signal-alert-box">
+
+        <div class="panel-heading">
+
+          <h2>
+            BUY / SELL signal alerts
+          </h2>
+
+          <label class="signal-switch">
+
+            <input
+              type="checkbox"
+              id="signal-alert-switch"
+            >
+
+            Enable
+
+          </label>
+
+        </div>
+
+
+        <div
+          id="signal-alert-status"
+          class="up"
+        ></div>
+
+
+        <div
+          id="signal-alert-history"
+          class="alert-list signal-alert-single-line"
+          aria-live="polite"
+        ></div>
+
+      </div>
+
+
+      <div class="panel-heading">
+
+        <h2>
+          Price alerts
+          <span
+            id="alert-total"
+            class="muted"
+          >
+            0
+          </span>
+        </h2>
+
+        <button
+          id="new-alert"
+          class="text-button"
+        >
+          + New alert
+        </button>
+
+      </div>
+
+
+      <div
+        id="alert-list"
+        class="alert-list"
+      ></div>
+
+
+      <p class="disclaimer">
+        Stored on this device. Live price alerts run while the online
+        app is open or installed.
+      </p>
+
+    </section>
+
+      </div>
+
       <!-- CHART -->
 
       <div class="tv-pro-toolbar">
@@ -677,6 +762,8 @@
           <button
             type="button"
             id="tv-indicators-btn"
+            aria-controls="chart-options"
+            aria-expanded="false"
             class="tv-pro-button"
           >
             ƒx Indicators
@@ -1100,82 +1187,6 @@
     </section>
 
 
-    <section
-      class="panel"
-      id="alerts"
-    >
-
-      <div class="signal-alert-box">
-
-        <div class="panel-heading">
-
-          <h2>
-            BUY / SELL signal alerts
-          </h2>
-
-          <label class="signal-switch">
-
-            <input
-              type="checkbox"
-              id="signal-alert-switch"
-            >
-
-            Enable
-
-          </label>
-
-        </div>
-
-
-        <div
-          id="signal-alert-status"
-          class="up"
-        ></div>
-
-
-        <div
-          id="signal-alert-history"
-          class="alert-list signal-alert-single-line"
-          aria-live="polite"
-        ></div>
-
-      </div>
-
-
-      <div class="panel-heading">
-
-        <h2>
-          Price alerts
-          <span
-            id="alert-total"
-            class="muted"
-          >
-            0
-          </span>
-        </h2>
-
-        <button
-          id="new-alert"
-          class="text-button"
-        >
-          + New alert
-        </button>
-
-      </div>
-
-
-      <div
-        id="alert-list"
-        class="alert-list"
-      ></div>
-
-
-      <p class="disclaimer">
-        Stored on this device. Live price alerts run while the online
-        app is open or installed.
-      </p>
-
-    </section>
 
   </div>
 
@@ -2478,7 +2489,7 @@
 
 <script
   type="module"
-  src="app.js?v=125"
+  src="app.js?v=126"
 ></script>
 
 </body>
