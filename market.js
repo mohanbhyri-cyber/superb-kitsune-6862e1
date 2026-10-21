@@ -514,6 +514,29 @@ export class UpstoxMarketAdapter {
 // ----------------------------------------------------------
 
   async history(symbol, timeframe) {
+    // Bound the complete initial load, including the response body. This does
+    // not reset provider deadlines or retry the broker through another route.
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error('Candle history did not finish within 90 seconds. Live signals remain unavailable.');
+        error.code = 'HISTORY_TIMEOUT';
+        this.status = 'OFFLINE';
+        reject(error);
+        controller.abort(error);
+      }, 90000);
+    });
+    try {
+      return await Promise.race([
+        this.requestHistory(symbol, timeframe, controller.signal), timeout
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async requestHistory(symbol, timeframe, signal) {
     const historyKey = symbol + ':' + timeframe;
     this.historyWarmup.delete(historyKey);
 
@@ -539,13 +562,15 @@ export class UpstoxMarketAdapter {
       response = await upstoxRequest(
         url,
         {
-          cache: 'no-store'
+          cache: 'no-store',
+          signal
         },
         'history'
       );
 
     } catch (error) {
 
+      if (signal.aborted) throw signal.reason;
       if (error?.status === 429) {
         this.status = 'RATE LIMITED';
         throw error;
@@ -558,6 +583,7 @@ export class UpstoxMarketAdapter {
     }
 
 
+    signal.throwIfAborted();
     if (!response.ok) {
       // A shared history failure leaves every candle-based indicator waiting.
       // Preserve only the fixed controller category, never a raw server body.
@@ -579,6 +605,7 @@ export class UpstoxMarketAdapter {
     const data =
       await response.json();
 
+    signal.throwIfAborted();
 
     if (
       !data ||

@@ -114,7 +114,7 @@ test('diagnostics count only completed regular-session candles', async t => {
 test('client keeps warm-up diagnostics separate by timeframe and clears them on a failed refresh', async () => {
   let failure = false;
   const context = vm.createContext({
-    Response, Date, console, AbortController, isNseIntradayTime: () => true,
+    Response, Date, console, AbortController, setTimeout, clearTimeout, isNseIntradayTime: () => true,
     fetch: async url => failure ? new Response('{}', { status: 403 }) : new Response(JSON.stringify({
       live: true, candles: [{ time: 1791517500, open: 22000, high: 22010, low: 21990, close: 22000 }],
       warmup: { closedCandles: url.includes('3m') ? 125 : 75, requiredClosedCandles: 220,
