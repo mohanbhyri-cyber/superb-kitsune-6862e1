@@ -1,5 +1,6 @@
     import { momentumSignals } from './momentum.js';
     import { renderIndicatorReadout } from './indicator-readout.js';
+    import { syncChartStatusRows } from './chart-status-renderer.js?v=1';
     import { createClosedIndicatorCache } from './closed-indicator-cache.js?v=1';
     import { regularNseHours } from './options-context.js';
     import { createCandleRefreshSchedule } from './candle-refresh-schedule.js?v=2';
@@ -13760,13 +13761,16 @@
       const finalizer = state.liveTradeFinalizer ?? state.tradeFinalizer;
       const overall = $('#chart-status-overall');
       const finalState = String(finalizer?.state || 'WAIT');
-      overall.textContent = finalState;
-      overall.className = /BUY/.test(finalState) ? 'up' : /SELL/.test(finalState) ? 'down' : 'muted';
-      $('#chart-status-context').textContent = state.replay.active
+      if (overall.textContent !== finalState) overall.textContent = finalState;
+      const overallTone = /BUY/.test(finalState) ? 'up' : /SELL/.test(finalState) ? 'down' : 'muted';
+      if (overall.className !== overallTone) overall.className = overallTone;
+      const context = $('#chart-status-context');
+      const contextText = state.replay.active
         ? 'Replay · completed candle'
         : isNseCashMarketOpen()
           ? 'Completed candle · ' + state.tf
           : 'Market closed · last session · ' + state.tf;
+      if (context.textContent !== contextText) context.textContent = contextText;
       const names = [
         'Trade Finalizer', 'NIFTY EDGE', 'Market Map', 'MTF 5m/15m/1h',
         'SSL + QQE', 'AI NIFTY', 'Global Watch', 'Trend Composite',
@@ -13774,42 +13778,29 @@
       ];
       const votes = Array.isArray(result?.votes) ? result.votes : [];
       const allNames = [...new Set([...names, ...votes.map(vote => vote.name)])];
-      const fragment = document.createDocumentFragment();
+      const rows = [];
       for (const name of allNames) {
         const vote = votes.find(item => item.name === name);
         const side = name === 'Trade Finalizer'
           ? (/BUY/.test(finalState) ? 1 : /SELL/.test(finalState) ? -1 : 0)
           : Number(vote?.side || 0);
-        const row = document.createElement('div');
-        row.className = 'chart-status-row';
-        const label = document.createElement('span');
-        label.textContent = name;
-        const badge = document.createElement('strong');
-        badge.textContent = side === 0 ? 'WAIT' : name === 'Trade Finalizer'
+        const value = side === 0 ? 'WAIT' : name === 'Trade Finalizer'
           ? side === 1 ? 'BUY' : 'SELL'
           : side === 1 ? 'BULLISH' : 'BEARISH';
-        badge.className = side === 1 ? 'up' : side === -1 ? 'down' : 'muted';
-        row.append(label, badge);
-        fragment.append(row);
+        rows.push({ name, value, tone: side === 1 ? 'up' : side === -1 ? 'down' : 'muted' });
       }
       const structure = state.primeMarket?.structure;
       const trigger = state.triggerSignal;
-      const triggerRow = document.createElement('div');
-      triggerRow.className = 'chart-status-row';
-      const triggerLabel = document.createElement('span');
-      triggerLabel.textContent = 'SMRT Trigger';
-      const triggerStatus = document.createElement('strong');
       const triggerSignal = trigger?.side === 1 ? 'BULLISH' : trigger?.side === -1 ? 'BEARISH' : 'WAIT';
       const triggerScore = Number(trigger?.score);
-      triggerStatus.textContent = triggerSignal +
+      const triggerValue = triggerSignal +
         (trigger && Number.isFinite(triggerScore)
           ? ' · ' + Math.round(Math.max(0, Math.min(100, triggerScore))) + '/100'
           : '');
 
-      triggerStatus.className = trigger?.side === 1 ? 'up' : trigger?.side === -1 ? 'down' : 'muted';
-      triggerRow.title = trigger?.reason || 'Waiting for confirmation';
-      triggerRow.append(triggerLabel, triggerStatus);
-      fragment.append(triggerRow);
+      rows.push({ name: 'SMRT Trigger', value: triggerValue,
+        tone: trigger?.side === 1 ? 'up' : trigger?.side === -1 ? 'down' : 'muted',
+        title: trigger?.reason || 'Waiting for confirmation' });
       const chartRiskPoints = state.marketMap?.atr;
       const contextRows = [
         ['ATR (volatility)', primeFinite(chartRiskPoints) ? fmt(chartRiskPoints) + ' pts' : 'WAIT'],
@@ -13820,15 +13811,7 @@
           : 'WAIT']
       ];
       for (const [name, value] of contextRows) {
-        const row = document.createElement('div');
-        row.className = 'chart-status-row';
-        const label = document.createElement('span');
-        label.textContent = name;
-        const status = document.createElement('strong');
-        status.textContent = value;
-        status.className = 'muted';
-        row.append(label, status);
-        fragment.append(row);
+        rows.push({ name, value });
       }
       const seconds = Number(intervals[state.tf]);
       const analysisNow = state.replay.active
@@ -13879,19 +13862,10 @@
         ? new Date(closedTiming.end * 1000).toLocaleTimeString('en-IN',
           { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—']);
       for (const [name, value] of confirmationRows) {
-        const row = document.createElement('div');
-        row.className = 'chart-status-row' + (['Risk Engine', 'Directional votes',
-          'Active groups', 'Trade approval'].includes(name)
-          ? ' chart-risk-row' : '');
-        const label = document.createElement('span');
-        label.textContent = name;
-        const valueEl = document.createElement('strong');
-        valueEl.textContent = value;
-        valueEl.className = name === 'Risk Engine' ? riskDisplay.tone : 'muted';
-        row.append(label, valueEl);
-        fragment.append(row);
+        rows.push({ name, value, tone: name === 'Risk Engine' ? riskDisplay.tone : 'muted',
+          risk: ['Risk Engine', 'Directional votes', 'Active groups', 'Trade approval'].includes(name) });
       }
-      panel.replaceChildren(fragment);
+      syncChartStatusRows(panel, rows, document);
     }
 
     function renderAllIndicatorsConsensus() {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { riskMapDisplay } from './risk-map-display.js';
+import { syncChartStatusRows } from './chart-status-renderer.js';
 import { analyseAllIndicators } from './smrt-all-indicators.js';
 
 const time = Date.parse('2026-10-13T10:00:00+05:30') / 1000;
@@ -153,7 +154,7 @@ function panels(input) {
     Date: class extends Date { static now() { return (time + 180) * 1000; } },
     $: selector => { if (!nodes.has(selector)) nodes.set(selector, node()); return nodes.get(selector); },
     document: { createElement: node, createDocumentFragment: node },
-    riskMapDisplay, fmt: value => Number(value).toFixed(2), quote: () => 100,
+    riskMapDisplay, syncChartStatusRows, fmt: value => Number(value).toFixed(2), quote: () => 100,
     isNseCashMarketOpen: () => input.sessionOpen, regularNseHours: () => input.sessionOpen,
     primeSide: value => /BUY/.test(value || '') ? 1 : /SELL/.test(value || '') ? -1 : 0 });
   vm.runInContext(section('    function primeFinite(', '    function primeEpochSeconds(') +
@@ -166,6 +167,18 @@ function panels(input) {
     row: label => nodes.get('#chart-status-rows').children.find(row =>
       row.children[0]?.textContent === label)?.children[1]?.textContent };
 }
+
+test('unchanged real chart status preserves row identity while changed final approval removes levels', () => {
+  const p = panels(sample());
+  const row = p.nodes.get('#chart-status-rows').children[0];
+  p.render();
+  assert.equal(p.nodes.get('#chart-status-rows').children[0], row);
+  p.state.liveTradeFinalizer = { state: 'NO TRADE', plan: null };
+  p.render();
+  assert.equal(p.row('Trade Finalizer'), 'WAIT');
+  assert.equal(p.row('Entry'), '—');
+  assert.equal(p.row('Trade approval'), 'WAIT · NOT APPROVED');
+});
 
 test('actual chart box and Market Map render the same confirmed BUY / SELL risk', () => {
   for (const side of [1, -1]) {
@@ -299,7 +312,7 @@ test('compact chart removes only the requested explanations and keeps session, r
   assert.doesNotMatch(chartHtml, /chart-status-note|Component directions and alignment/);
   assert.match(html, /id="market-map-risk-reason"/);
   assert.match(html, /id="trade-finalizer-panel"/);
-  assert.match(html, /app\.js\?v=127/);
+  assert.match(html, /app\.js\?v=128/);
   for (const change of [() => {}, x => { x.sessionOpen = false; },
     x => { x.prime.checks[0].ok = false; },
     x => { x.risk = { ready: true, quality: 'BLOCK', reasons: ['Risk veto'] }; },
